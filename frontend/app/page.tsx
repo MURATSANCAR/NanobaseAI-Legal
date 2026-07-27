@@ -84,6 +84,14 @@ export default function Platform() {
     catch(error){setMessage(error instanceof Error?error.message:"Belge yüklenemedi");}finally{setBusy(false);}
   }
 
+  async function openPreview(){
+    if(!user||!activeDocument)return;
+    try{
+      const preview=await api<{url:string}>(`/api/v1/documents/${activeDocument.id}/preview`,user);
+      window.open(preview.url,"_blank","noopener,noreferrer");
+    }catch(error){setMessage(error instanceof Error?error.message:"Belge açılamadı");}
+  }
+
   if(!user)return <main className="login-shell"><section className="login-card">
     <div className="brand-symbol">N</div><p className="eyebrow">NANObaseAI · SPECAI</p>
     <h1>Teknik şartnameyi<br/>karara dönüştürün.</h1>
@@ -110,7 +118,7 @@ export default function Platform() {
             {selected?<><form className="upload-form" onSubmit={upload}><UploadCloud/><div><b>Teknik şartname yükle</b><small>PDF veya DOCX · En fazla 100 MB</small></div><select name="type"><option value="TECHNICAL_SPECIFICATION">Teknik şartname</option><option value="ADDENDUM">Zeyilname</option><option value="TECHNICAL_CATALOG">Teknik katalog</option></select><input name="file" type="file" accept=".pdf,.docx" required/><button className="primary" disabled={busy}>{busy?"Yükleniyor…":"Yükle"}</button></form>
               <div className="document-list">{documents.map(d=><button key={d.id} className={activeDocument?.id===d.id?"document active":"document"} onClick={()=>setActiveDocument(d)}><FileText/><div><b>{d.name}</b><small>v{d.currentVersion} · {new Date(d.createdAt).toLocaleDateString("tr-TR")}</small></div><span className={`badge ${d.status.toLowerCase()}`}>{d.status.replaceAll("_"," ")}</span></button>)}{!documents.length&&<p className="empty">Bu projeye henüz belge yüklenmedi.</p>}</div>
             </>:<p className="empty">Dokümanlarını görmek için bir proje seçin.</p>}</article></section>
-        {activeDocument&&<section className="panel clause-panel"><div className="panel-head"><div><b>Madde ağacı</b><span>{activeDocument.name} · {clauses.length} madde</span></div><span className={`badge ${activeDocument.status.toLowerCase()}`}>{activeDocument.status.replaceAll("_"," ")}</span></div>
+        {activeDocument&&<section className="panel clause-panel"><div className="panel-head"><div><b>Madde ağacı</b><span>{activeDocument.name} · {clauses.length} madde</span></div><div className="panel-actions"><button className="link" onClick={openPreview}><FileText/> Belgeyi aç</button><span className={`badge ${activeDocument.status.toLowerCase()}`}>{activeDocument.status.replaceAll("_"," ")}</span></div></div>
           {activeDocument.status==="READY"?<div className="clause-list">{clauses.map(c=><details key={c.id}><summary><span>{c.number}</span><b>{c.title}</b><small>Sayfa {c.pageNumber}</small></summary><p>{c.sourceText}</p></details>)}</div>:<div className="processing"><RefreshCw className="spin"/><div><b>Belge işleniyor</b><p>Güvenlik taraması, metin çıkarımı ve yapı tespiti devam ediyor.</p></div></div>}</section>}
       </div></main>
     {newProject&&<div className="modal-backdrop"><form className="modal" onSubmit={createProject}><div className="modal-head"><div><p className="eyebrow">YENİ ÇALIŞMA</p><h2>İhale projesi oluştur</h2></div><button type="button" onClick={()=>setNewProject(false)}><X/></button></div><label>Proje adı<input name="name" required maxLength={200}/></label><label>İhaleyi yapan kurum<input name="authority" required maxLength={200}/></label><div className="form-grid"><label>Kayıt numarası<input name="registration" maxLength={100}/></label><label>Son teklif tarihi<input name="deadline" type="date"/></label></div><label>Öncelik<select name="priority" defaultValue="NORMAL"><option value="LOW">Düşük</option><option value="NORMAL">Normal</option><option value="HIGH">Yüksek</option><option value="CRITICAL">Kritik</option></select></label><label>Açıklama<textarea name="description" rows={3} maxLength={4000}/></label><button className="primary large" disabled={busy}>{busy?"Oluşturuluyor…":"Projeyi oluştur"}</button></form></div>}
