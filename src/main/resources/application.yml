@@ -22,6 +22,7 @@ spring:
       resourceserver:
         jwt:
           issuer-uri: ${OIDC_ISSUER_URI:http://localhost:8081/realms/specai}
+          jwk-set-uri: ${OIDC_JWK_SET_URI:http://localhost:8081/realms/specai/protocol/openid-connect/certs}
   mvc:
     problemdetails:
       enabled: true
@@ -67,6 +68,10 @@ logging:
     level: "%5p [${spring.application.name:},%X{traceId:-},%X{spanId:-}]"
 
 specai:
+  bootstrap:
+    enabled: ${SPECAI_BOOTSTRAP_ENABLED:false}
+    tenant-id: ${SPECAI_BOOTSTRAP_TENANT_ID:00000000-0000-0000-0000-000000000000}
+    tenant-name: ${SPECAI_BOOTSTRAP_TENANT_NAME:Local Tenant}
   storage:
     endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
     access-key: ${MINIO_ACCESS_KEY:specai}

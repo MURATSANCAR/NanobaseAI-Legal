@@ -95,7 +95,11 @@ services:
       DATABASE_URL: jdbc:postgresql://postgres:5432/specai
       DATABASE_USER: specai
       DATABASE_PASSWORD: ${DATABASE_PASSWORD:-local-dev-only}
-      OIDC_ISSUER_URI: ${OIDC_ISSUER_URI:-http://keycloak:8080/realms/specai}
+      OIDC_ISSUER_URI: ${OIDC_ISSUER_URI:-http://localhost:8081/realms/specai}
+      OIDC_JWK_SET_URI: http://keycloak:8080/realms/specai/protocol/openid-connect/certs
+      SPECAI_BOOTSTRAP_ENABLED: "true"
+      SPECAI_BOOTSTRAP_TENANT_ID: 11111111-1111-1111-1111-111111111111
+      SPECAI_BOOTSTRAP_TENANT_NAME: Nano Teknoloji A.Ş.
       MINIO_ENDPOINT: http://minio:9000
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-specai}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-local-minio-secret}

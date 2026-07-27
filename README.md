@@ -1,28 +1,30 @@
 # NANObaseAI SpecAI
 
-On-premise technical specification compliance platform. The repository currently
-contains the production foundation for the tenant-isolated tender project API.
+On-premise technical specification compliance platform. This monorepo contains
+the Spring Boot API in the repository root and the React portal in `frontend/`.
 
 ## Requirements
 
-- Java 21
-- Maven 3.9+
-- PostgreSQL 17
-- An OpenID Connect provider (Keycloak is the intended deployment target)
+- Docker Engine with Compose
 
 ## Run locally
 
+Copy secure values into a local `.env`, then:
+
 ```bash
-docker compose up -d postgres
-export DATABASE_PASSWORD=local-dev-only
-export OIDC_ISSUER_URI=http://localhost:8081/realms/specai
-mvn spring-boot:run
+docker compose up --build
 ```
+
+- Portal: `http://localhost:3000`
+- API health: `http://localhost:8080/actuator/health`
+- Keycloak: `http://localhost:8081`
+- MinIO console: `http://localhost:9001`
+- RabbitMQ console: `http://localhost:15672`
 
 Every API token must include:
 
 - `tenant_id`: an organization UUID
-- `scope`: `specai.read`, `specai.write`, or `specai.admin`
+- a supported realm role such as `TENDER_MANAGER`
 
 The tenant is derived exclusively from the verified JWT. It is never accepted
 from a request header or request body.
@@ -34,6 +36,9 @@ POST /api/v1/tenders
 GET  /api/v1/tenders
 GET  /api/v1/tenders/{id}
 PUT  /api/v1/tenders/{id}
+POST /api/v1/tenders/{id}/documents
+GET  /api/v1/tenders/{id}/documents
+GET  /api/v1/documents/{id}/preview
 ```
 
 Health probes are available at `/actuator/health/liveness` and
@@ -53,6 +58,5 @@ com.nanobase.specai
 └── shared
 ```
 
-Document intelligence, requirement extraction, compliance, review, and reporting
-will be added as separate modules. Python workers and local models communicate
-through explicit contracts; they do not own business decisions.
+See [RUNBOOK.md](RUNBOOK.md) for operational instructions and
+[CODEX-HANDOVER.md](CODEX-HANDOVER.md) for the delivery report.
