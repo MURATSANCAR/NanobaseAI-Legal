@@ -39,7 +39,7 @@ class DocumentProcessingServiceTest {
         UUID documentId = UUID.randomUUID();
         UUID versionId = UUID.randomUUID();
         Document document = Document.uploaded(documentId, tenant, projectId, "spec.pdf",
-            DocumentType.TECHNICAL_SPECIFICATION, Instant.now());
+            DocumentType.TECHNICAL_SPECIFICATION, "reviewer", Instant.now());
         DocumentVersion version = new DocumentVersion(versionId, tenant, documentId, 1,
             "object-key", "spec.pdf", "application/pdf", 42, "a".repeat(64), Instant.now());
         when(versions.findByIdAndTenantId(versionId, tenant)).thenReturn(Optional.of(version));

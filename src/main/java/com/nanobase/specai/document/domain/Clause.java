@@ -12,7 +12,7 @@ import java.util.UUID;
 public class Clause {
     @Id
     private UUID id;
-    @Column(name = "tenant_id", nullable = false, updatable = false)
+    @Column(name = "organization_id", nullable = false, updatable = false)
     private UUID tenantId;
     @Column(name = "document_version_id", nullable = false, updatable = false)
     private UUID documentVersionId;

@@ -27,8 +27,8 @@ public final class ProcessingContracts {
         @NotNull UUID tenantId,
         @NotNull UUID documentVersionId,
         @NotBlank @Pattern(regexp = "^(VIRUS_SCANNING|CLASSIFYING|PARSING|OCR_PROCESSING|"
-            + "STRUCTURE_DETECTION|INDEXING|READY|PARSING_FAILED|OCR_FAILED|"
-            + "PASSWORD_PROTECTED|MANUAL_REVIEW_REQUIRED)$") String status,
+            + "STRUCTURE_DETECTION|INDEXING|READY|FAILED|"
+            + "MANUAL_REVIEW_REQUIRED)$") String status,
         @Size(max = 2000) String message,
         @Size(max = 10_000) List<@Valid ClauseInput> clauses
     ) {

@@ -104,13 +104,14 @@ public class DocumentService {
 
         try {
             Document document = Document.uploaded(documentId, principal.tenantId(), projectId,
-                filename, type, now);
+                filename, type, principal.subject(), now);
             documents.save(document);
             versions.save(new DocumentVersion(versionId, principal.tenantId(), documentId, 1,
                 objectKey, filename, detectedMediaType, file.getSize(), sha256, now));
             audit.save(new AuditEvent(UUID.randomUUID(), principal.tenantId(), principal.subject(),
-                "DOCUMENT_UPLOADED", "Document", documentId, now,
-                "{\"versionId\":\"%s\",\"sha256\":\"%s\"}".formatted(versionId, sha256)));
+                "DOCUMENT_UPLOADED", "Document", documentId, null, null, null,
+                "{\"versionId\":\"%s\",\"sha256\":\"%s\"}".formatted(versionId, sha256),
+                UUID.randomUUID(), now));
             outbox.save(new OutboxEvent(UUID.randomUUID(), principal.tenantId(), "document.uploaded",
                 "{\"eventType\":\"DocumentUploaded\",\"schemaVersion\":1,"
                     + "\"tenantId\":\"%s\",\"projectId\":\"%s\",\"documentId\":\"%s\","

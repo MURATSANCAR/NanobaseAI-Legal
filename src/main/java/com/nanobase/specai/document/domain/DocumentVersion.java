@@ -12,23 +12,23 @@ import java.util.UUID;
 public class DocumentVersion {
     @Id
     private UUID id;
-    @Column(name = "tenant_id", nullable = false, updatable = false)
+    @Column(name = "organization_id", nullable = false, updatable = false)
     private UUID tenantId;
     @Column(name = "document_id", nullable = false, updatable = false)
     private UUID documentId;
     @Column(name = "version_number", nullable = false, updatable = false)
     private int versionNumber;
-    @Column(name = "object_key", nullable = false, updatable = false, length = 1024)
+    @Column(name = "object_storage_key", nullable = false, updatable = false, length = 1024)
     private String objectKey;
-    @Column(name = "original_filename", nullable = false, updatable = false, length = 255)
+    @Column(name = "original_file_name", nullable = false, updatable = false, length = 255)
     private String originalFilename;
-    @Column(name = "media_type", nullable = false, updatable = false, length = 150)
+    @Column(name = "mime_type", nullable = false, updatable = false, length = 150)
     private String mediaType;
-    @Column(name = "size_bytes", nullable = false, updatable = false)
+    @Column(name = "file_size", nullable = false, updatable = false)
     private long sizeBytes;
     @Column(name = "sha256", nullable = false, updatable = false, length = 64)
     private String sha256;
-    @Column(name = "created_at", nullable = false, updatable = false)
+    @Column(name = "uploaded_at", nullable = false, updatable = false)
     private Instant createdAt;
 
     protected DocumentVersion() {

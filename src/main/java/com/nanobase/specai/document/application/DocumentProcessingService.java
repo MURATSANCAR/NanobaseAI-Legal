@@ -48,8 +48,9 @@ public class DocumentProcessingService {
         }
         document.processing(status, now);
         audit.save(new AuditEvent(UUID.randomUUID(), result.tenantId(), "document-worker",
-            "DOCUMENT_PROCESSING_" + status, "Document", document.id(), now,
-            "{\"versionId\":\"%s\",\"clauseCount\":%d}".formatted(version.id(), result.clauses().size())));
+            "DOCUMENT_PROCESSING_" + status, "Document", document.id(), null, null, null,
+            "{\"versionId\":\"%s\",\"clauseCount\":%d}".formatted(version.id(), result.clauses().size()),
+            UUID.randomUUID(), now));
     }
 
     private List<Clause> toEntities(UUID tenantId, UUID versionId, List<ClauseInput> inputs, Instant now) {

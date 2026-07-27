@@ -12,18 +12,18 @@ import java.util.UUID;
 public class OutboxEvent {
     @Id
     private UUID id;
-    @Column(name = "tenant_id", nullable = false, updatable = false)
+    @Column(name = "organization_id", nullable = false, updatable = false)
     private UUID tenantId;
     @Column(name = "routing_key", nullable = false, updatable = false, length = 150)
     private String routingKey;
-    @Column(nullable = false, updatable = false, columnDefinition = "jsonb")
+    @Column(name = "payload_json", nullable = false, updatable = false, columnDefinition = "jsonb")
     private String payload;
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
     @Column(name = "published_at")
     private Instant publishedAt;
-    @Column(name = "attempt_count", nullable = false)
-    private int attemptCount;
+    @Column(name = "retry_count", nullable = false)
+    private int retryCount;
 
     protected OutboxEvent() {
     }
@@ -40,5 +40,5 @@ public class OutboxEvent {
     public String routingKey() { return routingKey; }
     public String payload() { return payload; }
     public void published(Instant now) { this.publishedAt = now; }
-    public void failed() { this.attemptCount++; }
+    public void failed() { this.retryCount++; }
 }

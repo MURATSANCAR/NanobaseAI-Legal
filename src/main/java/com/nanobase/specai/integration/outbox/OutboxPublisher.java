@@ -21,7 +21,7 @@ public class OutboxPublisher {
     @Transactional
     public void publishPending() {
         for (OutboxEvent event : events
-            .findTop50ByPublishedAtIsNullAndAttemptCountLessThanOrderByCreatedAt(10)) {
+            .findTop50ByPublishedAtIsNullAndRetryCountLessThanOrderByCreatedAt(10)) {
             try {
                 rabbit.convertAndSend(RabbitConfiguration.EXCHANGE, event.routingKey(), event.payload(),
                     message -> {

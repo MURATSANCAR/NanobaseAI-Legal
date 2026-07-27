@@ -152,7 +152,7 @@ def on_message(channel, method, properties, body: bytes) -> None:
         channel.basic_ack(method.delivery_tag)
     except PermissionError as exc:
         log.warning("password protected document=%s", event.get("documentId"))
-        callback(event, "PASSWORD_PROTECTED", message=str(exc))
+        callback(event, "FAILED", message=str(exc))
         channel.basic_ack(method.delivery_tag)
     except ValueError as exc:
         log.error("document rejected document=%s reason=%s", event.get("documentId"), exc)

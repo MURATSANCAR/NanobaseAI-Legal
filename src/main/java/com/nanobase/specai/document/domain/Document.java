@@ -15,11 +15,11 @@ import java.util.UUID;
 public class Document {
     @Id
     private UUID id;
-    @Column(name = "tenant_id", nullable = false, updatable = false)
+    @Column(name = "organization_id", nullable = false, updatable = false)
     private UUID tenantId;
-    @Column(name = "tender_project_id", nullable = false, updatable = false)
+    @Column(name = "project_id", nullable = false, updatable = false)
     private UUID tenderProjectId;
-    @Column(nullable = false, length = 255)
+    @Column(name = "logical_name", nullable = false, length = 255)
     private String name;
     @Enumerated(EnumType.STRING)
     @Column(name = "document_type", nullable = false, length = 50)
@@ -27,8 +27,10 @@ public class Document {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 50)
     private DocumentStatus status;
-    @Column(name = "current_version", nullable = false)
+    @Column(name = "current_version_number", nullable = false)
     private int currentVersion;
+    @Column(name = "created_by", nullable = false, updatable = false)
+    private String createdBy;
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
     @Column(name = "updated_at", nullable = false)
@@ -40,7 +42,7 @@ public class Document {
     }
 
     public static Document uploaded(UUID id, UUID tenantId, UUID projectId, String name,
-                                    DocumentType type, Instant now) {
+                                    DocumentType type, String actor, Instant now) {
         Document document = new Document();
         document.id = id;
         document.tenantId = tenantId;
@@ -49,6 +51,7 @@ public class Document {
         document.documentType = type;
         document.status = DocumentStatus.UPLOADED;
         document.currentVersion = 1;
+        document.createdBy = actor;
         document.createdAt = now;
         document.updatedAt = now;
         return document;

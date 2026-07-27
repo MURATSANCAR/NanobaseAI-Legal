@@ -3,9 +3,10 @@ package com.nanobase.specai.document.domain;
 public enum DocumentType {
     TECHNICAL_SPECIFICATION,
     ADMINISTRATIVE_SPECIFICATION,
-    CONTRACT,
+    DRAFT_CONTRACT,
     ADDENDUM,
-    TECHNICAL_CATALOG,
+    PRODUCT_CATALOG,
+    TECHNICAL_DRAWING,
     CERTIFICATE,
     PRICE_SCHEDULE,
     OTHER
