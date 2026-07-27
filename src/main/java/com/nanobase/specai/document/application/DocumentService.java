@@ -79,7 +79,7 @@ public class DocumentService {
     @Transactional
     public DocumentResponse upload(UUID projectId, DocumentType type, MultipartFile file) {
         TenantPrincipal principal = currentTenant.require();
-        projects.findByIdAndTenantId(projectId, principal.tenantId())
+        projects.findByIdAndOrganizationId(projectId, principal.tenantId())
             .orElseThrow(() -> new TenderNotFoundException(projectId));
         validate(file);
 
@@ -127,7 +127,7 @@ public class DocumentService {
     @Transactional(readOnly = true)
     public List<DocumentResponse> list(UUID projectId) {
         TenantPrincipal principal = currentTenant.require();
-        projects.findByIdAndTenantId(projectId, principal.tenantId())
+        projects.findByIdAndOrganizationId(projectId, principal.tenantId())
             .orElseThrow(() -> new TenderNotFoundException(projectId));
         return documents.findAllByTenderProjectIdAndTenantIdOrderByCreatedAtDesc(
             projectId, principal.tenantId()).stream().map(DocumentResponse::from).toList();

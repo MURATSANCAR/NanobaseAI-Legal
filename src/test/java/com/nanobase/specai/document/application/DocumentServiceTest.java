@@ -47,9 +47,9 @@ class DocumentServiceTest {
     void setup() {
         when(currentTenant.require()).thenReturn(new TenantPrincipal(TENANT, "reviewer-1", Set.of()));
         TenderProject project = TenderProject.create(PROJECT, TENANT, "TND-2026-TEST",
-            "Test", "Kurum", null, LocalDate.now().plusDays(10), "TRY",
-            Priority.NORMAL, null, "reviewer-1", Instant.now());
-        when(projects.findByIdAndTenantId(PROJECT, TENANT)).thenReturn(Optional.of(project));
+            "Test", "Kurum", null, null, null, null, Priority.NORMAL,
+            LocalDate.now().plusDays(10), null, null, "TRY", "reviewer-1", Instant.now());
+        when(projects.findByIdAndOrganizationId(PROJECT, TENANT)).thenReturn(Optional.of(project));
         when(fileTypeInspector.inspect(any(InputStream.class), eq("sartname.pdf")))
             .thenReturn("application/pdf");
         service = new DocumentService(documents, versions, projects, audit, outbox, storage,

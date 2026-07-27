@@ -54,8 +54,8 @@ public final class TenderContracts {
         long version
     ) {
         public static TenderResponse from(TenderProject project) {
-            return new TenderResponse(project.id(), project.code(), project.name(),
-                project.contractingAuthority(), project.registrationNumber(), project.deadline(),
+            return new TenderResponse(project.id(), project.projectCode(), project.name(),
+                project.institutionName(), project.tenderRegistrationNumber(), project.bidDeadline(),
                 project.currency(), project.priority(), project.status(), project.description(),
                 project.createdAt(), project.updatedAt(), project.version());
         }

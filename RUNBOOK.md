@@ -11,6 +11,7 @@ MINIO_SECRET_KEY=local-minio-secret
 RABBITMQ_USER=specai
 RABBITMQ_PASSWORD=local-rabbit-secret
 REDIS_PASSWORD=local-redis-secret
+DOCUMENT_WORKER_TOKEN=local-worker-secret
 KEYCLOAK_ADMIN=admin
 KEYCLOAK_ADMIN_PASSWORD=local-keycloak-admin
 ```
@@ -36,6 +37,10 @@ Servis adresleri:
 - Keycloak: `http://localhost:8081`
 - MinIO: `http://localhost:9001`
 - RabbitMQ: `http://localhost:15672`
+
+Belge işlendiğinde durum sırasıyla `UPLOADED`, `VIRUS_SCANNING`, `PARSING`,
+`STRUCTURE_DETECTION` ve `READY` olur. ClamAV tehdidi bulunan dosya
+`MANUAL_REVIEW_REQUIRED` durumuna alınır.
 
 Yerel Keycloak kullanıcısı `admin@nanobase.local`, geçici parolası
 `change-on-first-login` değeridir. İlk girişte değiştirilmelidir.

@@ -64,11 +64,11 @@ class TenderProjectServiceTest {
     @Test
     void scopesLookupByAuthenticatedTenant() {
         UUID projectId = UUID.randomUUID();
-        when(projects.findByIdAndTenantId(projectId, TENANT_ID)).thenReturn(Optional.empty());
+        when(projects.findByIdAndOrganizationId(projectId, TENANT_ID)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.get(projectId))
             .isInstanceOf(TenderNotFoundException.class);
 
-        verify(projects).findByIdAndTenantId(projectId, TENANT_ID);
+        verify(projects).findByIdAndOrganizationId(projectId, TENANT_ID);
     }
 }

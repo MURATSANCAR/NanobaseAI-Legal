@@ -5,6 +5,7 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.util.List;
 import java.util.UUID;
@@ -25,7 +26,9 @@ public final class ProcessingContracts {
     public record ProcessingResult(
         @NotNull UUID tenantId,
         @NotNull UUID documentVersionId,
-        @NotBlank String status,
+        @NotBlank @Pattern(regexp = "^(VIRUS_SCANNING|CLASSIFYING|PARSING|OCR_PROCESSING|"
+            + "STRUCTURE_DETECTION|INDEXING|READY|PARSING_FAILED|OCR_FAILED|"
+            + "PASSWORD_PROTECTED|MANUAL_REVIEW_REQUIRED)$") String status,
         @Size(max = 2000) String message,
         @Size(max = 10_000) List<@Valid ClauseInput> clauses
     ) {

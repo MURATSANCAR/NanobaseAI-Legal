@@ -46,8 +46,9 @@ public class TenderProjectService {
         String code = "TND-%d-%s".formatted(now.atZone(ZoneOffset.UTC).getYear(),
             id.toString().substring(0, 8).toUpperCase());
         TenderProject project = TenderProject.create(id, principal.tenantId(), code, request.name(),
-            request.contractingAuthority(), request.registrationNumber(), request.deadline(),
-            request.currency(), request.priority(), request.description(), principal.subject(), now);
+            request.contractingAuthority(), request.registrationNumber(), null, null, null,
+            request.priority(), request.deadline(), null, request.description(), request.currency(),
+            principal.subject(), now);
         projects.save(project);
         auditEvents.save(new AuditEvent(UUID.randomUUID(), principal.tenantId(), principal.subject(),
             "TENDER_CREATED", "TenderProject", id, now, "{\"code\":\"%s\"}".formatted(code)));
@@ -57,25 +58,26 @@ public class TenderProjectService {
     @Transactional(readOnly = true)
     public TenderResponse get(UUID id) {
         TenantPrincipal principal = currentTenant.require();
-        return projects.findByIdAndTenantId(id, principal.tenantId())
+        return projects.findByIdAndOrganizationId(id, principal.tenantId())
             .map(TenderResponse::from)
             .orElseThrow(() -> new TenderNotFoundException(id));
     }
 
     @Transactional(readOnly = true)
     public Page<TenderResponse> list(Pageable pageable) {
-        return projects.findAllByTenantId(currentTenant.require().tenantId(), pageable)
+        return projects.findAllByOrganizationId(currentTenant.require().tenantId(), pageable)
             .map(TenderResponse::from);
     }
 
     @Transactional
     public TenderResponse update(UUID id, UpdateTenderRequest request) {
         TenantPrincipal principal = currentTenant.require();
-        TenderProject project = projects.findByIdAndTenantId(id, principal.tenantId())
+        TenderProject project = projects.findByIdAndOrganizationId(id, principal.tenantId())
             .orElseThrow(() -> new TenderNotFoundException(id));
         Instant now = clock.instant();
         project.update(request.name(), request.contractingAuthority(), request.registrationNumber(),
-            request.deadline(), request.currency(), request.priority(), request.description(), now);
+            null, null, null, request.priority(), request.deadline(), null, request.description(),
+            request.currency(), now);
         auditEvents.save(new AuditEvent(UUID.randomUUID(), principal.tenantId(), principal.subject(),
             "TENDER_UPDATED", "TenderProject", id, now, "{\"version\":%d}".formatted(project.version())));
         return TenderResponse.from(project);
