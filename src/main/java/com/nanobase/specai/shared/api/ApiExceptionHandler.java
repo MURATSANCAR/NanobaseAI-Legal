@@ -1,6 +1,7 @@
 package com.nanobase.specai.shared.api;
 
 import com.nanobase.specai.shared.security.MissingTenantException;
+import com.nanobase.specai.document.application.InvalidDocumentException;
 import com.nanobase.specai.tender.application.TenderNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.net.URI;
@@ -40,6 +41,11 @@ public class ApiExceptionHandler {
                 (first, ignored) -> first));
         detail.setProperty("errors", errors);
         return detail;
+    }
+
+    @ExceptionHandler(InvalidDocumentException.class)
+    ProblemDetail invalidDocument(InvalidDocumentException exception, HttpServletRequest request) {
+        return problem(HttpStatus.BAD_REQUEST, "Invalid document", exception.getMessage(), request);
     }
 
     private ProblemDetail problem(HttpStatus status, String title, String message, HttpServletRequest request) {
