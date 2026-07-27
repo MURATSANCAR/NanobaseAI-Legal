@@ -4,7 +4,7 @@ spring:
   datasource:
     url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/specai}
     username: ${DATABASE_USER:specai}
-    password: ${DATABASE_PASSWORD:change-me}
+    password: ${DATABASE_PASSWORD}
     hikari:
       maximum-pool-size: ${DATABASE_POOL_SIZE:20}
       connection-timeout: 5000
@@ -34,7 +34,7 @@ spring:
     host: ${RABBITMQ_HOST:localhost}
     port: ${RABBITMQ_PORT:5672}
     username: ${RABBITMQ_USER:specai}
-    password: ${RABBITMQ_PASSWORD:change-me}
+    password: ${RABBITMQ_PASSWORD}
     publisher-confirm-type: correlated
     publisher-returns: true
     listener:
@@ -44,7 +44,7 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD:change-me}
+      password: ${REDIS_PASSWORD}
 
 server:
   shutdown: graceful
@@ -88,7 +88,7 @@ specai:
   storage:
     endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
     access-key: ${MINIO_ACCESS_KEY:specai}
-    secret-key: ${MINIO_SECRET_KEY:change-me-now}
+    secret-key: ${MINIO_SECRET_KEY}
     original-bucket: specai-original
     create-buckets: ${MINIO_CREATE_BUCKETS:false}
   documents:

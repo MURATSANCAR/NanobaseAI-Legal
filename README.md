@@ -1,62 +1,62 @@
-# NANObaseAI SpecAI
+# NANObaseAI Şartname AI
 
-On-premise technical specification compliance platform. This monorepo contains
-the Spring Boot API in the repository root and the React portal in `frontend/`.
+Şartname AI; ihale projeleri ile PDF/DOCX dokümanlarını organization kapsamında
+yöneten, dosyaları MinIO'da saklayan ve işlemeyi transactional outbox üzerinden
+RabbitMQ'ya aktaran on-premise MVP'dir.
 
-## Requirements
+## Hızlı başlangıç
 
-- Docker Engine with Compose
-
-## Run locally
-
-Copy secure values into a local `.env`, then:
+Ön koşul: Docker Engine ve Docker Compose v2.
 
 ```bash
-docker compose up --build
+cp .env.example .env
+# .env içindeki bütün örnek secret'ları değiştirin
+docker compose config
+docker compose up --build -d
+docker compose ps
 ```
 
 - Portal: `http://localhost:3000`
-- API health: `http://localhost:8080/actuator/health`
+- API readiness: `http://localhost:8080/actuator/health/readiness`
 - Keycloak: `http://localhost:8081`
 - MinIO console: `http://localhost:9001`
-- RabbitMQ console: `http://localhost:15672`
+- RabbitMQ management: `http://localhost:15672`
 
-Every API token must include:
+Yerel seed kullanıcı: `admin@nanobase.local`. Geçici parola `.env` içindeki
+`LOCAL_USER_PASSWORD` değeridir ve ilk girişte değiştirilmelidir.
 
-- `tenant_id`: an organization UUID
-- a supported realm role such as `TENDER_MANAGER`
+## Geliştirici testleri
 
-The tenant is derived exclusively from the verified JWT. It is never accepted
-from a request header or request body.
-
-## Implemented API
-
-```text
-POST /api/v1/tenders
-GET  /api/v1/tenders
-GET  /api/v1/tenders/{id}
-PUT  /api/v1/tenders/{id}
-POST /api/v1/tenders/{id}/documents
-GET  /api/v1/tenders/{id}/documents
-GET  /api/v1/documents/{id}/preview
+```bash
+mvn clean verify
+cd frontend
+pnpm install --frozen-lockfile
+pnpm run build
+pnpm run test
 ```
 
-Health probes are available at `/actuator/health/liveness` and
-`/actuator/health/readiness`.
+Java 21 ve Node.js 22.13+ gerekir. Testcontainers entegrasyon testleri için çalışan
+Docker daemon zorunludur.
 
-## Architecture
+## Mimari özet
 
-Packages follow module and layer boundaries:
+Backend Java 21/Spring Boot modüler monolith, portal Next.js/React/TypeScript'tir.
+PostgreSQL kalıcı metadata ve outbox, MinIO private object storage, RabbitMQ
+at-least-once event teslimi, Redis altyapı bağımlılığı ve Keycloak OIDC/PKCE sağlar.
 
-```text
-com.nanobase.specai
-├── tender
-│   ├── domain
-│   ├── application
-│   └── api
-├── audit
-└── shared
-```
+Organization istemciden alınmaz; doğrulanmış JWT `tenant_id` claim'inden türetilir.
+Gerçek document-intelligence entegrasyonu varsayılan olarak kapalıdır ve kapalıyken
+dokümanlar sahte `READY` yerine `MANUAL_REVIEW_REQUIRED` olur.
 
-See [RUNBOOK.md](RUNBOOK.md) for operational instructions and
-[CODEX-HANDOVER.md](CODEX-HANDOVER.md) for the delivery report.
+## Dokümantasyon
+
+- [Mevcut durum analizi](docs/CURRENT-STATE-ANALYSIS.md)
+- [Uygulanan özellikler](docs/IMPLEMENTED-FEATURES.md)
+- [Mimari kararlar](docs/ARCHITECTURE-DECISIONS.md)
+- [API endpoint'leri](docs/API-ENDPOINTS.md)
+- [Veritabanı şeması](docs/DATABASE-SCHEMA.md)
+- [Güvenlik notları](docs/SECURITY-NOTES.md)
+- [Bilinen sorunlar](docs/KNOWN-ISSUES.md)
+- [Runbook](docs/RUNBOOK.md)
+- [Sonraki adımlar](docs/NEXT-STEPS.md)
+- [Teslim raporu](CODEX-HANDOVER.md)

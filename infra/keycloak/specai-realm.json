@@ -44,9 +44,6 @@
       "attributes": {
         "tenant_id": ["11111111-1111-1111-1111-111111111111"]
       },
-      "credentials": [
-        {"type": "password", "value": "change-on-first-login", "temporary": true}
-      ],
       "realmRoles": ["TENANT_ADMIN", "TENDER_MANAGER"]
     }
   ],

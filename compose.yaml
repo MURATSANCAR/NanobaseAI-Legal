@@ -112,6 +112,31 @@ services:
     networks: [specai]
     restart: unless-stopped
 
+  keycloak-init:
+    image: quay.io/keycloak/keycloak:26.2.5
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "-ec"]
+    command:
+      - |
+        /opt/keycloak/bin/kcadm.sh config credentials \
+          --server http://keycloak:8080 \
+          --realm master \
+          --user "$${KEYCLOAK_ADMIN}" \
+          --password "$${KEYCLOAK_ADMIN_PASSWORD}"
+        /opt/keycloak/bin/kcadm.sh set-password \
+          --realm specai \
+          --username admin@nanobase.local \
+          --new-password "$${LOCAL_USER_PASSWORD}" \
+          --temporary
+    environment:
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?Set KEYCLOAK_ADMIN_PASSWORD in .env}
+      LOCAL_USER_PASSWORD: ${LOCAL_USER_PASSWORD:?Set LOCAL_USER_PASSWORD in .env}
+    networks: [specai]
+    restart: "no"
+
   backend:
     build:
       context: .
@@ -147,8 +172,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      keycloak:
-        condition: service_healthy
+      keycloak-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://localhost:8080/actuator/health/readiness | grep '\"status\":\"UP\"'"]
       interval: 10s
@@ -161,6 +186,10 @@ services:
   frontend:
     build:
       context: ./frontend
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${PUBLIC_API_BASE_URL:-http://localhost:8080}
+        NEXT_PUBLIC_OIDC_ISSUER: ${PUBLIC_OIDC_ISSUER:-http://localhost:8081/realms/specai}
+        NEXT_PUBLIC_OIDC_CLIENT_ID: ${PUBLIC_OIDC_CLIENT_ID:-specai-portal}
     environment:
       NEXT_PUBLIC_API_BASE_URL: ${PUBLIC_API_BASE_URL:-http://localhost:8080}
       NEXT_PUBLIC_OIDC_ISSUER: ${PUBLIC_OIDC_ISSUER:-http://localhost:8081/realms/specai}
