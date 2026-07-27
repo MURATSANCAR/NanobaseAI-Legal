@@ -21,7 +21,9 @@ public class OutboxPublisher {
 
     @Scheduled(fixedDelayString = "${specai.outbox.interval-ms:1000}")
     public void publishPending() {
-        for (OutboxEvent event : store.claimBatch()) {
+        OutboxStore.ClaimBatch batch = store.claimBatch();
+        metrics.outboxClaimed(batch.events().size(), batch.reclaimedCount());
+        for (OutboxEvent event : batch.events()) {
             try {
                 CorrelationData correlation = new CorrelationData(event.id().toString());
                 rabbit.convertAndSend(RabbitConfiguration.EXCHANGE, event.routingKey(),
@@ -35,10 +37,15 @@ public class OutboxPublisher {
                 if (!confirm.isAck()) {
                     throw new IllegalStateException("Broker rejected event: " + confirm.getReason());
                 }
+                if (correlation.getReturned() != null) {
+                    throw new IllegalStateException("Broker returned unroutable event");
+                }
                 store.published(event.id());
             } catch (Exception exception) {
                 metrics.outboxPublishFailed();
-                store.failed(event.id(), exception.getMessage());
+                if (store.failed(event.id(), exception.getMessage()) == OutboxStatus.DEAD) {
+                    metrics.outboxDead();
+                }
             }
         }
     }

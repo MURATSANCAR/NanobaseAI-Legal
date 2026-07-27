@@ -2,7 +2,8 @@ package com.nanobase.specai.integration.outbox;
 
 public enum OutboxStatus {
     PENDING,
-    PROCESSING,
+    CLAIMED,
     PUBLISHED,
-    FAILED
+    FAILED,
+    DEAD
 }

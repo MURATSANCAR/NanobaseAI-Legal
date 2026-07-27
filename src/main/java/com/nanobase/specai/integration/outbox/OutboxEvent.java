@@ -6,17 +6,17 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
-import java.time.Duration;
+import jakarta.persistence.Version;
 import java.time.Instant;
 import java.util.UUID;
 
 @Entity
 @Table(name = "outbox_event")
 public class OutboxEvent {
-    private static final int MAX_RETRIES = 10;
-
     @Id
     private UUID id;
+    @Column(name = "event_id", nullable = false, updatable = false, unique = true)
+    private UUID eventId;
     @Column(name = "aggregate_type", nullable = false, updatable = false, length = 100)
     private String aggregateType;
     @Column(name = "aggregate_id", nullable = false, updatable = false)
@@ -40,12 +40,20 @@ public class OutboxEvent {
     private int retryCount;
     @Column(name = "next_attempt_at", nullable = false)
     private Instant nextAttemptAt;
+    @Column(name = "claimed_by", length = 255)
+    private String claimedBy;
+    @Column(name = "claimed_at")
+    private Instant claimedAt;
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
+    @Column(name = "updated_at", nullable = false)
+    private Instant updatedAt;
     @Column(name = "published_at")
     private Instant publishedAt;
     @Column(name = "last_error", length = 2000)
     private String lastError;
+    @Version
+    private long version;
 
     protected OutboxEvent() {
     }
@@ -54,6 +62,7 @@ public class OutboxEvent {
                        int eventVersion, String routingKey, String payloadJson,
                        UUID organizationId, UUID correlationId, Instant now) {
         this.id = id;
+        this.eventId = id;
         this.aggregateType = aggregateType;
         this.aggregateId = aggregateId;
         this.eventType = eventType;
@@ -65,32 +74,43 @@ public class OutboxEvent {
         this.status = OutboxStatus.PENDING;
         this.nextAttemptAt = now;
         this.createdAt = now;
+        this.updatedAt = now;
     }
 
-    public void claim() {
-        status = OutboxStatus.PROCESSING;
+    public void claim(String publisherId, Instant now) {
+        if (status != OutboxStatus.PENDING && status != OutboxStatus.FAILED
+            && status != OutboxStatus.CLAIMED) {
+            throw new IllegalStateException("Only retryable outbox events can be claimed");
+        }
+        status = OutboxStatus.CLAIMED;
+        claimedBy = publisherId;
+        claimedAt = now;
+        updatedAt = now;
     }
 
     public void published(Instant now) {
+        requireClaimed();
         status = OutboxStatus.PUBLISHED;
         publishedAt = now;
         lastError = null;
+        claimedBy = null;
+        claimedAt = null;
+        updatedAt = now;
     }
 
-    public void failed(Instant now, String error) {
+    public void failed(Instant now, String error, int maximumRetries, java.time.Duration delay) {
+        requireClaimed();
         retryCount++;
         lastError = truncate(error);
-        if (retryCount >= MAX_RETRIES) {
-            status = OutboxStatus.FAILED;
+        claimedBy = null;
+        claimedAt = null;
+        updatedAt = now;
+        if (retryCount >= maximumRetries) {
+            status = OutboxStatus.DEAD;
             return;
         }
-        status = OutboxStatus.PENDING;
-        nextAttemptAt = now.plus(backoff(retryCount));
-    }
-
-    private Duration backoff(int attempt) {
-        long seconds = Math.min(300, 1L << Math.min(attempt, 8));
-        return Duration.ofSeconds(seconds);
+        status = OutboxStatus.FAILED;
+        nextAttemptAt = now.plus(delay);
     }
 
     private String truncate(String value) {
@@ -101,8 +121,19 @@ public class OutboxEvent {
     }
 
     public UUID id() { return id; }
+    public UUID eventId() { return eventId; }
     public String routingKey() { return routingKey; }
     public String payloadJson() { return payloadJson; }
     public OutboxStatus status() { return status; }
     public int retryCount() { return retryCount; }
+    public String claimedBy() { return claimedBy; }
+    public Instant claimedAt() { return claimedAt; }
+    public Instant nextAttemptAt() { return nextAttemptAt; }
+    public long version() { return version; }
+
+    private void requireClaimed() {
+        if (status != OutboxStatus.CLAIMED) {
+            throw new IllegalStateException("Outbox event is not claimed");
+        }
+    }
 }
