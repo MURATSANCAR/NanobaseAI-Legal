@@ -78,6 +78,8 @@ public final class DocumentContracts {
     }
 
     public record ProcessingEvent(
+        UUID eventId,
+        UUID jobId,
         UUID documentId,
         UUID documentVersionId,
         DocumentStatus stage,

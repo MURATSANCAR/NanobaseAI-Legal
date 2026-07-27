@@ -1,6 +1,7 @@
 package com.nanobase.specai.document.application;
 
 import com.nanobase.specai.document.api.DocumentContracts.ProcessingEvent;
+import com.nanobase.specai.document.domain.ProcessingEventRecord;
 import com.nanobase.specai.document.domain.DocumentStatus;
 import java.io.IOException;
 import java.time.Clock;
@@ -25,19 +26,35 @@ public class ProcessingEventPublisher {
         emitter.onCompletion(cleanup);
         emitter.onTimeout(cleanup);
         emitter.onError(ignored -> cleanup.run());
-        send(emitter, new ProcessingEvent(documentId, versionId, status,
+        send(emitter, new ProcessingEvent(UUID.randomUUID(), null, documentId, versionId, status,
             progress(status), message(status), clock.instant()));
         return emitter;
     }
 
     public void publish(UUID documentId, UUID versionId, DocumentStatus status) {
-        ProcessingEvent event = new ProcessingEvent(documentId, versionId, status,
+        ProcessingEvent event = new ProcessingEvent(UUID.randomUUID(), null,
+            documentId, versionId, status,
             progress(status), message(status), clock.instant());
         for (SseEmitter emitter : List.copyOf(
             subscribers.getOrDefault(documentId, new CopyOnWriteArrayList<>()))) {
             if (!send(emitter, event)) {
                 remove(documentId, emitter);
             } else if (status.terminal()) {
+                emitter.complete();
+                remove(documentId, emitter);
+            }
+        }
+    }
+
+    public void publish(UUID documentId, ProcessingEventRecord record) {
+        ProcessingEvent event = new ProcessingEvent(record.id(), record.processingJobId(),
+            documentId, record.documentVersionId(), DocumentStatus.valueOf(record.stage()),
+            record.progress(), record.message(), record.occurredAt());
+        for (SseEmitter emitter : List.copyOf(
+            subscribers.getOrDefault(documentId, new CopyOnWriteArrayList<>()))) {
+            if (!send(emitter, event)) {
+                remove(documentId, emitter);
+            } else if (DocumentStatus.valueOf(record.stage()).terminal()) {
                 emitter.complete();
                 remove(documentId, emitter);
             }
@@ -68,11 +85,12 @@ public class ProcessingEventPublisher {
             case UPLOADED -> 5;
             case VIRUS_SCANNING -> 15;
             case CLASSIFYING -> 25;
+            case QUEUED -> 30;
             case PARSING -> 40;
             case OCR_PROCESSING -> 55;
             case STRUCTURE_DETECTION -> 70;
             case INDEXING -> 90;
-            case READY, FAILED, MANUAL_REVIEW_REQUIRED -> 100;
+            case READY, FAILED, MANUAL_REVIEW_REQUIRED, CANCELLED -> 100;
         };
     }
 
@@ -81,6 +99,7 @@ public class ProcessingEventPublisher {
             case UPLOADED -> "Doküman işleme kuyruğuna alındı";
             case VIRUS_SCANNING -> "Doküman güvenlik taramasından geçiriliyor";
             case CLASSIFYING -> "Doküman sınıflandırılıyor";
+            case QUEUED -> "Doküman parser kuyruğuna alındı";
             case PARSING -> "Doküman metni ayrıştırılıyor";
             case OCR_PROCESSING -> "OCR işlemi uygulanıyor";
             case STRUCTURE_DETECTION -> "Doküman yapısı belirleniyor";
@@ -88,6 +107,7 @@ public class ProcessingEventPublisher {
             case READY -> "Doküman hazır";
             case FAILED -> "Doküman işlenemedi";
             case MANUAL_REVIEW_REQUIRED -> "Manuel inceleme gerekiyor";
+            case CANCELLED -> "Doküman işleme iptal edildi";
         };
     }
 }

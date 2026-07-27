@@ -19,22 +19,30 @@ import java.util.UUID;
 public class DocumentVersion {
     private static final Map<DocumentStatus, Set<DocumentStatus>> TRANSITIONS = Map.of(
         DocumentStatus.UPLOADED, EnumSet.of(DocumentStatus.VIRUS_SCANNING,
-            DocumentStatus.CLASSIFYING, DocumentStatus.PARSING, DocumentStatus.FAILED,
-            DocumentStatus.MANUAL_REVIEW_REQUIRED),
+            DocumentStatus.CLASSIFYING, DocumentStatus.QUEUED, DocumentStatus.PARSING,
+            DocumentStatus.FAILED, DocumentStatus.MANUAL_REVIEW_REQUIRED,
+            DocumentStatus.CANCELLED),
         DocumentStatus.VIRUS_SCANNING, EnumSet.of(DocumentStatus.CLASSIFYING,
-            DocumentStatus.PARSING, DocumentStatus.FAILED, DocumentStatus.MANUAL_REVIEW_REQUIRED),
-        DocumentStatus.CLASSIFYING, EnumSet.of(DocumentStatus.PARSING,
+            DocumentStatus.QUEUED, DocumentStatus.PARSING, DocumentStatus.FAILED,
+            DocumentStatus.MANUAL_REVIEW_REQUIRED, DocumentStatus.CANCELLED),
+        DocumentStatus.CLASSIFYING, EnumSet.of(DocumentStatus.QUEUED, DocumentStatus.PARSING,
             DocumentStatus.OCR_PROCESSING, DocumentStatus.FAILED,
-            DocumentStatus.MANUAL_REVIEW_REQUIRED),
+            DocumentStatus.MANUAL_REVIEW_REQUIRED, DocumentStatus.CANCELLED),
+        DocumentStatus.QUEUED, EnumSet.of(DocumentStatus.PARSING,
+            DocumentStatus.FAILED, DocumentStatus.MANUAL_REVIEW_REQUIRED,
+            DocumentStatus.CANCELLED),
         DocumentStatus.PARSING, EnumSet.of(DocumentStatus.OCR_PROCESSING,
             DocumentStatus.STRUCTURE_DETECTION, DocumentStatus.FAILED,
-            DocumentStatus.MANUAL_REVIEW_REQUIRED),
+            DocumentStatus.MANUAL_REVIEW_REQUIRED, DocumentStatus.CANCELLED),
         DocumentStatus.OCR_PROCESSING, EnumSet.of(DocumentStatus.STRUCTURE_DETECTION,
-            DocumentStatus.FAILED, DocumentStatus.MANUAL_REVIEW_REQUIRED),
+            DocumentStatus.FAILED, DocumentStatus.MANUAL_REVIEW_REQUIRED,
+            DocumentStatus.CANCELLED),
         DocumentStatus.STRUCTURE_DETECTION, EnumSet.of(DocumentStatus.INDEXING,
-            DocumentStatus.FAILED, DocumentStatus.MANUAL_REVIEW_REQUIRED),
+            DocumentStatus.FAILED, DocumentStatus.MANUAL_REVIEW_REQUIRED,
+            DocumentStatus.CANCELLED),
         DocumentStatus.INDEXING, EnumSet.of(DocumentStatus.READY, DocumentStatus.FAILED,
-            DocumentStatus.MANUAL_REVIEW_REQUIRED)
+            DocumentStatus.MANUAL_REVIEW_REQUIRED, DocumentStatus.CANCELLED),
+        DocumentStatus.FAILED, EnumSet.of(DocumentStatus.QUEUED)
     );
 
     @Id
@@ -113,8 +121,11 @@ public class DocumentVersion {
             processingStartedAt = now;
         }
         processingStatus = next;
-        this.errorCode = next == DocumentStatus.FAILED ? errorCode : null;
-        this.errorMessage = next == DocumentStatus.FAILED ? truncate(errorMessage, 2000) : null;
+        this.errorCode = next == DocumentStatus.FAILED
+            || next == DocumentStatus.MANUAL_REVIEW_REQUIRED ? errorCode : null;
+        this.errorMessage = next == DocumentStatus.FAILED
+            || next == DocumentStatus.MANUAL_REVIEW_REQUIRED
+            ? truncate(errorMessage, 2000) : null;
         if (next.terminal()) {
             processingCompletedAt = now;
         }
@@ -126,6 +137,14 @@ public class DocumentVersion {
         processingCompletedAt = null;
         errorCode = null;
         errorMessage = null;
+    }
+
+    public void extracted(int pageCount, String language, double textQualityScore,
+                          boolean ocrRequired) {
+        this.pageCount = pageCount;
+        this.language = language;
+        this.ocrQualityScore = BigDecimal.valueOf(textQualityScore * 100d);
+        this.ocrRequired = ocrRequired;
     }
 
     private String truncate(String value, int max) {
