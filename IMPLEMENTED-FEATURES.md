@@ -29,6 +29,20 @@
 - MinIO signed preview URL
 - Doküman durum modeli
 - `DocumentUploaded` outbox olayı
+- ClamAV malware taraması
+- Dijital PDF ve DOCX metin çıkarımı
+- Deterministik numaralı madde çıkarımı
+- İşleme callback'i ve durum geçişleri
+- Madde ağacı API'si
+
+## Portal
+
+- Keycloak Authorization Code + PKCE login/logout
+- Canlı proje listeleme ve proje oluşturma
+- Canlı doküman listeleme ve yükleme
+- İşleme durumu görüntüleme
+- Signed belge preview
+- Çıkarılan madde listesi ve detayları
 
 ## Security and Audit
 

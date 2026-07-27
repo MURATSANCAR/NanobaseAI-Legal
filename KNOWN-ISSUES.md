@@ -2,10 +2,10 @@
 
 ## Blocking before production
 
-- Portal henüz OIDC oturum yönetimi ve backend verisiyle bağlı değil.
-- Malware scanning, gerçek MIME sniffing, encrypted-PDF ve archive bomb kontrolleri yok.
-- OpenContracts adapter ve document worker uygulanmadı.
-- Clause extraction ve madde ekranları uygulanmadı.
+- Portal Keycloak PKCE ve backend verisine bağlıdır.
+- Tika ve ClamAV kontrolleri vardır; archive bomb ve parser sandbox kontrolleri yoktur.
+- OpenContracts adapter uygulanmadı; built-in worker dijital PDF/DOCX işler.
+- OCR ve karmaşık tablo çıkarımı uygulanmadı.
 - PostgreSQL RLS etkin değil; izolasyon uygulama repository katmanında uygulanıyor.
 
 ## Operational

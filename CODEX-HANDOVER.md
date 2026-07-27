@@ -31,8 +31,7 @@
 - KPI, yaklaşan tarihler, görev ve aktivite panelleri
 - Kullanıcı/rol, risk, rapor, ürün ve firma modülleri için navigasyon
 
-Bu ekrandaki portföy verileri henüz backend'e bağlı değildir; gerçek veri bağlantısı sonraki
-sprint işidir.
+Portal proje, doküman, yükleme, durum, preview ve madde API'lerine bağlıdır.
 
 ## 4. Çalışan API'ler
 
@@ -75,15 +74,13 @@ sprint işidir.
 
 ## 8. Mock bırakılan alanlar
 
-- Portal dashboard verileri statik örnek veridir.
 - OpenContracts adapter implementasyonu yok; yalnız üretim sınırı tanımlı.
-- Document worker ve madde çıkarımı henüz yok.
+- OCR ve karmaşık tablo parsing'i henüz yok.
 - Firma profili, ürün, risk, inceleme ve rapor navigasyonları placeholder davranışındadır.
 
 ## 9. Güvenlik eksikleri
 
-- Dosya içerik magic-byte doğrulaması ve ClamAV taraması henüz yok.
-- ZIP bomb ve şifreli PDF tespiti henüz yok.
+- Tika içerik tespiti ve ClamAV taraması vardır; parser sandbox ve ZIP bomb koruması yoktur.
 - PostgreSQL RLS ikinci savunma katmanı henüz etkin değil.
 - Rate limiting ve erişim audit'i henüz yok.
 - Compose varsayılan parolaları yalnız yerel geliştirme içindir ve production'da
@@ -91,9 +88,7 @@ sprint işidir.
 
 ## 10. Sonraki önerilen işler
 
-1. Portalı Keycloak Authorization Code + PKCE akışına bağlamak.
-2. Portal proje oluşturma ve yükleme ekranlarını gerçek API'ye bağlamak.
-3. ClamAV ve magic-byte doğrulaması eklemek.
-4. Document worker'ı ve durum event consumer'ını geliştirmek.
-5. Clause tablosu, madde ağacı API'si ve PDF görüntüleyici ekranını tamamlamak.
-6. PostgreSQL RLS ve Testcontainers izolasyon testlerini eklemek.
+1. OpenContracts adapter implementasyonu ve contract testleri.
+2. OCR/Docling ve parser routing.
+3. SSE canlı işlem ilerlemesi.
+4. PostgreSQL RLS ve Testcontainers izolasyon testleri.
