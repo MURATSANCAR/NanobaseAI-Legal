@@ -1,27 +1,22 @@
 package com.nanobase.specai.document.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.verify;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.when;
 
-import com.nanobase.specai.audit.domain.AuditEventRepository;
-import com.nanobase.specai.document.api.ProcessingContracts.ClauseInput;
-import com.nanobase.specai.document.api.ProcessingContracts.ProcessingResult;
-import com.nanobase.specai.document.domain.ClauseRepository;
+import com.nanobase.specai.audit.application.AuditService;
 import com.nanobase.specai.document.domain.Document;
 import com.nanobase.specai.document.domain.DocumentRepository;
 import com.nanobase.specai.document.domain.DocumentStatus;
 import com.nanobase.specai.document.domain.DocumentType;
 import com.nanobase.specai.document.domain.DocumentVersion;
 import com.nanobase.specai.document.domain.DocumentVersionRepository;
+import com.nanobase.specai.document.integration.DocumentIntelligencePort.DocumentProcessingResult;
 import java.time.Instant;
-import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -29,31 +24,43 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class DocumentProcessingServiceTest {
     @Mock DocumentRepository documents;
     @Mock DocumentVersionRepository versions;
-    @Mock ClauseRepository clauses;
-    @Mock AuditEventRepository audit;
+    @Mock AuditService audit;
+    @Mock ProcessingEventPublisher events;
 
     @Test
-    void readyResultPersistsClausesAndTransitionsDocument() {
-        UUID tenant = UUID.randomUUID();
+    void readyResultUsesValidStatusTransitions() {
+        UUID organizationId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();
         UUID documentId = UUID.randomUUID();
         UUID versionId = UUID.randomUUID();
-        Document document = Document.uploaded(documentId, tenant, projectId, "spec.pdf",
-            DocumentType.TECHNICAL_SPECIFICATION, "reviewer", Instant.now());
-        DocumentVersion version = new DocumentVersion(versionId, tenant, documentId, 1,
-            "object-key", "spec.pdf", "application/pdf", 42, "a".repeat(64), Instant.now());
-        when(versions.findByIdAndTenantId(versionId, tenant)).thenReturn(Optional.of(version));
-        when(documents.findByIdAndTenantId(documentId, tenant)).thenReturn(Optional.of(document));
-        ClauseInput input = new ClauseInput(UUID.randomUUID(), null, "7.1",
-            "Web tabanlı sistem", "Sistem web tabanlı olmalıdır.", 3, 0);
+        Instant now = Instant.parse("2026-07-27T12:00:00Z");
+        Document document = Document.uploaded(documentId, organizationId, projectId,
+            "Teknik Şartname", DocumentType.TECHNICAL_SPECIFICATION, true, "manager", now);
+        document.attachVersion(versionId, 1, now);
+        DocumentVersion version = new DocumentVersion(versionId, organizationId, documentId, 1,
+            "object-key", "spec.pdf", "application/pdf", 42, "a".repeat(64), "manager", now);
+        when(versions.findForUpdate(versionId, organizationId)).thenReturn(Optional.of(version));
+        when(documents.findByIdAndOrganizationId(documentId, organizationId))
+            .thenReturn(Optional.of(document));
 
-        new DocumentProcessingService(documents, versions, clauses, audit)
-            .accept(new ProcessingResult(tenant, versionId, "READY", null, List.of(input)));
+        DocumentProcessingService service =
+            new DocumentProcessingService(documents, versions, audit, events);
+        service.complete(organizationId, versionId,
+            new DocumentProcessingResult(DocumentStatus.READY, null, "ready"));
 
         assertThat(document.status()).isEqualTo(DocumentStatus.READY);
-        ArgumentCaptor<List> saved = ArgumentCaptor.forClass(List.class);
-        verify(clauses).saveAll(saved.capture());
-        assertThat(saved.getValue()).hasSize(1);
-        verify(audit).save(any());
+        assertThat(version.processingStatus()).isEqualTo(DocumentStatus.READY);
+    }
+
+    @Test
+    void processingStatusCannotMoveBackwards() {
+        UUID id = UUID.randomUUID();
+        DocumentVersion version = new DocumentVersion(id, UUID.randomUUID(), UUID.randomUUID(), 1,
+            "key", "spec.pdf", "application/pdf", 42, "a".repeat(64), "manager", Instant.now());
+        version.transition(DocumentStatus.PARSING, Instant.now(), null, null);
+
+        assertThatThrownBy(() -> version.transition(
+            DocumentStatus.VIRUS_SCANNING, Instant.now(), null, null))
+            .isInstanceOf(IllegalStateException.class);
     }
 }

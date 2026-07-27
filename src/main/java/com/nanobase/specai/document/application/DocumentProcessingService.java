@@ -1,19 +1,15 @@
 package com.nanobase.specai.document.application;
 
-import com.nanobase.specai.audit.domain.AuditEvent;
-import com.nanobase.specai.audit.domain.AuditEventRepository;
-import com.nanobase.specai.document.api.ProcessingContracts.ClauseInput;
-import com.nanobase.specai.document.api.ProcessingContracts.ProcessingResult;
-import com.nanobase.specai.document.domain.Clause;
-import com.nanobase.specai.document.domain.ClauseRepository;
+import com.nanobase.specai.audit.application.AuditService;
 import com.nanobase.specai.document.domain.Document;
 import com.nanobase.specai.document.domain.DocumentRepository;
 import com.nanobase.specai.document.domain.DocumentStatus;
 import com.nanobase.specai.document.domain.DocumentVersion;
 import com.nanobase.specai.document.domain.DocumentVersionRepository;
+import com.nanobase.specai.document.integration.DocumentIntelligencePort.DocumentProcessingResult;
 import java.time.Clock;
 import java.time.Instant;
-import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,40 +18,76 @@ import org.springframework.transaction.annotation.Transactional;
 public class DocumentProcessingService {
     private final DocumentRepository documents;
     private final DocumentVersionRepository versions;
-    private final ClauseRepository clauses;
-    private final AuditEventRepository audit;
+    private final AuditService audit;
+    private final ProcessingEventPublisher events;
     private final Clock clock = Clock.systemUTC();
 
-    public DocumentProcessingService(DocumentRepository documents, DocumentVersionRepository versions,
-                                     ClauseRepository clauses, AuditEventRepository audit) {
+    public DocumentProcessingService(DocumentRepository documents,
+                                     DocumentVersionRepository versions,
+                                     AuditService audit,
+                                     ProcessingEventPublisher events) {
         this.documents = documents;
         this.versions = versions;
-        this.clauses = clauses;
         this.audit = audit;
+        this.events = events;
     }
 
     @Transactional
-    public void accept(ProcessingResult result) {
-        DocumentVersion version = versions.findByIdAndTenantId(result.documentVersionId(), result.tenantId())
-            .orElseThrow(() -> new InvalidDocumentException("Document version was not found"));
-        Document document = documents.findByIdAndTenantId(version.documentId(), result.tenantId())
-            .orElseThrow(() -> new InvalidDocumentException("Document was not found"));
-        Instant now = clock.instant();
-        DocumentStatus status = DocumentStatus.valueOf(result.status());
-        if (status == DocumentStatus.READY) {
-            clauses.deleteAllByDocumentVersionIdAndTenantId(version.id(), result.tenantId());
-            clauses.saveAll(toEntities(result.tenantId(), version.id(), result.clauses(), now));
+    public void start(UUID organizationId, UUID versionId) {
+        DocumentVersion version = requireVersion(organizationId, versionId);
+        if (version.processingStatus() == DocumentStatus.UPLOADED) {
+            transition(version, DocumentStatus.VIRUS_SCANNING, null, null);
         }
-        document.processing(status, now);
-        audit.save(new AuditEvent(UUID.randomUUID(), result.tenantId(), "document-worker",
-            "DOCUMENT_PROCESSING_" + status, "Document", document.id(), null, null, null,
-            "{\"versionId\":\"%s\",\"clauseCount\":%d}".formatted(version.id(), result.clauses().size()),
-            UUID.randomUUID(), now));
     }
 
-    private List<Clause> toEntities(UUID tenantId, UUID versionId, List<ClauseInput> inputs, Instant now) {
-        return inputs.stream().map(input -> new Clause(
-            input.id(), tenantId, versionId, input.parentId(), input.number(), input.title(),
-            input.sourceText(), input.pageNumber(), input.sortOrder(), now)).toList();
+    @Transactional
+    public void complete(UUID organizationId, UUID versionId, DocumentProcessingResult result) {
+        DocumentVersion version = requireVersion(organizationId, versionId);
+        if (result.status() == DocumentStatus.READY) {
+            progressToReady(version);
+        } else {
+            transition(version, result.status(), result.errorCode(), result.message());
+        }
+    }
+
+    @Transactional
+    public void fail(UUID organizationId, UUID versionId, String code, String message) {
+        DocumentVersion version = requireVersion(organizationId, versionId);
+        if (!version.processingStatus().terminal()) {
+            transition(version, DocumentStatus.FAILED, code, message);
+        }
+    }
+
+    private void progressToReady(DocumentVersion version) {
+        for (DocumentStatus status : new DocumentStatus[]{
+            DocumentStatus.CLASSIFYING, DocumentStatus.PARSING,
+            DocumentStatus.STRUCTURE_DETECTION, DocumentStatus.INDEXING,
+            DocumentStatus.READY}) {
+            if (!version.processingStatus().terminal()
+                && version.processingStatus() != status) {
+                transition(version, status, null, null);
+            }
+        }
+    }
+
+    private void transition(DocumentVersion version, DocumentStatus status,
+                            String errorCode, String errorMessage) {
+        DocumentStatus before = version.processingStatus();
+        Instant now = clock.instant();
+        version.transition(status, now, errorCode, errorMessage);
+        Document document = documents.findByIdAndOrganizationId(
+            version.documentId(), version.organizationId())
+            .orElseThrow(() -> new InvalidDocumentException("Document was not found"));
+        document.processing(status, version.id(), now);
+        audit.recordSystem(version.organizationId(), "document-worker",
+            "DOCUMENT_STATUS_CHANGED", "Document", document.id(),
+            Map.of("status", before.name()),
+            Map.of("status", status.name(), "documentVersionId", version.id()));
+        events.publish(document.id(), version.id(), status);
+    }
+
+    private DocumentVersion requireVersion(UUID organizationId, UUID versionId) {
+        return versions.findForUpdate(versionId, organizationId)
+            .orElseThrow(() -> new InvalidDocumentException("Document version was not found"));
     }
 }

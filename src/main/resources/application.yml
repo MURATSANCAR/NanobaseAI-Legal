@@ -36,6 +36,10 @@ spring:
     username: ${RABBITMQ_USER:specai}
     password: ${RABBITMQ_PASSWORD:change-me}
     publisher-confirm-type: correlated
+    publisher-returns: true
+    listener:
+      simple:
+        default-requeue-rejected: false
   data:
     redis:
       host: ${REDIS_HOST:localhost}
@@ -57,7 +61,16 @@ management:
     health:
       probes:
         enabled: true
-      show-details: never
+      show-details: when_authorized
+      roles: SYSTEM_ADMIN,TENANT_ADMIN
+  health:
+    probes:
+      enabled: true
+    group:
+      liveness:
+        include: livenessState,ping
+      readiness:
+        include: readinessState,db,rabbit,redis,minio,documentIntelligence
 
 springdoc:
   swagger-ui:
@@ -65,11 +78,9 @@ springdoc:
 
 logging:
   pattern:
-    level: "%5p [${spring.application.name:},%X{traceId:-},%X{spanId:-}]"
+    console: "%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} level=%-5level service=${spring.application.name} correlationId=%X{correlationId:-} organizationId=%X{organizationId:-} userId=%X{userId:-} event=%X{event:-} message=\"%msg\"%n"
 
 specai:
-  security:
-    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
   bootstrap:
     enabled: ${SPECAI_BOOTSTRAP_ENABLED:false}
     tenant-id: ${SPECAI_BOOTSTRAP_TENANT_ID:00000000-0000-0000-0000-000000000000}
@@ -79,5 +90,12 @@ specai:
     access-key: ${MINIO_ACCESS_KEY:specai}
     secret-key: ${MINIO_SECRET_KEY:change-me-now}
     original-bucket: specai-original
-  worker:
-    token: ${DOCUMENT_WORKER_TOKEN:change-me-worker-token}
+    create-buckets: ${MINIO_CREATE_BUCKETS:false}
+  documents:
+    max-file-size-bytes: ${MAX_FILE_SIZE_BYTES:104857600}
+  security:
+    allowed-origins: ${ALLOWED_ORIGINS:http://localhost:3000}
+  document-intelligence:
+    enabled: ${DOCUMENT_INTELLIGENCE_ENABLED:false}
+    base-url: ${DOCUMENT_INTELLIGENCE_BASE_URL:http://localhost:8090}
+    api-token: ${DOCUMENT_INTELLIGENCE_API_TOKEN:}
