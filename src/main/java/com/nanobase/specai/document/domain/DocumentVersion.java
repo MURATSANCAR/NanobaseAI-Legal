@@ -50,5 +50,7 @@ public class DocumentVersion {
     }
 
     public UUID id() { return id; }
+    public UUID tenantId() { return tenantId; }
+    public UUID documentId() { return documentId; }
     public String objectKey() { return objectKey; }
 }

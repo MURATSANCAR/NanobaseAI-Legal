@@ -26,6 +26,7 @@ public class SecurityConfig {
             .cors(withDefaults())
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/actuator/health/**").permitAll()
+                .requestMatchers("/internal/v1/**").permitAll()
                 .requestMatchers("/v3/api-docs/**", "/swagger-ui/**").hasAnyRole("SYSTEM_ADMIN", "TENANT_ADMIN")
                 .requestMatchers(HttpMethod.GET, "/api/v1/**").hasAnyRole(
                     "SYSTEM_ADMIN", "TENANT_ADMIN", "TENDER_MANAGER", "TECHNICAL_REVIEWER",

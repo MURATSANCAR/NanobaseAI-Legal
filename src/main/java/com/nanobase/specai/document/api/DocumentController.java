@@ -2,6 +2,7 @@ package com.nanobase.specai.document.api;
 
 import com.nanobase.specai.document.api.DocumentContracts.DocumentPreviewResponse;
 import com.nanobase.specai.document.api.DocumentContracts.DocumentResponse;
+import com.nanobase.specai.document.api.DocumentContracts.ClauseResponse;
 import com.nanobase.specai.document.application.DocumentService;
 import com.nanobase.specai.document.domain.DocumentType;
 import java.net.URI;
@@ -43,5 +44,10 @@ public class DocumentController {
     DocumentPreviewResponse preview(@PathVariable UUID documentId) {
         URI url = service.preview(documentId);
         return new DocumentPreviewResponse(url.toString(), 600);
+    }
+
+    @GetMapping("/documents/{documentId}/clauses")
+    List<ClauseResponse> clauses(@PathVariable UUID documentId) {
+        return service.clauses(documentId);
     }
 }

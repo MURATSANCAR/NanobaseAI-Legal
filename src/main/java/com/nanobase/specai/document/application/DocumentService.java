@@ -3,6 +3,8 @@ package com.nanobase.specai.document.application;
 import com.nanobase.specai.audit.domain.AuditEvent;
 import com.nanobase.specai.audit.domain.AuditEventRepository;
 import com.nanobase.specai.document.api.DocumentContracts.DocumentResponse;
+import com.nanobase.specai.document.api.DocumentContracts.ClauseResponse;
+import com.nanobase.specai.document.domain.ClauseRepository;
 import com.nanobase.specai.document.domain.Document;
 import com.nanobase.specai.document.domain.DocumentRepository;
 import com.nanobase.specai.document.domain.DocumentType;
@@ -29,6 +31,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -45,12 +48,23 @@ public class DocumentService {
     private final OutboxEventRepository outbox;
     private final ObjectStorage storage;
     private final CurrentTenant currentTenant;
+    private final FileTypeInspector fileTypeInspector;
+    private final ClauseRepository clauses;
     private final Clock clock = Clock.systemUTC();
 
+    DocumentService(DocumentRepository documents, DocumentVersionRepository versions,
+                           TenderProjectRepository projects, AuditEventRepository audit,
+                           OutboxEventRepository outbox, ObjectStorage storage,
+                           CurrentTenant currentTenant, FileTypeInspector fileTypeInspector) {
+        this(documents, versions, projects, audit, outbox, storage, currentTenant, fileTypeInspector, null);
+    }
+
+    @Autowired
     public DocumentService(DocumentRepository documents, DocumentVersionRepository versions,
                            TenderProjectRepository projects, AuditEventRepository audit,
                            OutboxEventRepository outbox, ObjectStorage storage,
-                           CurrentTenant currentTenant) {
+                           CurrentTenant currentTenant, FileTypeInspector fileTypeInspector,
+                           ClauseRepository clauses) {
         this.documents = documents;
         this.versions = versions;
         this.projects = projects;
@@ -58,6 +72,8 @@ public class DocumentService {
         this.outbox = outbox;
         this.storage = storage;
         this.currentTenant = currentTenant;
+        this.fileTypeInspector = fileTypeInspector;
+        this.clauses = clauses;
     }
 
     @Transactional
@@ -74,9 +90,13 @@ public class DocumentService {
         String objectKey = "%s/%s/%s/%s/original".formatted(
             principal.tenantId(), projectId, documentId, versionId);
         String sha256;
+        String detectedMediaType;
         try (InputStream source = new BufferedInputStream(file.getInputStream());
              DigestInputStream digest = new DigestInputStream(source, MessageDigest.getInstance("SHA-256"))) {
-            storage.put(objectKey, digest, file.getSize(), file.getContentType());
+            source.mark(16 * 1024);
+            detectedMediaType = fileTypeInspector.inspect(source, filename);
+            source.reset();
+            storage.put(objectKey, digest, file.getSize(), detectedMediaType);
             sha256 = HexFormat.of().formatHex(digest.getMessageDigest().digest());
         } catch (IOException | NoSuchAlgorithmException exception) {
             throw new IllegalStateException("Document upload failed", exception);
@@ -87,7 +107,7 @@ public class DocumentService {
                 filename, type, now);
             documents.save(document);
             versions.save(new DocumentVersion(versionId, principal.tenantId(), documentId, 1,
-                objectKey, filename, file.getContentType(), file.getSize(), sha256, now));
+                objectKey, filename, detectedMediaType, file.getSize(), sha256, now));
             audit.save(new AuditEvent(UUID.randomUUID(), principal.tenantId(), principal.subject(),
                 "DOCUMENT_UPLOADED", "Document", documentId, now,
                 "{\"versionId\":\"%s\",\"sha256\":\"%s\"}".formatted(versionId, sha256)));
@@ -121,6 +141,22 @@ public class DocumentService {
             documentId, principal.tenantId(), document.currentVersion())
             .orElseThrow(() -> new InvalidDocumentException("Document version was not found"));
         return storage.signedDownloadUrl(version.objectKey(), Duration.ofMinutes(10));
+    }
+
+    @Transactional(readOnly = true)
+    public List<ClauseResponse> clauses(UUID documentId) {
+        TenantPrincipal principal = currentTenant.require();
+        Document document = documents.findByIdAndTenantId(documentId, principal.tenantId())
+            .orElseThrow(() -> new InvalidDocumentException("Document was not found"));
+        DocumentVersion version = versions.findByDocumentIdAndTenantIdAndVersionNumber(
+            documentId, principal.tenantId(), document.currentVersion())
+            .orElseThrow(() -> new InvalidDocumentException("Document version was not found"));
+        if (clauses == null) {
+            return List.of();
+        }
+        return clauses.findAllByDocumentVersionIdAndTenantIdOrderBySortOrder(version.id(), principal.tenantId())
+            .stream().map(clause -> new ClauseResponse(clause.id(), clause.parentId(), clause.clauseNumber(),
+                clause.title(), clause.sourceText(), clause.pageNumber(), clause.sortOrder())).toList();
     }
 
     private void validate(MultipartFile file) {

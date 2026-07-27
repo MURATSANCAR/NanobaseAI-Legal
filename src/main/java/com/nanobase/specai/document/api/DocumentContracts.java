@@ -18,4 +18,7 @@ public final class DocumentContracts {
     }
 
     public record DocumentPreviewResponse(String url, int expiresInSeconds) {}
+
+    public record ClauseResponse(UUID id, UUID parentId, String number, String title,
+                                 String sourceText, int pageNumber, int sortOrder) {}
 }

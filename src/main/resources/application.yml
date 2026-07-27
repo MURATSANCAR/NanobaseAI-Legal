@@ -77,3 +77,5 @@ specai:
     access-key: ${MINIO_ACCESS_KEY:specai}
     secret-key: ${MINIO_SECRET_KEY:change-me-now}
     original-bucket: specai-original
+  worker:
+    token: ${DOCUMENT_WORKER_TOKEN:change-me-worker-token}

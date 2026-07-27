@@ -7,4 +7,5 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface DocumentVersionRepository extends JpaRepository<DocumentVersion, UUID> {
     Optional<DocumentVersion> findByDocumentIdAndTenantIdAndVersionNumber(
         UUID documentId, UUID tenantId, int versionNumber);
+    Optional<DocumentVersion> findByIdAndTenantId(UUID id, UUID tenantId);
 }

@@ -62,4 +62,12 @@ public class Document {
     public DocumentStatus status() { return status; }
     public int currentVersion() { return currentVersion; }
     public Instant createdAt() { return createdAt; }
+
+    public void processing(DocumentStatus status, Instant now) {
+        if (status == DocumentStatus.UPLOADED) {
+            throw new IllegalArgumentException("Processing cannot transition back to UPLOADED");
+        }
+        this.status = status;
+        this.updatedAt = now;
+    }
 }
