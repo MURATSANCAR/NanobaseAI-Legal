@@ -13,7 +13,7 @@ public class Clause {
     @Id
     private UUID id;
     @Column(name = "organization_id", nullable = false, updatable = false)
-    private UUID tenantId;
+    private UUID organizationId;
     @Column(name = "document_version_id", nullable = false, updatable = false)
     private UUID documentVersionId;
     @Column(name = "parent_id", updatable = false)
@@ -33,11 +33,11 @@ public class Clause {
 
     protected Clause() {}
 
-    public Clause(UUID id, UUID tenantId, UUID documentVersionId, UUID parentId,
+    public Clause(UUID id, UUID organizationId, UUID documentVersionId, UUID parentId,
                   String clauseNumber, String title, String sourceText,
                   int pageNumber, int sortOrder, Instant createdAt) {
         this.id = id;
-        this.tenantId = tenantId;
+        this.organizationId = organizationId;
         this.documentVersionId = documentVersionId;
         this.parentId = parentId;
         this.clauseNumber = clauseNumber;

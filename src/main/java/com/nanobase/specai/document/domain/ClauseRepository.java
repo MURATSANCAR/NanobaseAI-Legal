@@ -5,6 +5,7 @@ import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface ClauseRepository extends JpaRepository<Clause, UUID> {
-    List<Clause> findAllByDocumentVersionIdAndTenantIdOrderBySortOrder(UUID versionId, UUID tenantId);
-    void deleteAllByDocumentVersionIdAndTenantId(UUID versionId, UUID tenantId);
+    List<Clause> findAllByDocumentVersionIdAndOrganizationIdOrderBySortOrder(
+        UUID versionId, UUID organizationId);
+    void deleteAllByDocumentVersionIdAndOrganizationId(UUID versionId, UUID organizationId);
 }
