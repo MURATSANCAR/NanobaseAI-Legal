@@ -68,6 +68,8 @@ logging:
     level: "%5p [${spring.application.name:},%X{traceId:-},%X{spanId:-}]"
 
 specai:
+  security:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
   bootstrap:
     enabled: ${SPECAI_BOOTSTRAP_ENABLED:false}
     tenant-id: ${SPECAI_BOOTSTRAP_TENANT_ID:00000000-0000-0000-0000-000000000000}
