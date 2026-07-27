@@ -14,6 +14,8 @@ public interface DocumentVersionRepository extends JpaRepository<DocumentVersion
     Optional<DocumentVersion> findByIdAndOrganizationId(UUID id, UUID organizationId);
     List<DocumentVersion> findAllByDocumentIdAndOrganizationIdOrderByVersionNumberDesc(
         UUID documentId, UUID organizationId);
+    boolean existsByObjectStorageKeyAndOrganizationId(String objectStorageKey,
+                                                       UUID organizationId);
 
     @Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
     @Query("select version from DocumentVersion version where version.id = :id and version.organizationId = :organizationId")

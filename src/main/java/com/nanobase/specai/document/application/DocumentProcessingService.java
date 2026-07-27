@@ -7,10 +7,12 @@ import com.nanobase.specai.document.domain.DocumentStatus;
 import com.nanobase.specai.document.domain.DocumentVersion;
 import com.nanobase.specai.document.domain.DocumentVersionRepository;
 import com.nanobase.specai.document.integration.DocumentIntelligencePort.DocumentProcessingResult;
+import com.nanobase.specai.shared.security.TenantDatabaseContext;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,20 +22,32 @@ public class DocumentProcessingService {
     private final DocumentVersionRepository versions;
     private final AuditService audit;
     private final ProcessingEventPublisher events;
+    private final TenantDatabaseContext tenantDatabaseContext;
     private final Clock clock = Clock.systemUTC();
 
+    @Autowired
     public DocumentProcessingService(DocumentRepository documents,
                                      DocumentVersionRepository versions,
                                      AuditService audit,
-                                     ProcessingEventPublisher events) {
+                                     ProcessingEventPublisher events,
+                                     TenantDatabaseContext tenantDatabaseContext) {
         this.documents = documents;
         this.versions = versions;
         this.audit = audit;
         this.events = events;
+        this.tenantDatabaseContext = tenantDatabaseContext;
+    }
+
+    DocumentProcessingService(DocumentRepository documents,
+                              DocumentVersionRepository versions,
+                              AuditService audit,
+                              ProcessingEventPublisher events) {
+        this(documents, versions, audit, events, null);
     }
 
     @Transactional
     public void start(UUID organizationId, UUID versionId) {
+        applyTenant(organizationId);
         DocumentVersion version = requireVersion(organizationId, versionId);
         if (version.processingStatus().terminal()) {
             return;
@@ -45,6 +59,7 @@ public class DocumentProcessingService {
 
     @Transactional
     public void complete(UUID organizationId, UUID versionId, DocumentProcessingResult result) {
+        applyTenant(organizationId);
         DocumentVersion version = requireVersion(organizationId, versionId);
         if (version.processingStatus().terminal()) {
             return;
@@ -58,6 +73,7 @@ public class DocumentProcessingService {
 
     @Transactional
     public void fail(UUID organizationId, UUID versionId, String code, String message) {
+        applyTenant(organizationId);
         DocumentVersion version = requireVersion(organizationId, versionId);
         if (!version.processingStatus().terminal()) {
             transition(version, DocumentStatus.FAILED, code, message);
@@ -95,5 +111,11 @@ public class DocumentProcessingService {
     private DocumentVersion requireVersion(UUID organizationId, UUID versionId) {
         return versions.findForUpdate(versionId, organizationId)
             .orElseThrow(() -> new InvalidDocumentException("Document version was not found"));
+    }
+
+    private void applyTenant(UUID organizationId) {
+        if (tenantDatabaseContext != null) {
+            tenantDatabaseContext.apply(organizationId);
+        }
     }
 }

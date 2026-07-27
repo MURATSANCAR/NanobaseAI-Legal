@@ -26,7 +26,9 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 public class SecurityConfig {
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http,
-                                            SecurityContextMdcFilter mdcFilter) throws Exception {
+                                            SecurityContextMdcFilter mdcFilter,
+                                            TenantTransactionFilter tenantTransactionFilter)
+        throws Exception {
         return http
             .csrf(csrf -> csrf.disable())
             .cors(withDefaults())
@@ -59,6 +61,7 @@ public class SecurityConfig {
             .sessionManagement(session -> session.sessionCreationPolicy(
                 org.springframework.security.config.http.SessionCreationPolicy.STATELESS))
             .addFilterAfter(mdcFilter, BearerTokenAuthenticationFilter.class)
+            .addFilterAfter(tenantTransactionFilter, SecurityContextMdcFilter.class)
             .build();
     }
 
