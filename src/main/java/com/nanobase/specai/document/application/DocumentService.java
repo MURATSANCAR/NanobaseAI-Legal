@@ -114,8 +114,9 @@ public class DocumentService {
             outbox.save(new OutboxEvent(UUID.randomUUID(), principal.tenantId(), "document.uploaded",
                 "{\"eventType\":\"DocumentUploaded\",\"schemaVersion\":1,"
                     + "\"tenantId\":\"%s\",\"projectId\":\"%s\",\"documentId\":\"%s\","
-                    + "\"documentVersionId\":\"%s\",\"objectKey\":\"%s\"}"
-                    .formatted(principal.tenantId(), projectId, documentId, versionId, objectKey), now));
+                    + "\"documentVersionId\":\"%s\",\"objectKey\":\"%s\",\"mediaType\":\"%s\"}"
+                    .formatted(principal.tenantId(), projectId, documentId, versionId, objectKey,
+                        detectedMediaType), now));
             return DocumentResponse.from(document);
         } catch (RuntimeException exception) {
             storage.delete(objectKey);

@@ -108,6 +108,7 @@ services:
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-local-rabbit-secret}
       REDIS_HOST: redis
       REDIS_PASSWORD: ${REDIS_PASSWORD:-local-redis-secret}
+      DOCUMENT_WORKER_TOKEN: ${DOCUMENT_WORKER_TOKEN:-local-worker-secret}
     ports:
       - "127.0.0.1:8080:8080"
     depends_on:
@@ -121,6 +122,39 @@ services:
         condition: service_healthy
       keycloak:
         condition: service_started
+    restart: unless-stopped
+  clamav:
+    image: clamav/clamav:1.4.3
+    volumes:
+      - clamav-data:/var/lib/clamav
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/clamdcheck.sh"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+    restart: unless-stopped
+  document-worker:
+    build:
+      context: ./services/document-worker
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: ${RABBITMQ_USER:-specai}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-local-rabbit-secret}
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-specai}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-local-minio-secret}
+      BACKEND_URL: http://backend:8080
+      DOCUMENT_WORKER_TOKEN: ${DOCUMENT_WORKER_TOKEN:-local-worker-secret}
+      CLAMAV_HOST: clamav
+    depends_on:
+      backend:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+      clamav:
+        condition: service_healthy
     restart: unless-stopped
   frontend:
     build:
@@ -140,3 +174,4 @@ volumes:
   minio-data:
   rabbitmq-data:
   redis-data:
+  clamav-data:

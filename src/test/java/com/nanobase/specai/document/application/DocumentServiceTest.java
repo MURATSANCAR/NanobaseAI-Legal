@@ -40,6 +40,7 @@ class DocumentServiceTest {
     @Mock OutboxEventRepository outbox;
     @Mock ObjectStorage storage;
     @Mock CurrentTenant currentTenant;
+    @Mock FileTypeInspector fileTypeInspector;
     private DocumentService service;
 
     @BeforeEach
@@ -49,7 +50,10 @@ class DocumentServiceTest {
             "Test", "Kurum", null, LocalDate.now().plusDays(10), "TRY",
             Priority.NORMAL, null, "reviewer-1", Instant.now());
         when(projects.findByIdAndTenantId(PROJECT, TENANT)).thenReturn(Optional.of(project));
-        service = new DocumentService(documents, versions, projects, audit, outbox, storage, currentTenant);
+        when(fileTypeInspector.inspect(any(InputStream.class), eq("sartname.pdf")))
+            .thenReturn("application/pdf");
+        service = new DocumentService(documents, versions, projects, audit, outbox, storage,
+            currentTenant, fileTypeInspector);
     }
 
     @Test
