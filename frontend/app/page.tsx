@@ -747,6 +747,7 @@ function ProjectSettings({ project, members, token, canWrite, onMembers, onProbl
 }) {
   async function addMember(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const formElement = event.currentTarget;
     const form = new FormData(event.currentTarget);
     try {
       const created = await tenderApi.addMember(token, project.id, {
@@ -758,7 +759,7 @@ function ProjectSettings({ project, members, token, canWrite, onMembers, onProbl
         canArchiveProject: false,
       });
       onMembers([...members, created]);
-      event.currentTarget.reset();
+      formElement.reset();
       onNotify("Proje üyesi eklendi");
     } catch (error) {
       onProblem(error);

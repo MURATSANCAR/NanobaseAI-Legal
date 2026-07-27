@@ -120,7 +120,7 @@ public class DocumentService {
     @Transactional
     public DocumentResponse uploadVersion(UUID documentId, MultipartFile file) {
         TenantPrincipal principal = currentTenant.require();
-        Document document = requireDocument(documentId, principal);
+        Document document = requireDocumentForUpdate(documentId, principal);
         access.requireUpload(document.projectId(), principal);
         UploadMetadata upload = inspect(document.projectId(), principal.tenantId(), file);
         int versionNumber = document.currentVersionNumber() + 1;
@@ -176,7 +176,7 @@ public class DocumentService {
     @Transactional
     public DocumentResponse reprocess(UUID documentId) {
         TenantPrincipal principal = currentTenant.require();
-        Document document = requireDocument(documentId, principal);
+        Document document = requireDocumentForUpdate(documentId, principal);
         access.requireUpload(document.projectId(), principal);
         DocumentVersion version = currentVersion(document, principal.tenantId());
         version.reprocess();
@@ -214,6 +214,11 @@ public class DocumentService {
 
     Document requireDocument(UUID documentId, TenantPrincipal principal) {
         return documents.findByIdAndOrganizationId(documentId, principal.tenantId())
+            .orElseThrow(() -> new InvalidDocumentException("Document was not found"));
+    }
+
+    private Document requireDocumentForUpdate(UUID documentId, TenantPrincipal principal) {
+        return documents.findForUpdate(documentId, principal.tenantId())
             .orElseThrow(() -> new InvalidDocumentException("Document was not found"));
     }
 

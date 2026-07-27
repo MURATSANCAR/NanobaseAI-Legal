@@ -3,6 +3,12 @@
   "enabled": true,
   "registrationAllowed": false,
   "loginWithEmailAllowed": true,
+  "eventsEnabled": true,
+  "eventsExpiration": 2592000,
+  "eventsListeners": ["jboss-logging"],
+  "enabledEventTypes": ["LOGIN", "LOGIN_ERROR", "LOGOUT", "REFRESH_TOKEN", "REFRESH_TOKEN_ERROR"],
+  "adminEventsEnabled": true,
+  "adminEventsDetailsEnabled": false,
   "roles": {
     "realm": [
       {"name": "SYSTEM_ADMIN"},

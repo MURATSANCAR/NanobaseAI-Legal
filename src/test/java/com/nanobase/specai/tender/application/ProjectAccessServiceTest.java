@@ -35,4 +35,20 @@ class ProjectAccessServiceTest {
             .isInstanceOf(TenderNotFoundException.class);
         verify(projects).findByIdAndOrganizationId(projectB, organizationA);
     }
+
+    @Test
+    void cannotUploadToProjectFromAnotherOrganization() {
+        UUID organizationA = UUID.randomUUID();
+        UUID projectB = UUID.randomUUID();
+        TenantPrincipal userA = new TenantPrincipal(
+            organizationA, "user-a", Set.of("TENDER_MANAGER"));
+        when(projects.findByIdAndOrganizationId(projectB, organizationA))
+            .thenReturn(Optional.empty());
+
+        ProjectAccessService service = new ProjectAccessService(projects, members);
+
+        assertThatThrownBy(() -> service.requireUpload(projectB, userA))
+            .isInstanceOf(TenderNotFoundException.class);
+        verify(projects).findByIdAndOrganizationId(projectB, organizationA);
+    }
 }

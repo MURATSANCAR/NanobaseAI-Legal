@@ -146,7 +146,10 @@ ALTER TABLE outbox_event
 UPDATE outbox_event
 SET aggregate_id = id,
     correlation_id = id,
-    status = CASE WHEN published_at IS NULL THEN 'PENDING' ELSE 'PUBLISHED' END;
+    status = CASE WHEN published_at IS NULL THEN 'FAILED' ELSE 'PUBLISHED' END,
+    last_error = CASE WHEN published_at IS NULL
+        THEN 'Legacy event envelope requires manual replay'
+        ELSE NULL END;
 ALTER TABLE outbox_event
     ALTER COLUMN aggregate_id SET NOT NULL,
     ALTER COLUMN correlation_id SET NOT NULL;

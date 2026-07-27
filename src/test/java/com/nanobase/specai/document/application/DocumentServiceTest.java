@@ -1,6 +1,7 @@
 package com.nanobase.specai.document.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
@@ -49,9 +50,6 @@ class DocumentServiceTest {
     void setup() {
         when(currentTenant.require()).thenReturn(
             new TenantPrincipal(ORGANIZATION, "manager-1", Set.of("TENDER_MANAGER")));
-        when(fileTypeInspector.inspect(any(InputStream.class), eq("sartname.pdf")))
-            .thenReturn("application/pdf");
-        when(versions.existsDuplicate(eq(PROJECT), eq(ORGANIZATION), any())).thenReturn(false);
         service = new DocumentService(documents, versions, access, audit, outbox, storage,
             currentTenant, fileTypeInspector, clauses, 10_000_000,
             Clock.fixed(Instant.parse("2026-07-27T12:00:00Z"), ZoneOffset.UTC));
@@ -59,6 +57,9 @@ class DocumentServiceTest {
 
     @Test
     void storesBinaryOutsideDatabaseAndEnqueuesOutboxEvent() {
+        when(fileTypeInspector.inspect(any(InputStream.class), eq("sartname.pdf")))
+            .thenReturn("application/pdf");
+        when(versions.existsDuplicate(eq(PROJECT), eq(ORGANIZATION), any())).thenReturn(false);
         MockMultipartFile file = new MockMultipartFile("file", "sartname.pdf",
             "application/octet-stream", "%PDF-1.7 sample".getBytes());
 
@@ -75,4 +76,14 @@ class DocumentServiceTest {
         verify(audit).record(eq("DOCUMENT_UPLOADED"), eq("Document"), any(), eq(null), any());
     }
 
+    @Test
+    void cannotCreateDownloadUrlForAnotherOrganizationsDocument() {
+        UUID foreignDocumentId = UUID.randomUUID();
+        when(documents.findByIdAndOrganizationId(foreignDocumentId, ORGANIZATION))
+            .thenReturn(java.util.Optional.empty());
+
+        assertThatThrownBy(() -> service.downloadUrl(foreignDocumentId))
+            .isInstanceOf(InvalidDocumentException.class);
+        verify(documents).findByIdAndOrganizationId(foreignDocumentId, ORGANIZATION);
+    }
 }

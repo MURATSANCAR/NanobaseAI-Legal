@@ -35,6 +35,9 @@ public class DocumentProcessingService {
     @Transactional
     public void start(UUID organizationId, UUID versionId) {
         DocumentVersion version = requireVersion(organizationId, versionId);
+        if (version.processingStatus().terminal()) {
+            return;
+        }
         if (version.processingStatus() == DocumentStatus.UPLOADED) {
             transition(version, DocumentStatus.VIRUS_SCANNING, null, null);
         }
@@ -43,6 +46,9 @@ public class DocumentProcessingService {
     @Transactional
     public void complete(UUID organizationId, UUID versionId, DocumentProcessingResult result) {
         DocumentVersion version = requireVersion(organizationId, versionId);
+        if (version.processingStatus().terminal()) {
+            return;
+        }
         if (result.status() == DocumentStatus.READY) {
             progressToReady(version);
         } else {
@@ -64,7 +70,7 @@ public class DocumentProcessingService {
             DocumentStatus.STRUCTURE_DETECTION, DocumentStatus.INDEXING,
             DocumentStatus.READY}) {
             if (!version.processingStatus().terminal()
-                && version.processingStatus() != status) {
+                && version.processingStatus().ordinal() < status.ordinal()) {
                 transition(version, status, null, null);
             }
         }
