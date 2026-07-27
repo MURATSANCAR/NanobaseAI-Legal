@@ -26,10 +26,10 @@ public class OutboxService {
         UUID eventId = UUID.randomUUID();
         UUID correlationId = RequestContext.current().correlationId();
         EventEnvelope<DocumentUploaded> envelope = new EventEnvelope<>(
-            eventId, "DocumentUploaded", 1, organizationId, correlationId,
+            eventId, "DocumentProcessingRequested", 1, organizationId, correlationId,
             correlationId, now, payload);
         events.save(new OutboxEvent(eventId, "Document", payload.documentId(),
-            "DocumentUploaded", 1, RabbitConfiguration.DOCUMENT_ROUTING_KEY,
+            "DocumentProcessingRequested", 1, RabbitConfiguration.DOCUMENT_ROUTING_KEY,
             json(envelope), organizationId, correlationId, now));
         return eventId;
     }

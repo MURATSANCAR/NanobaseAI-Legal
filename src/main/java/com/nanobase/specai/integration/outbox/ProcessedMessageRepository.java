@@ -19,8 +19,11 @@ public interface ProcessedMessageRepository extends JpaRepository<ProcessedMessa
         set id = excluded.id,
             processed_at = excluded.processed_at,
             result_status = 'PROCESSING'
-        where processed_message.result_status <> 'PROCESSED'
-          and processed_message.processed_at <= :staleBefore
+        where processed_message.result_status = 'FAILED'
+           or (
+               processed_message.result_status = 'PROCESSING'
+               and processed_message.processed_at <= :staleBefore
+           )
         """, nativeQuery = true)
     int claim(@Param("id") UUID id,
               @Param("consumerName") String consumerName,

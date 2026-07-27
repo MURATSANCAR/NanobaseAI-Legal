@@ -20,12 +20,17 @@ public final class DocumentEvents {
     }
 
     public record DocumentUploaded(
+        UUID processingJobId,
         UUID projectId,
         UUID documentId,
         UUID documentVersionId,
         String objectStorageKey,
+        String originalFileName,
         String mimeType,
-        long fileSize
+        long fileSize,
+        String sha256,
+        String languageHint,
+        boolean ocrRequired
     ) {
     }
 }

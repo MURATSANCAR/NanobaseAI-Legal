@@ -6,7 +6,7 @@ import com.nanobase.specai.document.domain.DocumentRepository;
 import com.nanobase.specai.document.domain.DocumentStatus;
 import com.nanobase.specai.document.domain.DocumentVersion;
 import com.nanobase.specai.document.domain.DocumentVersionRepository;
-import com.nanobase.specai.document.integration.DocumentIntelligencePort.DocumentProcessingResult;
+import com.nanobase.specai.document.integration.DocumentIntelligencePort.ProcessingStatusResult;
 import com.nanobase.specai.shared.security.TenantDatabaseContext;
 import java.time.Clock;
 import java.time.Instant;
@@ -58,7 +58,7 @@ public class DocumentProcessingService {
     }
 
     @Transactional
-    public void complete(UUID organizationId, UUID versionId, DocumentProcessingResult result) {
+    public void complete(UUID organizationId, UUID versionId, ProcessingStatusResult result) {
         applyTenant(organizationId);
         DocumentVersion version = requireVersion(organizationId, versionId);
         if (version.processingStatus().terminal()) {

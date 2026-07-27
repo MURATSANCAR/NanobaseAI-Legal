@@ -13,10 +13,17 @@ public class RabbitConfiguration {
     public static final String EXCHANGE = "specai.events";
     public static final String RETRY_EXCHANGE = "specai.events.retry";
     public static final String DEAD_LETTER_EXCHANGE = "specai.events.dlx";
-    public static final String DOCUMENT_QUEUE = "document-processing";
+    public static final String DOCUMENT_QUEUE = "document-processing.request";
+    public static final String RESULT_QUEUE = "document-processing.result";
     public static final String DEAD_LETTER_QUEUE = "document-processing.dlq";
-    public static final String DOCUMENT_ROUTING_KEY = "document.uploaded.v1";
-    public static final String DEAD_ROUTING_KEY = "document.failed";
+    public static final String DOCUMENT_ROUTING_KEY = "document.processing.requested.v1";
+    public static final String STARTED_ROUTING_KEY = "document.processing.started.v1";
+    public static final String PROGRESS_ROUTING_KEY = "document.processing.progress.v1";
+    public static final String COMPLETED_ROUTING_KEY = "document.processing.completed.v1";
+    public static final String FAILED_ROUTING_KEY = "document.processing.failed.v1";
+    public static final String MANUAL_REVIEW_ROUTING_KEY =
+        "document.processing.manual-review.v1";
+    public static final String DEAD_ROUTING_KEY = "document.processing.dead";
     public static final String RETRY_30 = "document.retry.30s";
     public static final String RETRY_120 = "document.retry.120s";
     public static final String RETRY_600 = "document.retry.600s";
@@ -39,6 +46,37 @@ public class RabbitConfiguration {
     @Bean
     Queue documentQueue() {
         return QueueBuilder.durable(DOCUMENT_QUEUE).build();
+    }
+
+    @Bean
+    Queue resultQueue() {
+        return QueueBuilder.durable(RESULT_QUEUE).build();
+    }
+
+    @Bean
+    Binding processingStartedBinding(Queue resultQueue, DirectExchange specAiExchange) {
+        return BindingBuilder.bind(resultQueue).to(specAiExchange).with(STARTED_ROUTING_KEY);
+    }
+
+    @Bean
+    Binding processingProgressBinding(Queue resultQueue, DirectExchange specAiExchange) {
+        return BindingBuilder.bind(resultQueue).to(specAiExchange).with(PROGRESS_ROUTING_KEY);
+    }
+
+    @Bean
+    Binding processingCompletedBinding(Queue resultQueue, DirectExchange specAiExchange) {
+        return BindingBuilder.bind(resultQueue).to(specAiExchange).with(COMPLETED_ROUTING_KEY);
+    }
+
+    @Bean
+    Binding processingFailedBinding(Queue resultQueue, DirectExchange specAiExchange) {
+        return BindingBuilder.bind(resultQueue).to(specAiExchange).with(FAILED_ROUTING_KEY);
+    }
+
+    @Bean
+    Binding processingManualReviewBinding(Queue resultQueue, DirectExchange specAiExchange) {
+        return BindingBuilder.bind(resultQueue).to(specAiExchange)
+            .with(MANUAL_REVIEW_ROUTING_KEY);
     }
 
     @Bean

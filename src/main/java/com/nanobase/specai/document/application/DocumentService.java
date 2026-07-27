@@ -11,10 +11,12 @@ import com.nanobase.specai.document.domain.DocumentStatus;
 import com.nanobase.specai.document.domain.DocumentType;
 import com.nanobase.specai.document.domain.DocumentVersion;
 import com.nanobase.specai.document.domain.DocumentVersionRepository;
+import com.nanobase.specai.document.domain.DocumentProcessingJob;
 import com.nanobase.specai.document.integration.DocumentEvents.DocumentUploaded;
 import com.nanobase.specai.integration.outbox.OutboxService;
 import com.nanobase.specai.shared.security.CurrentTenant;
 import com.nanobase.specai.shared.security.TenantPrincipal;
+import com.nanobase.specai.shared.web.RequestContext;
 import com.nanobase.specai.tender.application.ProjectAccessService;
 import java.io.IOException;
 import java.io.InputStream;
@@ -33,6 +35,8 @@ import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 
 @Service
@@ -50,6 +54,7 @@ public class DocumentService {
     private final CurrentTenant currentTenant;
     private final FileTypeInspector fileTypeInspector;
     private final ClauseRepository clauses;
+    private final ProcessingJobService processingJobs;
     private final long maximumFileSize;
     private final Clock clock;
 
@@ -57,17 +62,18 @@ public class DocumentService {
                            ProjectAccessService access, AuditService audit, OutboxService outbox,
                            ObjectStorage storage, CurrentTenant currentTenant,
                            FileTypeInspector fileTypeInspector, ClauseRepository clauses,
+                           ProcessingJobService processingJobs,
                            @Value("${specai.documents.max-file-size-bytes:104857600}")
                            long maximumFileSize) {
         this(documents, versions, access, audit, outbox, storage, currentTenant,
-            fileTypeInspector, clauses, maximumFileSize, Clock.systemUTC());
+            fileTypeInspector, clauses, processingJobs, maximumFileSize, Clock.systemUTC());
     }
 
     DocumentService(DocumentRepository documents, DocumentVersionRepository versions,
                     ProjectAccessService access, AuditService audit, OutboxService outbox,
                     ObjectStorage storage, CurrentTenant currentTenant,
                     FileTypeInspector fileTypeInspector, ClauseRepository clauses,
-                    long maximumFileSize, Clock clock) {
+                    ProcessingJobService processingJobs, long maximumFileSize, Clock clock) {
         this.documents = documents;
         this.versions = versions;
         this.access = access;
@@ -77,6 +83,7 @@ public class DocumentService {
         this.currentTenant = currentTenant;
         this.fileTypeInspector = fileTypeInspector;
         this.clauses = clauses;
+        this.processingJobs = processingJobs;
         this.maximumFileSize = maximumFileSize;
         this.clock = clock;
     }
@@ -90,10 +97,14 @@ public class DocumentService {
         Instant now = clock.instant();
         UUID documentId = UUID.randomUUID();
         UUID versionId = UUID.randomUUID();
+        String temporaryKey = temporaryKey(principal.tenantId(), UUID.randomUUID(),
+            upload.fileName());
         String objectKey = objectKey(principal.tenantId(), projectId, documentId,
             versionId, upload.fileName());
-        put(objectKey, file, upload.mimeType());
+        registerCompensation(temporaryKey, objectKey);
+        put(temporaryKey, file, upload.mimeType());
         try {
+            storage.finalizeObject(temporaryKey, objectKey, file.getSize(), upload.sha256());
             String resolvedLogicalName = logicalName == null || logicalName.isBlank()
                 ? withoutExtension(upload.fileName()) : logicalName.trim();
             if (resolvedLogicalName.length() > 255) {
@@ -107,11 +118,14 @@ public class DocumentService {
                 upload.sha256(), principal.subject(), now);
             versions.save(version);
             document.attachVersion(versionId, 1, now);
-            outbox.documentUploaded(principal.tenantId(), event(document, version));
+            DocumentProcessingJob job = processingJobs.create(principal.tenantId(), projectId,
+                documentId, versionId, RequestContext.current().correlationId(), now);
+            outbox.documentUploaded(principal.tenantId(), event(document, version, job));
             audit.record("DOCUMENT_UPLOADED", "Document", documentId, null,
                 Map.of("documentVersionId", versionId, "sha256", upload.sha256()));
             return DocumentResponse.from(document, version);
         } catch (RuntimeException exception) {
+            safeDelete(temporaryKey, exception);
             safeDelete(objectKey, exception);
             throw exception;
         }
@@ -126,21 +140,29 @@ public class DocumentService {
         int versionNumber = document.currentVersionNumber() + 1;
         UUID versionId = UUID.randomUUID();
         Instant now = clock.instant();
+        String temporaryKey = temporaryKey(principal.tenantId(), UUID.randomUUID(),
+            upload.fileName());
         String objectKey = objectKey(principal.tenantId(), document.projectId(), document.id(),
             versionId, upload.fileName());
-        put(objectKey, file, upload.mimeType());
+        registerCompensation(temporaryKey, objectKey);
+        put(temporaryKey, file, upload.mimeType());
         try {
+            storage.finalizeObject(temporaryKey, objectKey, file.getSize(), upload.sha256());
             DocumentVersion version = new DocumentVersion(versionId, principal.tenantId(),
                 document.id(), versionNumber, objectKey, upload.fileName(), upload.mimeType(),
                 file.getSize(), upload.sha256(), principal.subject(), now);
             versions.save(version);
             document.attachVersion(versionId, versionNumber, now);
-            outbox.documentUploaded(principal.tenantId(), event(document, version));
+            DocumentProcessingJob job = processingJobs.create(principal.tenantId(),
+                document.projectId(), document.id(), versionId,
+                RequestContext.current().correlationId(), now);
+            outbox.documentUploaded(principal.tenantId(), event(document, version, job));
             audit.record("DOCUMENT_VERSION_UPLOADED", "Document", documentId, null,
                 Map.of("documentVersionId", versionId, "versionNumber", versionNumber,
                     "sha256", upload.sha256()));
             return DocumentResponse.from(document, version);
         } catch (RuntimeException exception) {
+            safeDelete(temporaryKey, exception);
             safeDelete(objectKey, exception);
             throw exception;
         }
@@ -156,12 +178,15 @@ public class DocumentService {
             .toList();
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public DocumentResponse get(UUID documentId) {
         TenantPrincipal principal = currentTenant.require();
         Document document = requireDocument(documentId, principal);
         access.requireDocumentView(document.projectId(), principal);
-        return DocumentResponse.from(document, currentVersion(document, principal.tenantId()));
+        DocumentVersion version = currentVersion(document, principal.tenantId());
+        audit.record("DOCUMENT_VIEWED", "Document", documentId, null,
+            Map.of("documentVersionId", version.id()));
+        return DocumentResponse.from(document, version);
     }
 
     @Transactional(readOnly = true)
@@ -181,7 +206,10 @@ public class DocumentService {
         DocumentVersion version = currentVersion(document, principal.tenantId());
         version.reprocess();
         document.processing(DocumentStatus.UPLOADED, version.id(), clock.instant());
-        outbox.documentUploaded(principal.tenantId(), event(document, version));
+        DocumentProcessingJob job = processingJobs.create(principal.tenantId(),
+            document.projectId(), document.id(), version.id(),
+            RequestContext.current().correlationId(), clock.instant());
+        outbox.documentUploaded(principal.tenantId(), event(document, version, job));
         audit.record("DOCUMENT_REPROCESS_REQUESTED", "Document", documentId, null,
             Map.of("documentVersionId", version.id()));
         return DocumentResponse.from(document, version);
@@ -194,7 +222,7 @@ public class DocumentService {
         access.requireDocumentView(document.projectId(), principal);
         DocumentVersion version = currentVersion(document, principal.tenantId());
         URI url = storage.signedDownloadUrl(version.objectStorageKey(), Duration.ofMinutes(5));
-        audit.record("DOCUMENT_DOWNLOAD_URL_CREATED", "Document", documentId, null,
+        audit.record("DOCUMENT_DOWNLOADED", "Document", documentId, null,
             Map.of("documentVersionId", version.id(), "expiresInSeconds", 300));
         return url;
     }
@@ -298,8 +326,12 @@ public class DocumentService {
 
     private String objectKey(UUID organizationId, UUID projectId, UUID documentId,
                              UUID versionId, String fileName) {
-        return "%s/%s/%s/%s/original/%s".formatted(
+        return "specai-original/%s/%s/%s/%s/%s".formatted(
             organizationId, projectId, documentId, versionId, fileName);
+    }
+
+    private String temporaryKey(UUID organizationId, UUID uploadId, String fileName) {
+        return "specai-temp/%s/%s/%s".formatted(organizationId, uploadId, fileName);
     }
 
     private String withoutExtension(String fileName) {
@@ -307,9 +339,35 @@ public class DocumentService {
         return dot <= 0 ? fileName : fileName.substring(0, dot);
     }
 
-    private DocumentUploaded event(Document document, DocumentVersion version) {
-        return new DocumentUploaded(document.projectId(), document.id(), version.id(),
-            version.objectStorageKey(), version.mimeType(), version.fileSize());
+    private DocumentUploaded event(Document document, DocumentVersion version,
+                                   DocumentProcessingJob job) {
+        return new DocumentUploaded(job.id(), document.projectId(), document.id(), version.id(),
+            version.objectStorageKey(), version.originalFileName(), version.mimeType(),
+            version.fileSize(), version.sha256(), version.language(), version.ocrRequired());
+    }
+
+    private void registerCompensation(String temporaryKey, String finalKey) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(
+            new TransactionSynchronization() {
+                @Override
+                public void afterCompletion(int status) {
+                    if (status == STATUS_ROLLED_BACK) {
+                        safeDeleteQuietly(temporaryKey);
+                        safeDeleteQuietly(finalKey);
+                    }
+                }
+            });
+    }
+
+    private void safeDeleteQuietly(String objectKey) {
+        try {
+            storage.delete(objectKey);
+        } catch (RuntimeException ignored) {
+            // The scheduled orphan reconciler performs the second cleanup layer.
+        }
     }
 
     private record UploadMetadata(String fileName, String mimeType, String sha256) {
