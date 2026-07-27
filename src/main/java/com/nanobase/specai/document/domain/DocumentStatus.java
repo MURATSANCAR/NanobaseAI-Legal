@@ -10,5 +10,9 @@ public enum DocumentStatus {
     INDEXING,
     READY,
     FAILED,
-    MANUAL_REVIEW_REQUIRED
+    MANUAL_REVIEW_REQUIRED;
+
+    public boolean terminal() {
+        return this == READY || this == FAILED || this == MANUAL_REVIEW_REQUIRED;
+    }
 }

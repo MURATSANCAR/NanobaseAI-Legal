@@ -16,20 +16,24 @@ public class Document {
     @Id
     private UUID id;
     @Column(name = "organization_id", nullable = false, updatable = false)
-    private UUID tenantId;
+    private UUID organizationId;
     @Column(name = "project_id", nullable = false, updatable = false)
-    private UUID tenderProjectId;
+    private UUID projectId;
     @Column(name = "logical_name", nullable = false, length = 255)
-    private String name;
+    private String logicalName;
     @Enumerated(EnumType.STRING)
     @Column(name = "document_type", nullable = false, length = 50)
     private DocumentType documentType;
+    @Column(name = "current_version_id")
+    private UUID currentVersionId;
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 50)
     private DocumentStatus status;
     @Column(name = "current_version_number", nullable = false)
-    private int currentVersion;
-    @Column(name = "created_by", nullable = false, updatable = false)
+    private int currentVersionNumber;
+    @Column(name = "included_in_analysis", nullable = false)
+    private boolean includedInAnalysis;
+    @Column(name = "created_by", nullable = false, updatable = false, length = 255)
     private String createdBy;
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -41,36 +45,53 @@ public class Document {
     protected Document() {
     }
 
-    public static Document uploaded(UUID id, UUID tenantId, UUID projectId, String name,
-                                    DocumentType type, String actor, Instant now) {
+    public static Document uploaded(UUID id, UUID organizationId, UUID projectId,
+                                    String logicalName, DocumentType type,
+                                    boolean includedInAnalysis, String createdBy, Instant now) {
         Document document = new Document();
         document.id = id;
-        document.tenantId = tenantId;
-        document.tenderProjectId = projectId;
-        document.name = name;
+        document.organizationId = organizationId;
+        document.projectId = projectId;
+        document.logicalName = logicalName;
         document.documentType = type;
         document.status = DocumentStatus.UPLOADED;
-        document.currentVersion = 1;
-        document.createdBy = actor;
+        document.currentVersionNumber = 0;
+        document.includedInAnalysis = includedInAnalysis;
+        document.createdBy = createdBy;
         document.createdAt = now;
         document.updatedAt = now;
         return document;
     }
 
-    public UUID id() { return id; }
-    public UUID tenantId() { return tenantId; }
-    public UUID tenderProjectId() { return tenderProjectId; }
-    public String name() { return name; }
-    public DocumentType documentType() { return documentType; }
-    public DocumentStatus status() { return status; }
-    public int currentVersion() { return currentVersion; }
-    public Instant createdAt() { return createdAt; }
-
-    public void processing(DocumentStatus status, Instant now) {
-        if (status == DocumentStatus.UPLOADED) {
-            throw new IllegalArgumentException("Processing cannot transition back to UPLOADED");
+    public void attachVersion(UUID versionId, int versionNumber, Instant now) {
+        if (versionNumber != currentVersionNumber + 1) {
+            throw new IllegalArgumentException("Document version number must increment by one");
         }
-        this.status = status;
-        this.updatedAt = now;
+        currentVersionId = versionId;
+        currentVersionNumber = versionNumber;
+        status = DocumentStatus.UPLOADED;
+        updatedAt = now;
     }
+
+    public void processing(DocumentStatus next, UUID versionId, Instant now) {
+        if (!versionId.equals(currentVersionId)) {
+            return;
+        }
+        status = next;
+        updatedAt = now;
+    }
+
+    public UUID id() { return id; }
+    public UUID organizationId() { return organizationId; }
+    public UUID projectId() { return projectId; }
+    public String logicalName() { return logicalName; }
+    public DocumentType documentType() { return documentType; }
+    public UUID currentVersionId() { return currentVersionId; }
+    public DocumentStatus status() { return status; }
+    public int currentVersionNumber() { return currentVersionNumber; }
+    public boolean includedInAnalysis() { return includedInAnalysis; }
+    public String createdBy() { return createdBy; }
+    public Instant createdAt() { return createdAt; }
+    public Instant updatedAt() { return updatedAt; }
+    public long version() { return version; }
 }

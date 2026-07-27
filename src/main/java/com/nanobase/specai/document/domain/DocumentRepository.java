@@ -6,6 +6,8 @@ import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface DocumentRepository extends JpaRepository<Document, UUID> {
-    List<Document> findAllByTenderProjectIdAndTenantIdOrderByCreatedAtDesc(UUID projectId, UUID tenantId);
-    Optional<Document> findByIdAndTenantId(UUID id, UUID tenantId);
+    List<Document> findAllByProjectIdAndOrganizationIdOrderByCreatedAtDesc(
+        UUID projectId, UUID organizationId);
+    Optional<Document> findByIdAndOrganizationId(UUID id, UUID organizationId);
+    long countByOrganizationIdAndStatus(UUID organizationId, DocumentStatus status);
 }
