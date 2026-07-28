@@ -1,10 +1,10 @@
 # Production Readiness Baseline
 
-Tarih: 2026-07-28. Bu tablo yalnız bu çalışma sırasında gözlenen kanıtı kullanır. `mvn verify`
-97 unit testi başarıyla çalıştırdı; 6 Testcontainers testi Docker yokluğu nedeniyle atlandı.
-Frontend production build, lint ve 16 rendered HTML testi geçti. Python servisleri izole çalışma
-dizinlerinde toplam 21 testi geçti. Docker engine bu hostta olmadığı için gerçek bağımlılık
-smoke, image build, recovery ve E2E kanıtı üretilmedi.
+Tarih: 2026-07-28. Bu tablo yalnız bu çalışma sırasında gözlenen kanıtı kullanır. Son `mvn test`
+koşumu 100 unit testi başarıyla çalıştırdı; önceki `mvn verify` koşumunda 6 Testcontainers testi
+Docker yokluğu nedeniyle atlandı. Frontend production build, lint ve 16 rendered HTML testi
+geçti. Python servisleri izole çalışma dizinlerinde toplam 21 testi geçti. Docker engine bu
+hostta olmadığı için gerçek bağımlılık smoke, image build, recovery ve E2E kanıtı üretilmedi.
 
 | Bileşen | Kod kanıtı | Test kanıtı | Runtime kanıtı | Durum | Kritik açık |
 |---|---|---|---|---|---|

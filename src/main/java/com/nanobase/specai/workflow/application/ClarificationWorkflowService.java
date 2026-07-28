@@ -174,14 +174,66 @@ public class ClarificationWorkflowService {
             update clarification_request set status_concept_id = ?, answered_at = now(),
                    updated_at = now(), version = version + 1 where id = ?
             """, request.targetStatusConceptId(), id);
+        int affected = markAnswerImpact(principal.tenantId(), id, answerId);
         outbox.publish(principal.tenantId(), "ClarificationRequest", id,
             "clarification.answer.received.v1", "clarification.answer.received.v1",
             Map.of("clarificationRequestId", id, "answerDocumentId", request.documentId(),
                 "projectId", before.projectId()), null);
+        outbox.publish(principal.tenantId(), "ClarificationAnswer", answerId,
+            "impact.analysis.requested.v1", "impact.analysis.requested.v1",
+            Map.of("clarificationRequestId", id, "clarificationAnswerId", answerId,
+                "projectId", before.projectId(), "affectedEntityCount", affected), null);
+        metrics.reanalysisRequired(affected);
         ClarificationResponse after = get(id);
         audit.record("clarification.answer.received.v1", "ClarificationRequest", id,
             before, after);
         return after;
+    }
+
+    private int markAnswerImpact(UUID organizationId, UUID clarificationId,
+                                 UUID answerId) {
+        UUID staleStatus = concept("STALE", "STALENESS_STATUS");
+        UUID trigger = concept("SOURCE_CHANGED", "STALENESS_TRIGGER");
+        List<EntityReference> affected = jdbc.query("""
+            select entity_type, entity_id
+              from (
+                select 'REQUIREMENT' as entity_type, requirement_id as entity_id
+                  from clarification_source
+                 where clarification_request_id = ? and requirement_id is not null
+                union
+                select 'RISK', risk_id from clarification_source
+                 where clarification_request_id = ? and risk_id is not null
+                union
+                select 'CONFLICT', conflict_id from clarification_source
+                 where clarification_request_id = ? and conflict_id is not null
+                union
+                select 'AMBIGUITY', ambiguity_id from clarification_source
+                 where clarification_request_id = ? and ambiguity_id is not null
+                union
+                select 'COMPLIANCE_EVALUATION', e.id
+                  from compliance_evaluation e
+                  join clarification_source s on s.requirement_id = e.requirement_id
+                 where s.clarification_request_id = ?
+              ) affected
+            """, (result, row) -> new EntityReference(
+                result.getString(1), result.getObject(2, UUID.class)),
+            clarificationId, clarificationId, clarificationId,
+            clarificationId, clarificationId);
+        int inserted = 0;
+        for (EntityReference reference : affected) {
+            inserted += jdbc.update("""
+                insert into analysis_staleness_record (
+                    id, organization_id, entity_type, entity_id, status_concept_id,
+                    trigger_type_concept_id, trigger_entity_id, reason,
+                    detected_at, created_at
+                ) values (?, ?, ?, ?, ?, ?, ?,
+                          'Clarification answer changed grounded evidence', now(), now())
+                on conflict (organization_id, entity_type, entity_id, status_concept_id)
+                    where resolved_at is null do nothing
+                """, UUID.randomUUID(), organizationId, reference.entityType(),
+                reference.entityId(), staleStatus, trigger, answerId);
+        }
+        return inserted;
     }
 
     @Transactional(readOnly = true)
@@ -345,5 +397,8 @@ public class ClarificationWorkflowService {
     private static Instant instant(ResultSet result, String column) throws SQLException {
         Timestamp value = result.getTimestamp(column);
         return value == null ? null : value.toInstant();
+    }
+
+    private record EntityReference(String entityType, UUID entityId) {
     }
 }

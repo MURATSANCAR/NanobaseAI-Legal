@@ -62,8 +62,9 @@ parallel/conditional model configuration desteklenir; kararlar concept’tir.
 
 ## 11. SLA ve escalation
 
-SLA sürümü ve calendar hedef due/warning/breach üretir. Otomatik periyodik breach
-scheduler/dispatcher açık iştir.
+SLA sürümü ve calendar hedef due/warning/breach üretir. Tenant-aware scheduler
+warning/breach’i idempotent ilerletir; policy yapılandırılmışsa ilk escalation
+kaydını, audit/outbox event’ini ve metrikleri üretir.
 
 ## 12. Business calendar
 
@@ -73,7 +74,9 @@ kapalı gün atlamasını doğrular.
 ## 13. Notification sistemi
 
 Template/rule/delivery versiyonludur. In-app çalışır; e-posta gateway adapter
-sınırıdır. Sanitizer hassas içerikleri allowlist dışında bırakır.
+sınırıdır. Sanitizer hassas içerikleri allowlist dışında bırakır. Durable RabbitMQ
+queue consumer’ı tenant context ve consumer idempotency korumasıyla event’leri
+dispatch eder.
 
 ## 14. Clarification workflow
 
@@ -82,8 +85,9 @@ source’a dönüşür. Review/approve/send/answer action’ları concept status
 
 ## 15. Clarification answer impact
 
-Answer saklanır ve yeniden analiz outbox event’i oluşur. Canlı broker consumer zinciri
-bu hostta doğrulanmadı.
+Answer saklanır; source-linked requirement/compliance/risk/conflict/ambiguity
+kayıtları idempotent stale işaretlenir ve yeniden analiz outbox event’i oluşur.
+Analysis consumer zinciri bu hostta uçtan uca doğrulanmadı.
 
 ## 16. Dynamic reporting
 
@@ -146,8 +150,9 @@ ayrıca korunur.
 ## 27. RabbitMQ event’leri
 
 Workflow instance/node/transition, task, approval, clarification, report, decision,
-finalize/reopen event’leri mevcut transactional outbox’a yazılır. SLA warning/breach,
-notification delivery ve failure event setinin tamamı canlı brokerla testli değildir.
+finalize/reopen event’leri mevcut transactional outbox’a yazılır. SLA warning/breach/
+escalation event’leri scheduler’dan üretilir; notification consumer duplicate
+teslimata karşı idempotenttir. Event setinin tamamı canlı brokerla testli değildir.
 
 ## 28. Çalıştırılan komutlar
 
@@ -162,7 +167,8 @@ yapılmadı.
 
 ## 29. Backend test sonuçları
 
-Son koşum: 89 test, 0 failure, 0 error, BUILD SUCCESS; toplam 32.435 saniye.
+Son koşum: 100 test, 0 failure, 0 error, 0 skipped, BUILD SUCCESS; Maven süresi
+24.781 saniye.
 Detay `docs/TEST-RESULTS-SPRINT-7.md` içindedir.
 
 ## 30. Frontend test sonuçları
@@ -178,7 +184,7 @@ dataset’iyle simulation yapılmadı.
 
 ## 32. Performans ölçümleri
 
-Sprint 7’ye özel k6/JMH/soak ölçümü yapılmadı. Unit suite yaklaşık 31 saniye,
+Sprint 7’ye özel k6/JMH/soak ölçümü yapılmadı. Unit suite yaklaşık 25 saniye,
 frontend production build yaklaşık 3 saniye bandında gözlendi; bunlar performans
 SLA kanıtı değildir.
 
@@ -189,14 +195,14 @@ field masking, approval delegation ve browser authorization E2E testleri eksikti
 
 ## 34. Tamamlanamayan alanlar
 
-SLA scheduler/escalation dispatcher, dedicated notification retry consumer,
-clarification reanalysis consumer E2E, report SSE progress, dashboard/business-role
+Çok seviyeli escalation ilerletmesi, canlı broker retry/dead-letter doğrulaması,
+clarification analysis consumer E2E, report SSE progress, dashboard/business-role
 admin editor, drag/drop designer, reopen-to-new-workflow action ve production-grade
 document template özellikleri tamamlanmadı.
 
 ## 35. Sonraki sprint önerisi
 
-Önce Docker CI üzerinde V13/RLS/broker/object-store acceptance suite’i; ardından SLA
-scheduler ve notification retry; sonra report masking/SSE ve admin designer’lar;
-son olarak signed-in Playwright UAT ve kontrollü pilot dataset ile performance/quality
-gate önerilir.
+Önce Docker CI üzerinde V13/RLS/broker/object-store acceptance suite’i; ardından çok
+seviyeli escalation ve broker retry/dead-letter; sonra report masking/SSE ve admin
+designer’lar; son olarak signed-in Playwright UAT ve kontrollü pilot dataset ile
+performance/quality gate önerilir.

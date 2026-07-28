@@ -20,12 +20,12 @@
 
 1. V13 migration, FORCE RLS ve repository tenant filtreleri yazıldı; Docker olmayan
    bu hostta gerçek PostgreSQL cross-tenant/RLS entegrasyonu çalıştırılmadı.
-2. Sprint 7 outbox event’leri üretilir; duplicate RabbitMQ delivery ve tüm event
-   consumer zinciri canlı broker ile doğrulanmadı.
-3. SLA due hesabı ve kayıt modeli çalışır; periyodik warning/breach scheduler ile
-   otomatik çok seviyeli escalation dispatcher tamamlanmadı.
-4. Clarification answer yeniden analiz event’i üretir; bağımsız consumer’ın
-   requirement/compliance/risk zincirini uçtan uca yenilemesi doğrulanmadı.
+2. Sprint 7 notification consumer duplicate teslimata karşı idempotenttir; RabbitMQ
+   redelivery/retry/dead-letter ve tüm event zinciri canlı broker ile doğrulanmadı.
+3. SLA scheduler warning/breach ve ilk policy escalation’ını üretir; çok seviyeli
+   escalation ilerletmesi ile canlı zaman/broker davranışı doğrulanmadı.
+4. Clarification answer source-linked analizleri stale işaretler ve yeniden analiz
+   event’i üretir; analysis consumer’larının zinciri uçtan uca yenilemesi doğrulanmadı.
 5. Report job progress kalıcıdır ancak SSE progress stream’i yoktur. PDF/DOCX/XLSX
    renderer’ları geçerli minimal artifact üretir; ileri branding/accessibility yoktur.
 6. Report field-level masking, approval delegation domain modeli ve admin role/

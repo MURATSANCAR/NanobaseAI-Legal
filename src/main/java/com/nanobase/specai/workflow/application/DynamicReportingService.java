@@ -316,12 +316,23 @@ public class DynamicReportingService {
             """, (result, row) -> parse(result.getString(1)), version.dataPolicyVersionId());
         int staleCount = count("""
             select count(*) from analysis_staleness_record
-             where entity_id in (
-                 select id from requirement where project_id = ?
-                 union select id from risk_record where project_id = ?
-                 union select id from conflict_record where project_id = ?
-             ) and resolved_at is null
-            """, projectId, projectId, projectId);
+             where resolved_at is null and (
+                 (entity_type = 'REQUIREMENT' and entity_id in (
+                     select id from requirement where project_id = ?))
+                 or (entity_type = 'COMPLIANCE_EVALUATION' and entity_id in (
+                     select id from compliance_evaluation where project_id = ?))
+                 or (entity_type = 'RISK' and entity_id in (
+                     select id from risk_record where project_id = ?))
+                 or (entity_type = 'CONFLICT' and entity_id in (
+                     select id from conflict_record where project_id = ?))
+                 or (entity_type = 'AMBIGUITY' and entity_id in (
+                     select id from ambiguity_finding where project_id = ?))
+                 or (entity_type = 'REPORT' and entity_id in (
+                     select a.id from report_artifact a
+                     join report_generation_job j on j.id = a.report_generation_job_id
+                     where j.project_id = ?))
+             )
+            """, projectId, projectId, projectId, projectId, projectId, projectId);
         String behavior = policy.path("staleBehavior").asText("BLOCK");
         if (staleCount > 0 && ("BLOCK".equals(behavior) || "REANALYZE".equals(behavior))) {
             throw new IllegalStateException("Report data policy blocks stale analysis");

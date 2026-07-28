@@ -8,10 +8,12 @@ Escalation policy ayrı versiyonlanır. `escalation_record` seviye ve trigger re
 concept’leri, hedef user/group, tetiklenme ve çözülme zamanını tutar. Böylece tenant
 farklı öncelik, rol, risk veya proje deadline kuralları tanımlayabilir.
 
-Mevcut uygulama task oluştururken SLA hesabını yapar ve kayıtlar. Calendar unit test
-hafta sonu/mesai penceresini doğrular.
+Task oluşturulurken SLA hesabı ve policy snapshot’ı kaydedilir.
+`Sprint7SlaScheduler` tenant’ları ayrı transaction/database context ile tarar;
+warning ve breach durumlarını idempotent ilerletir, audit/outbox kaydı ve metriği
+üretir. Policy’deki `breachEscalation` yapılandırması varsa escalation kaydı açar ve
+`task.escalated.v1` event’ini üretir. Calendar unit test hafta sonu/mesai penceresini,
+scheduler action testi ise breach’in warning’e önceliğini doğrular.
 
-Sınırlama: periyodik breach scanner/scheduler ve otomatik çok seviyeli escalation
-dispatcher henüz uygulanmadı. `task.sla.warning`, `task.sla.breached` ve
-`task.escalated` event’leri bu nedenle canlı zaman ilerletmeli entegrasyon testinden
-geçmiş sayılmaz.
+Sınırlama: çok seviyeli escalation’ın sonraki seviyeye zamanla ilerlemesi ve canlı
+zaman/broker davranışı Docker’sız bu ortamda uçtan uca doğrulanmadı.

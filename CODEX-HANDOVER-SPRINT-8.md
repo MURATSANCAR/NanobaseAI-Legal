@@ -199,8 +199,9 @@ UAT, offline/rollback, pentest, exact license/SBOM/signature ve customer sign-of
 
 ## 42. Çalıştırılan komutlar
 
-- `JAVA_HOME=... mvn -B verify` → 97/97 unit başarılı; Docker olmadığı için 6/6
-  Testcontainers integration testi atlandı; build başarılı.
+- `JAVA_HOME=... mvn -B verify` → ilk checkpoint’te 97/97 unit başarılı; Docker olmadığı için
+  6/6 Testcontainers integration testi atlandı; build başarılı. Teslim anındaki ek Sprint 7
+  değişiklikleriyle `mvn -B test` yeniden çalıştırıldı: 100/100 başarılı.
 - `pnpm install --lockfile-only`, `pnpm test` → production build ve 16/16 rendered HTML testi
   başarılı.
 - `pnpm lint` → başarılı.
