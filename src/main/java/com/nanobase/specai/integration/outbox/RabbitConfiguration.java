@@ -46,6 +46,8 @@ public class RabbitConfiguration {
         "expert.feedback.recorded.v1";
     public static final String TERMINOLOGY_CANDIDATE =
         "terminology.candidate.discovered.v1";
+    public static final String KNOWLEDGE_QUEUE = "knowledge-extraction.request";
+    public static final String COMPLIANCE_QUEUE = "compliance-analysis.request";
 
     @Bean
     DirectExchange specAiExchange() {
@@ -112,6 +114,28 @@ public class RabbitConfiguration {
     Binding requirementBinding(Queue requirementQueue, DirectExchange specAiExchange) {
         return BindingBuilder.bind(requirementQueue).to(specAiExchange)
             .with(REQUIREMENT_REQUESTED);
+    }
+
+    @Bean
+    Queue knowledgeQueue() {
+        return QueueBuilder.durable(KNOWLEDGE_QUEUE).build();
+    }
+
+    @Bean
+    Binding knowledgeBinding(Queue knowledgeQueue, DirectExchange specAiExchange) {
+        return BindingBuilder.bind(knowledgeQueue).to(specAiExchange)
+            .with("knowledge.extraction.requested.v1");
+    }
+
+    @Bean
+    Queue complianceQueue() {
+        return QueueBuilder.durable(COMPLIANCE_QUEUE).build();
+    }
+
+    @Bean
+    Binding complianceBinding(Queue complianceQueue, DirectExchange specAiExchange) {
+        return BindingBuilder.bind(complianceQueue).to(specAiExchange)
+            .with("compliance.analysis.requested.v1");
     }
 
     @Bean
