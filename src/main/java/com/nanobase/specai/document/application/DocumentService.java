@@ -1,5 +1,7 @@
 package com.nanobase.specai.document.application;
 
+import org.springframework.beans.factory.annotation.Autowired;
+
 import com.nanobase.specai.audit.application.AuditService;
 import com.nanobase.specai.document.api.DocumentContracts.ClauseResponse;
 import com.nanobase.specai.document.api.DocumentContracts.DocumentResponse;
@@ -64,6 +66,7 @@ public class DocumentService {
     private final long maximumFileSize;
     private final Clock clock;
 
+    @Autowired
     public DocumentService(DocumentRepository documents, DocumentVersionRepository versions,
                            ProjectAccessService access, AuditService audit, OutboxService outbox,
                            ObjectStorage storage, CurrentTenant currentTenant,

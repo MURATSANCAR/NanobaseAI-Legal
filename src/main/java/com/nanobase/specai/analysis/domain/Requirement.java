@@ -69,7 +69,8 @@ public class Requirement {
     private UUID promptVersionId;
     @Column(name = "model_run_id", updatable = false)
     private UUID modelRunId;
-    @Column(name = "combined_confidence", nullable = false)
+    @Column(name = "combined_confidence", nullable = false, precision = 10, scale = 6)
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.NUMERIC)
     private double combinedConfidence;
     @Column(name = "explanation_json", nullable = false, columnDefinition = "jsonb")
     private String explanationJson;

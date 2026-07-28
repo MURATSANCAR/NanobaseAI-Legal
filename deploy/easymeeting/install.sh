@@ -81,6 +81,8 @@ SELECT 'CREATE DATABASE specai OWNER ${DATABASE_USER}'
 WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'specai')\gexec
 GRANT ALL PRIVILEGES ON DATABASE specai TO ${DATABASE_USER};
 SQL
+docker exec -i actenora-prodlike-postgres \
+  psql -U actenora -d postgres -c "ALTER ROLE ${DATABASE_USER} BYPASSRLS;"
 
 echo "==> Ensuring MinIO buckets"
 docker run --rm --entrypoint=/bin/sh --network actenora-prodlike-data-network \

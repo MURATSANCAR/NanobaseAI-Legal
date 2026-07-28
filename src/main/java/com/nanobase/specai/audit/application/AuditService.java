@@ -10,6 +10,7 @@ import com.nanobase.specai.shared.web.RequestContext;
 import java.time.Clock;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -20,16 +21,11 @@ public class AuditService {
     private final Clock clock;
 
     public AuditService(AuditEventRepository events, CurrentTenant currentTenant,
-                        ObjectMapper objectMapper) {
-        this(events, currentTenant, objectMapper, Clock.systemUTC());
-    }
-
-    AuditService(AuditEventRepository events, CurrentTenant currentTenant,
-                 ObjectMapper objectMapper, Clock clock) {
+                        ObjectMapper objectMapper, ObjectProvider<Clock> clockProvider) {
         this.events = events;
         this.currentTenant = currentTenant;
         this.objectMapper = objectMapper;
-        this.clock = clock;
+        this.clock = clockProvider.getIfAvailable(Clock::systemUTC);
     }
 
     public void record(String eventType, String entityType, UUID entityId,

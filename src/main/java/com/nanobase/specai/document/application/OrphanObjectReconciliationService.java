@@ -1,5 +1,7 @@
 package com.nanobase.specai.document.application;
 
+import org.springframework.beans.factory.annotation.Autowired;
+
 import com.nanobase.specai.audit.application.AuditService;
 import com.nanobase.specai.document.application.ObjectStorage.StoredObject;
 import com.nanobase.specai.document.domain.DocumentVersionRepository;
@@ -30,6 +32,7 @@ public class OrphanObjectReconciliationService {
     private final Duration gracePeriod;
     private final Clock clock;
 
+    @Autowired
     public OrphanObjectReconciliationService(
         ObjectStorage storage,
         DocumentVersionRepository versions,

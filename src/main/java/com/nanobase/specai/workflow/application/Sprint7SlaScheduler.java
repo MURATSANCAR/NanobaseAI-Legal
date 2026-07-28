@@ -1,5 +1,7 @@
 package com.nanobase.specai.workflow.application;
 
+import org.springframework.beans.factory.annotation.Autowired;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -37,6 +39,7 @@ public class Sprint7SlaScheduler {
     private final Clock clock;
     private final int batchSize;
 
+    @Autowired
     public Sprint7SlaScheduler(
         JdbcTemplate jdbc,
         ObjectMapper mapper,

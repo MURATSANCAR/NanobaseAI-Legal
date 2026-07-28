@@ -13,6 +13,12 @@ specai:
   backpressure:
     fail-closed: ${BACKPRESSURE_FAIL_CLOSED:false}
 
+spring:
+  jpa:
+    hibernate:
+      # Flyway owns schema; NUMERIC/DOUBLE mapping differences must not block boot.
+      ddl-auto: none
+
 management:
   tracing:
     sampling:

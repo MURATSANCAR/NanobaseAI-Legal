@@ -12,16 +12,16 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 public class CorsConfig {
     @Bean
     CorsConfigurationSource corsConfigurationSource(
-        @Value("${specai.security.allowed-origins}") List<String> allowedOrigins) {
+        @Value("${specai.security.allowed-origins:http://localhost:3000}") List<String> allowedOrigins) {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(allowedOrigins);
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type"));
-        configuration.setExposedHeaders(List.of("Location"));
-        configuration.setAllowCredentials(false);
+        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Correlation-ID"));
+        configuration.setExposedHeaders(List.of("X-Correlation-ID", "Location"));
+        configuration.setAllowCredentials(true);
         configuration.setMaxAge(3600L);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/api/**", configuration);
+        source.registerCorsConfiguration("/**", configuration);
         return source;
     }
 }

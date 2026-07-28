@@ -18,12 +18,8 @@ public class ConsumerIdempotencyService {
     public ConsumerIdempotencyService(
         ProcessedMessageRepository messages,
         @Value("${specai.messaging.idempotency-processing-timeout:PT30M}")
-        Duration processingTimeout) {
-        this(messages, processingTimeout, Clock.systemUTC());
-    }
-
-    ConsumerIdempotencyService(ProcessedMessageRepository messages,
-                               Duration processingTimeout, Clock clock) {
+        Duration processingTimeout,
+        Clock clock) {
         this.messages = messages;
         this.processingTimeout = processingTimeout;
         this.clock = clock;

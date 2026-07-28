@@ -31,9 +31,6 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
 import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.util.StringUtils;
-import org.springframework.web.cors.CorsConfiguration;
-import org.springframework.web.cors.CorsConfigurationSource;
-import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 @Configuration
 @EnableMethodSecurity
@@ -265,21 +262,6 @@ public class SecurityConfig {
             .addFilterAfter(rateLimitFilter, SecurityContextMdcFilter.class)
             .addFilterAfter(tenantTransactionFilter, RateLimitFilter.class)
             .build();
-    }
-
-    @Bean
-    CorsConfigurationSource corsConfigurationSource(
-        @Value("${specai.security.allowed-origins:http://localhost:3000}") List<String> origins) {
-        CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(origins);
-        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Correlation-ID"));
-        configuration.setExposedHeaders(List.of("X-Correlation-ID"));
-        configuration.setAllowCredentials(true);
-        configuration.setMaxAge(3600L);
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", configuration);
-        return source;
     }
 
     @Bean

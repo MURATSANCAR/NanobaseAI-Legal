@@ -1,5 +1,7 @@
 package com.nanobase.specai.integration.outbox;
 
+import org.springframework.beans.factory.annotation.Autowired;
+
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -22,6 +24,7 @@ public class OutboxStore {
     private final Duration baseBackoff;
     private final Duration maximumBackoff;
 
+    @Autowired
     public OutboxStore(OutboxEventRepository events,
                        @Value("${specai.outbox.publisher-id:${HOSTNAME:local}-${random.uuid}}")
                        String publisherId,

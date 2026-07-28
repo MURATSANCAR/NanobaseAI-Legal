@@ -1,5 +1,7 @@
 package com.nanobase.specai.tender.application;
 
+import org.springframework.beans.factory.annotation.Autowired;
+
 import com.nanobase.specai.audit.application.AuditService;
 import com.nanobase.specai.shared.security.CurrentTenant;
 import com.nanobase.specai.shared.security.TenantPrincipal;
@@ -30,6 +32,7 @@ public class TenderProjectService {
     private final CurrentTenant currentTenant;
     private final Clock clock;
 
+    @Autowired
     public TenderProjectService(TenderProjectRepository projects, ProjectMemberRepository members,
                                 ProjectCodeGenerator codes, ProjectAccessService access,
                                 AuditService audit, CurrentTenant currentTenant) {

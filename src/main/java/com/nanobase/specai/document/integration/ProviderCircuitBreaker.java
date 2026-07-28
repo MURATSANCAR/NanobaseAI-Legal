@@ -1,5 +1,7 @@
 package com.nanobase.specai.document.integration;
 
+import org.springframework.beans.factory.annotation.Autowired;
+
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -15,6 +17,7 @@ public class ProviderCircuitBreaker {
     private final Duration openDuration;
     private final Clock clock;
 
+    @Autowired
     public ProviderCircuitBreaker(
         @Value("${specai.document-intelligence.circuit-breaker.failure-threshold:5}")
         int failureThreshold,

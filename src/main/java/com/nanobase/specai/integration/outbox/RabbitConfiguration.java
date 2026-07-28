@@ -7,6 +7,9 @@ import org.springframework.amqp.core.Declarables;
 import org.springframework.amqp.core.DirectExchange;
 import org.springframework.amqp.core.Queue;
 import org.springframework.amqp.core.QueueBuilder;
+import org.springframework.amqp.rabbit.connection.ConnectionFactory;
+import org.springframework.amqp.rabbit.core.RabbitAdmin;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import java.util.ArrayList;
@@ -14,6 +17,11 @@ import java.util.List;
 
 @Configuration
 public class RabbitConfiguration {
+    @Bean
+    @ConditionalOnMissingBean
+    RabbitAdmin rabbitAdmin(ConnectionFactory connectionFactory) {
+        return new RabbitAdmin(connectionFactory);
+    }
     public static final String EXCHANGE = "specai.events";
     public static final String RETRY_EXCHANGE = "specai.events.retry";
     public static final String DEAD_LETTER_EXCHANGE = "specai.events.dlx";

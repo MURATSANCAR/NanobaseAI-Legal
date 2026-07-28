@@ -1,5 +1,7 @@
 package com.nanobase.specai.tender.infrastructure;
 
+import org.springframework.beans.factory.annotation.Autowired;
+
 import java.time.Clock;
 import java.time.ZoneOffset;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -10,6 +12,7 @@ public class ProjectCodeGenerator {
     private final JdbcTemplate jdbc;
     private final Clock clock;
 
+    @Autowired
     public ProjectCodeGenerator(JdbcTemplate jdbc) {
         this(jdbc, Clock.systemUTC());
     }

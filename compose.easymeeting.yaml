@@ -28,10 +28,15 @@ services:
       S3_ACCESS_KEY: ${MINIO_ACCESS_KEY}
       S3_SECRET_KEY: ${MINIO_SECRET_KEY}
       S3_SOURCE_BUCKET: specai-original
+      TEMPORARY_DIRECTORY: /var/lib/specai/tmp
     networks:
       - specai
       - actenora-data
     depends_on: !override {}
+    # Avoid read-only /tmp permission issues with nested TEMPORARY_DIRECTORY.
+    read_only: false
+    tmpfs: !override
+      - /tmp:size=1g,mode=1777
 
   ai-orchestrator:
     environment:
@@ -88,6 +93,10 @@ services:
       - actenora-data
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    # Base compose uses read_only + /tmp mode=1770; Tomcat cannot create tempDir.
+    read_only: false
+    tmpfs: !override
+      - /tmp:size=512m,mode=1777
 
   frontend:
     build:
@@ -104,7 +113,13 @@ services:
       - specai
     # Portal is built with basePath=/legal; nginx proxies /legal/ → container /legal/
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O - http://localhost:3000/legal/ | grep -q 'Şartname' || wget -q -O - http://localhost:3000/ | grep -q 'Şartname'"]
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/legal/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
 
 networks:
   specai:
