@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nanobase.specai.audit.application.AuditService;
 import com.nanobase.specai.integration.outbox.OutboxService;
+import com.nanobase.specai.shared.observability.PlatformMetrics;
 import com.nanobase.specai.shared.security.CurrentTenant;
 import com.nanobase.specai.shared.security.TenantPrincipal;
 import com.nanobase.specai.workflow.api.ClarificationContracts.ClarificationAnswerRequest;
@@ -30,15 +31,18 @@ public class ClarificationWorkflowService {
     private final CurrentTenant currentTenant;
     private final AuditService audit;
     private final OutboxService outbox;
+    private final PlatformMetrics metrics;
 
     public ClarificationWorkflowService(JdbcTemplate jdbc, ObjectMapper mapper,
                                         CurrentTenant currentTenant,
-                                        AuditService audit, OutboxService outbox) {
+                                        AuditService audit, OutboxService outbox,
+                                        PlatformMetrics metrics) {
         this.jdbc = jdbc;
         this.mapper = mapper;
         this.currentTenant = currentTenant;
         this.audit = audit;
         this.outbox = outbox;
+        this.metrics = metrics;
     }
 
     @Transactional(readOnly = true)
@@ -145,6 +149,9 @@ public class ClarificationWorkflowService {
         audit.record(event, "ClarificationRequest", id, before, after);
         outbox.publish(principal.tenantId(), "ClarificationRequest", id, event, event,
             Map.of("clarificationRequestId", id, "projectId", after.projectId()), null);
+        if ("send".equals(effect)) {
+            metrics.sprint7("clarification_sent_total");
+        }
         return after;
     }
 
@@ -224,6 +231,7 @@ public class ClarificationWorkflowService {
             candidate.get("sourceType"), candidate.get("sourceId"), code,
             candidate.get("question"), candidate.get("reason"), candidate.get("priority"),
             status, candidate.get("legal"));
+        metrics.sprint7("clarification_created_total");
         UUID revisionId = UUID.randomUUID();
         jdbc.update("""
             insert into clarification_revision (
