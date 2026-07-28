@@ -171,18 +171,32 @@ export default function SpecAiPortal() {
 
   useEffect(() => {
     let active = true;
-    restoreSession()
-      .then(async (user) => {
+    (async () => {
+      try {
+        const user = await restoreSession();
         if (!active) return;
         setSession(user);
-        if (user) await loadProjects(user.access_token);
-      })
-      .catch(showProblem)
-      .finally(() => active && setLoading(false));
+        setLoading(false);
+        if (user) {
+          try {
+            await loadProjects(user.access_token);
+          } catch (error) {
+            showSurfaceProblem(error);
+          }
+        }
+      } catch (error) {
+        if (!active) return;
+        setSession(null);
+        setLoading(false);
+        showProblem(error);
+      }
+    })();
     return () => {
       active = false;
     };
-  }, [loadProjects, showProblem]);
+    // Mount-once bootstrap; loadProjects/showProblem are stable enough via token default arg.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (

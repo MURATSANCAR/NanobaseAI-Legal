@@ -113,6 +113,17 @@ upstream legal_portal {
         return 301 /legal/;
     }
 
+    # Vinext serves /assets/*; HTML references /legal/assets/*
+    location ^~ /legal/assets/ {
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        rewrite ^/legal/assets/(.*)$ /assets/$1 break;
+        proxy_pass http://legal_portal;
+    }
+
     location /legal/ {
         proxy_http_version 1.1;
         proxy_set_header Host $host;
@@ -133,6 +144,27 @@ upstream legal_portal {
     if "location /legal/" not in text:
         text = text.replace(needle, locations + needle, 1)
     print("nginx /legal locations inserted")
+
+# Ensure asset rewrite exists even when /legal/ was configured earlier
+assets_block = """
+    # Vinext serves /assets/*; HTML references /legal/assets/*
+    location ^~ /legal/assets/ {
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        rewrite ^/legal/assets/(.*)$ /assets/$1 break;
+        proxy_pass http://legal_portal;
+    }
+
+"""
+if "location ^~ /legal/assets/" not in text and "location /legal/assets/" not in text:
+    if "    location /legal/ {" in text:
+        text = text.replace("    location /legal/ {", assets_block + "    location /legal/ {", 1)
+        print("nginx /legal/assets/ rewrite inserted")
+    else:
+        print("WARNING: could not insert /legal/assets/ rewrite")
 
 conf.write_text(text)
 if avail.exists() and avail.resolve() != conf.resolve():

@@ -134,9 +134,10 @@ services:
       DOCUMENT_INTELLIGENCE_ENABLED: "true"
       DOCLING_ENABLED: "true"
       DOCLING_BASE_URL: http://document-intelligence:8090
-      OPENCONTRACTS_ENABLED: ${OPENCONTRACTS_ENABLED:-false}
+      OPENCONTRACTS_ENABLED: ${OPENCONTRACTS_ENABLED:-true}
       OPENCONTRACTS_BASE_URL: ${OPENCONTRACTS_BASE_URL:-http://opencontracts:8091}
       OPENCONTRACTS_API_TOKEN: ${OPENCONTRACTS_API_TOKEN:-}
+      AI_ORCHESTRATOR_BASE_URL: http://ai-orchestrator:8090
       SPECAI_AI_ORCHESTRATOR_BASE_URL: http://ai-orchestrator:8090
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
     ports:
@@ -151,6 +152,8 @@ services:
       redis:
         condition: service_healthy
       document-intelligence:
+        condition: service_healthy
+      opencontracts:
         condition: service_healthy
       ai-orchestrator:
         condition: service_healthy
@@ -169,6 +172,32 @@ services:
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     pids_limit: 256
+    restart: unless-stopped
+
+  opencontracts:
+    build:
+      context: ./services/opencontracts
+    environment:
+      DOCLING_BASE_URL: http://document-intelligence:8090
+      S3_SOURCE_BUCKET: specai-original
+      OPENCONTRACTS_API_TOKEN: ${OPENCONTRACTS_API_TOKEN:-}
+      OPENCONTRACTS_PROVIDER_VERSION: specai-opencontracts-1.0
+    depends_on:
+      document-intelligence:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8091/health/ready', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    networks: [specai]
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1770
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 64
     restart: unless-stopped
 
   document-intelligence:

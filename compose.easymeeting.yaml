@@ -38,6 +38,14 @@ services:
     tmpfs: !override
       - /tmp:size=1g,mode=1777
 
+  opencontracts:
+    environment:
+      DOCLING_BASE_URL: http://document-intelligence:8090
+      S3_SOURCE_BUCKET: specai-original
+      OPENCONTRACTS_API_TOKEN: ${OPENCONTRACTS_API_TOKEN:-}
+    networks:
+      - specai
+
   ai-orchestrator:
     environment:
       MODEL_DEPLOYMENTS_JSON: ${AI_MODEL_DEPLOYMENTS_JSON}
@@ -76,6 +84,9 @@ services:
       DOCUMENT_INTELLIGENCE_ENABLED: "true"
       DOCLING_ENABLED: "true"
       DOCLING_BASE_URL: http://document-intelligence:8090
+      OPENCONTRACTS_ENABLED: "true"
+      OPENCONTRACTS_BASE_URL: http://opencontracts:8091
+      OPENCONTRACTS_API_TOKEN: ${OPENCONTRACTS_API_TOKEN:-}
       AI_ORCHESTRATOR_BASE_URL: http://ai-orchestrator:8090
       SPECAI_AI_ORCHESTRATOR_BASE_URL: http://ai-orchestrator:8090
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-https://portal.nanobase.ai}
@@ -84,6 +95,8 @@ services:
       - "127.0.0.1:8098:8080"
     depends_on: !override
       document-intelligence:
+        condition: service_healthy
+      opencontracts:
         condition: service_healthy
       ai-orchestrator:
         condition: service_healthy
