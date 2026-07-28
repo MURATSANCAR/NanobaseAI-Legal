@@ -11,18 +11,27 @@ services:
   minio:
     ports: []
     environment:
+      MINIO_ROOT_PASSWORD: null
       MINIO_ROOT_PASSWORD_FILE: /run/secrets/MINIO_SECRET_KEY
     secrets: [MINIO_SECRET_KEY]
     security_opt: [no-new-privileges:true]
 
+  minio-init:
+    profiles: [never]
+
   rabbitmq:
     ports: []
-    secrets: [RABBITMQ_PASSWORD]
+    environment:
+      RABBITMQ_DEFAULT_USER: null
+      RABBITMQ_DEFAULT_PASS: null
+      RABBITMQ_CONFIG_FILE: /run/secrets/RABBITMQ_CONFIG
+    secrets: [RABBITMQ_CONFIG]
     security_opt: [no-new-privileges:true]
 
   redis:
     ports: []
-    secrets: [REDIS_PASSWORD]
+    command: ["redis-server", "/run/secrets/REDIS_CONFIG"]
+    secrets: [REDIS_CONFIG]
     security_opt: [no-new-privileges:true]
 
   keycloak:
@@ -63,6 +72,12 @@ services:
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:?Set the exact production origins}
       TLS_CERTIFICATE: /run/secrets/TLS_CERTIFICATE
       TLS_PRIVATE_KEY: /run/secrets/TLS_PRIVATE_KEY
+      DATABASE_PASSWORD: null
+      DATABASE_MIGRATION_PASSWORD: null
+      MINIO_ACCESS_KEY: null
+      MINIO_SECRET_KEY: null
+      RABBITMQ_PASSWORD: null
+      REDIS_PASSWORD: null
     secrets:
       - DATABASE_PASSWORD
       - DATABASE_MIGRATION_PASSWORD
@@ -72,11 +87,31 @@ services:
       - REDIS_PASSWORD
       - TLS_CERTIFICATE
       - TLS_PRIVATE_KEY
+    depends_on: !override
+      postgres: {condition: service_healthy}
+      minio: {condition: service_healthy}
+      rabbitmq: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      keycloak: {condition: service_healthy}
+      document-intelligence: {condition: service_healthy}
+      ai-orchestrator: {condition: service_healthy}
+      clamav: {condition: service_healthy}
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "wget --no-check-certificate -q -O - https://localhost:8080/actuator/health/readiness | grep '\"status\":\"UP\"'"
 
   document-intelligence:
     image: ${DOCUMENT_INTELLIGENCE_IMAGE:?Use an immutable parser image tag or digest}
     build: null
     ports: []
+    environment:
+      S3_ACCESS_KEY: null
+      S3_SECRET_KEY: null
+      SECRETS_DIRECTORY: /run/secrets
+    secrets:
+      - MINIO_ACCESS_KEY
+      - MINIO_SECRET_KEY
 
   ai-orchestrator:
     image: ${AI_ORCHESTRATOR_IMAGE:?Use an immutable AI image tag or digest}
@@ -96,9 +131,9 @@ secrets:
     external: true
   MINIO_SECRET_KEY:
     external: true
-  RABBITMQ_PASSWORD:
+  RABBITMQ_CONFIG:
     external: true
-  REDIS_PASSWORD:
+  REDIS_CONFIG:
     external: true
   KEYCLOAK_ADMIN_PASSWORD:
     external: true

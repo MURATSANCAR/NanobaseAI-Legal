@@ -1,0 +1,21 @@
+{
+  "disclaimer": "Synthetic pipeline fixture; not customer acceptance evidence.",
+  "requirements": 6,
+  "expectedConflicts": [
+    "Base specification -20 C versus referenced attachment -10 C"
+  ],
+  "addendumImpacts": [
+    "working-temperature requirement",
+    "product evidence",
+    "compliance evaluation",
+    "risk record",
+    "report snapshot"
+  ],
+  "catalogExpectations": {
+    "ipProtection": "COMPLIANT",
+    "power": "COMPLIANT",
+    "coolingCapacity": "COMPLIANT",
+    "soundPressure": "NON_COMPLIANT",
+    "temperature": "MISSING_OR_NON_COMPLIANT"
+  }
+}

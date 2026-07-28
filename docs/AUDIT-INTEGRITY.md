@@ -8,6 +8,6 @@ ettirir; saatlik `AuditIntegrityVerifier` tüm tenant zincirlerini kontrol eder 
 Payload serializer before/after JSON kullanır; correlation, user, IP, user-agent ve event
 metadata taşır. Token, signed URL, doküman/evidence/prompt/model raw content’i taşımamalıdır.
 
-Bilinen risk: aynı tenant için eşzamanlı insert zincir başı lock kullanmıyor; advisory lock ile
-sertleştirme veya signed/WORM batch archive production öncesi gereklidir. Migration/runtime DB
-testi Docker yokluğu nedeniyle çalıştırılmadı.
+Insert trigger tenant-scoped transaction advisory lock ile aynı chain head’e eşzamanlı yazmayı
+serialize eder. Signed/WORM batch archive production öncesi değerlendirilmelidir.
+Migration/runtime DB testi Docker yokluğu nedeniyle çalıştırılmadı.

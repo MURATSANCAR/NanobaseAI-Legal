@@ -19,8 +19,15 @@ reject "production images do not use latest" 'image:\s*\S+:latest\b' \
   compose*.yaml Dockerfile services/*/Dockerfile frontend/Dockerfile
 reject "repository does not contain private keys" 'BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY' .
 reject "model runtime is not host-published" '8092:8090' compose*.yaml
-reject "production config has no default secret" '(PASSWORD|SECRET|TOKEN):[^$]*[A-Za-z0-9]' \
-  src/main/resources/application-production.yml compose.production.yaml
+secret_findings="$(rg -n '(PASSWORD|SECRET|TOKEN):' \
+  src/main/resources/application-production.yml compose.production.yaml \
+  | rg -v ':\s*(null|\$\{)' || true)"
+if [[ -n "$secret_findings" ]]; then
+  printf 'FAIL production config has no default secret\n%s\n' "$secret_findings"
+  failures=$((failures + 1))
+else
+  printf 'OK   production config has no default secret\n'
+fi
 
 if rg -n '^USER (root|0)$' Dockerfile services/*/Dockerfile frontend/Dockerfile >/dev/null; then
   printf 'FAIL production Dockerfile declares root user\n'

@@ -123,12 +123,21 @@ def load_deployments() -> tuple[Deployment, ...]:
         if not isinstance(item, dict):
             raise RuntimeError("Every model deployment must be an object")
         api_key_env = item.get("apiKeyEnvironment")
+        api_key_file = item.get("apiKeyFile")
+        api_key = os.getenv(str(api_key_env)) if api_key_env else None
+        if not api_key and api_key_file:
+            path = os.path.abspath(str(api_key_file))
+            secrets_root = os.path.abspath(os.getenv("SECRETS_DIRECTORY", "/run/secrets"))
+            if not path.startswith(secrets_root + os.sep):
+                raise RuntimeError("Model API key file must be inside the secrets directory")
+            with open(path, encoding="utf-8") as secret_file:
+                api_key = secret_file.read().strip()
         deployments.append(
             Deployment(
                 profile=str(item["profile"]),
                 base_url=str(item["baseUrl"]).rstrip("/"),
                 runtime_model=str(item["runtimeModel"]),
-                api_key=os.getenv(str(api_key_env)) if api_key_env else None,
+                api_key=api_key,
                 timeout_seconds=float(item.get("timeoutSeconds", 120)),
             )
         )

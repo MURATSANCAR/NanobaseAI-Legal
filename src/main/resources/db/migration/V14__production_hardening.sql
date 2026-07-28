@@ -326,6 +326,8 @@ ALTER TABLE audit_event
 
 CREATE OR REPLACE FUNCTION assign_audit_hash() RETURNS trigger AS $$
 BEGIN
+    -- Serialize the chain head per tenant without blocking other tenants.
+    PERFORM pg_advisory_xact_lock(hashtextextended(NEW.organization_id::text, 0));
     SELECT event_hash INTO NEW.previous_hash
       FROM audit_event
      WHERE organization_id = NEW.organization_id
@@ -473,13 +475,13 @@ INSERT INTO backpressure_policy (
     ('84000000-0000-0000-0000-000000000001', 'DOCUMENT_PROCESSING_DEFAULT',
      'DOCUMENT_PROCESSING',
      '{"queueDepth":{"delay":100,"reject":500},"oldestJobSeconds":{"reject":1800},'
-       || '"decisions":["ACCEPT","ACCEPT_WITH_DELAY","QUEUE","REJECT_TEMPORARILY"]}',
+       '"decisions":["ACCEPT","ACCEPT_WITH_DELAY","QUEUE","REJECT_TEMPORARILY"]}'::jsonb,
      now(), now()),
     ('84000000-0000-0000-0000-000000000002', 'MODEL_ANALYSIS_DEFAULT',
      'MODEL_ANALYSIS',
      '{"queueDepth":{"delay":20,"reject":100},"utilization":{"delay":0.80,"reject":0.95},'
-       || '"decisions":["ACCEPT","ACCEPT_WITH_DELAY","QUEUE","REJECT_TEMPORARILY",'
-       || '"REQUIRE_ADMIN_OVERRIDE"]}',
+       '"decisions":["ACCEPT","ACCEPT_WITH_DELAY","QUEUE","REJECT_TEMPORARILY",'
+       '"REQUIRE_ADMIN_OVERRIDE"]}'::jsonb,
      now(), now());
 
 DO $$

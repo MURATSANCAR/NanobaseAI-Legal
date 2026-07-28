@@ -28,7 +28,7 @@ pnpm test
 
 Vinext production build başarılıdır. Source-contract suite workflow designer,
 backend-configured kolon/concept’ler ve task/approval/clarification/report/decision
-API yollarını doğrular. Son tam koşum bu belge tesliminde yeniden çalıştırılır.
+API yollarını doğrular. Son koşum: 16 test, 16 pass, 0 fail.
 
 ## Skip / ölçülmeyen
 

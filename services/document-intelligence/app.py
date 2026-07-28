@@ -114,11 +114,24 @@ app = FastAPI(
 
 
 def s3_client():
+    secrets_directory = Path(os.getenv("SECRETS_DIRECTORY", "/run/secrets"))
+    access_key_file = secrets_directory / "MINIO_ACCESS_KEY"
+    secret_key_file = secrets_directory / "MINIO_SECRET_KEY"
+    access_key = os.getenv("S3_ACCESS_KEY") or (
+        access_key_file.read_text(encoding="utf-8").strip()
+        if access_key_file.is_file() else None
+    )
+    secret_key = os.getenv("S3_SECRET_KEY") or (
+        secret_key_file.read_text(encoding="utf-8").strip()
+        if secret_key_file.is_file() else None
+    )
+    if not access_key or not secret_key:
+        raise RuntimeError("S3 credentials are unavailable")
     return boto3.client(
         "s3",
         endpoint_url=os.environ["S3_ENDPOINT"],
-        aws_access_key_id=os.environ["S3_ACCESS_KEY"],
-        aws_secret_access_key=os.environ["S3_SECRET_KEY"],
+        aws_access_key_id=access_key,
+        aws_secret_access_key=secret_key,
         region_name=os.getenv("S3_REGION", "us-east-1"),
     )
 

@@ -125,7 +125,14 @@ class PlatformInfrastructureIT {
             "report_section_definition", "report_data_snapshot",
             "report_generation_job", "report_artifact", "decision_support_case",
             "executive_decision", "project_finalization_record",
-            "dashboard_definition", "dashboard_widget");
+            "dashboard_definition", "dashboard_widget",
+            "feature_definition", "feature_assignment", "quota_definition",
+            "quota_assignment", "rate_limit_policy", "backpressure_policy",
+            "file_security_assessment", "prompt_security_assessment",
+            "quality_gate_definition", "quality_gate_version",
+            "evaluation_result_item", "shadow_execution", "canary_assignment",
+            "recovery_policy", "retention_policy", "data_classification_policy",
+            "go_live_checklist_item");
         assertThat(minio.bucketExists(
             BucketExistsArgs.builder().bucket("specai-original").build())).isTrue();
         assertThat(rabbitAdmin.getQueueInfo("document-processing.request")).isNotNull();
@@ -219,6 +226,60 @@ class PlatformInfrastructureIT {
                 Integer.class, projectId);
         });
         assertThat(visible).isZero();
+    }
+
+    @Test
+    void productionAssignmentsAreTenantIsolatedAndAuditChainVerifies() {
+        UUID organizationA = UUID.randomUUID();
+        UUID organizationB = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        jdbc.update("insert into organization (id, name) values (?, ?)",
+            organizationA, "Production Tenant A");
+        jdbc.update("insert into organization (id, name) values (?, ?)",
+            organizationB, "Production Tenant B");
+        TransactionTemplate transactions = new TransactionTemplate(transactionManager);
+        transactions.executeWithoutResult(ignored -> {
+            jdbc.queryForObject("select set_config('app.current_organization_id', ?, true)",
+                String.class, organizationA.toString());
+            jdbc.update("""
+                insert into tender_project (
+                    id, organization_id, project_code, name, institution_name,
+                    priority, status, created_by, owner_user_id,
+                    created_at, updated_at, version
+                ) values (?, ?, ?, 'Production controls', 'Synthetic Institution',
+                          'NORMAL', 'DRAFT', 'owner', 'owner', now(), now(), 0)
+                """, projectId, organizationA, "PROD-" + UUID.randomUUID());
+            jdbc.update("""
+                insert into feature_assignment (
+                    id, organization_id, project_id, feature_definition_id, enabled,
+                    configuration_json, created_at, updated_at
+                ) values (?, ?, ?, '81000000-0000-0000-0000-000000000005',
+                          true, '{}'::jsonb, now(), now())
+                """, UUID.randomUUID(), organizationA, projectId);
+            jdbc.update("""
+                insert into audit_event (
+                    id, organization_id, user_id, event_type, entity_type, entity_id,
+                    created_at, after_json, correlation_id
+                ) values (?, ?, 'integration', 'CONTROL_CREATED', 'Project', ?,
+                          now(), '{}'::jsonb, ?)
+                """, UUID.randomUUID(), organizationA, projectId, UUID.randomUUID());
+        });
+        Integer foreignVisible = transactions.execute(ignored -> {
+            jdbc.queryForObject("select set_config('app.current_organization_id', ?, true)",
+                String.class, organizationB.toString());
+            return jdbc.queryForObject(
+                "select count(*) from feature_assignment where project_id = ?",
+                Integer.class, projectId);
+        });
+        Boolean chainValid = transactions.execute(ignored -> {
+            jdbc.queryForObject("select set_config('app.current_organization_id', ?, true)",
+                String.class, organizationA.toString());
+            return jdbc.queryForObject(
+                "select valid from verify_audit_chain(?)",
+                Boolean.class, organizationA);
+        });
+        assertThat(foreignVisible).isZero();
+        assertThat(chainValid).isTrue();
     }
 
     @Test

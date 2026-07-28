@@ -4,7 +4,7 @@
    restore, chaos, load, offline ve E2E çalıştırılmadı.
 2. Workflow/report/decision/finalization Sprint 7 çalışma ağacı değişiklikleri mevcut; özel
    integration/UAT kanıtı yok.
-3. Audit hash insert concurrency tenant advisory lock ile sertleştirilmedi.
+3. Audit hash chain runtime migration/corruption testi Docker yokluğu nedeniyle koşulmadı.
 4. Quota yalnız upload storage/document count’a bağlı; kalan resource kodları bağlanmadı.
 5. Backpressure yalnız document upload kabulüne bağlı; model/GPU adapter ve ETA yok.
 6. Quality gate evaluator activation service’lerine tam bağlanmadı; shadow/canary execution
@@ -15,3 +15,22 @@
 10. Retention/classification schema var; masking/deletion/export enforcement tam değil.
 11. GitHub Actions ref’leri commit SHA ile pinlenmedi; Cosign sign/verify yok.
 12. Sites portalı için generated social preview kullanıldı; bu runtime security evidence değildir.
+
+## Sprint 7 özel sınırları
+
+1. V13 migration, FORCE RLS ve repository tenant filtreleri yazıldı; Docker olmayan
+   bu hostta gerçek PostgreSQL cross-tenant/RLS entegrasyonu çalıştırılmadı.
+2. Sprint 7 outbox event’leri üretilir; duplicate RabbitMQ delivery ve tüm event
+   consumer zinciri canlı broker ile doğrulanmadı.
+3. SLA due hesabı ve kayıt modeli çalışır; periyodik warning/breach scheduler ile
+   otomatik çok seviyeli escalation dispatcher tamamlanmadı.
+4. Clarification answer yeniden analiz event’i üretir; bağımsız consumer’ın
+   requirement/compliance/risk zincirini uçtan uca yenilemesi doğrulanmadı.
+5. Report job progress kalıcıdır ancak SSE progress stream’i yoktur. PDF/DOCX/XLSX
+   renderer’ları geçerli minimal artifact üretir; ileri branding/accessibility yoktur.
+6. Report field-level masking, approval delegation domain modeli ve admin role/
+   dashboard editor ekranları tamamlanmadı.
+7. Reopen geçmişi append-only korunur; policy ile otomatik yeni workflow instance
+   başlatma bağlı değildir.
+8. Frontend production build/source tests kapsamındadır; signed-in browser E2E,
+   drag/drop workflow canvas ve görsel regression yapılmadı.
