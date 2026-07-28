@@ -104,3 +104,69 @@ Hatalar `application/problem+json` RFC 7807 biçimindedir:
 }
 ```
 
+# Sprint 9 pilot ve release kontrol düzlemi
+
+## Pilot, feedback ve experiments
+
+- `POST /api/v1/configuration-snapshots`
+- `GET /api/v1/configuration-snapshots/{id}`
+- `POST /api/v1/pilot-sessions`
+- `GET /api/v1/pilot-sessions/{id}`
+- `POST /api/v1/pilot-sessions/{id}/events`
+- `POST /api/v1/pilot-sessions/{id}/metrics`
+- `GET /api/v1/pilot-quality-dashboard`
+- `GET /api/v1/pilot-concepts/{catalogCode}`
+- `POST /api/v1/feedback`
+- `GET /api/v1/feedback`
+- `GET /api/v1/feedback/{id}`
+- `POST /api/v1/feedback/{id}/triage`
+- `POST /api/v1/feedback/{id}/assign`
+- `POST /api/v1/feedback/{id}/resolve`
+- `GET /api/v1/feedback/{id}/history`
+- `POST /api/v1/reproduction-packages`
+- `POST /api/v1/regression-suites`
+- `POST /api/v1/improvement-candidates`
+- `GET /api/v1/improvement-candidates`
+- `GET /api/v1/improvement-candidates/{id}`
+- `POST /api/v1/improvement-candidates/{id}/experiments`
+- `POST /api/v1/improvement-candidates/{id}/shadow`
+- `POST /api/v1/improvement-candidates/{id}/canary`
+- `POST /api/v1/improvement-candidates/{id}/activate`
+- `POST /api/v1/improvement-candidates/{id}/reject`
+- `GET /api/v1/experiments`
+- `GET /api/v1/experiments/{id}`
+- `POST /api/v1/experiments/{id}/runs`
+- `GET /api/v1/experiment-runs/{id}`
+- `GET|POST /api/v1/experiment-runs/{id}/results`
+- `POST /api/v1/shadow-executions/{id}/results`
+- `POST /api/v1/canary-assignments/{id}/results`
+- `POST /api/v1/configuration-activations/rollback`
+- `POST /api/v1/quality-debt`
+- `POST /api/v1/quality-debt/{id}/accept`
+- `POST /api/v1/review-disagreements`
+- `POST /api/v1/review-disagreements/{id}/adjudicate`
+
+## Release ve go-live
+
+- `POST /api/v1/releases`
+- `GET /api/v1/releases`
+- `GET /api/v1/releases/{id}`
+- `POST /api/v1/releases/{id}/gates`
+- `POST|GET /api/v1/releases/{id}/manifest`
+- `POST /api/v1/releases/{id}/artifacts`
+- `POST /api/v1/releases/{id}/approve`
+- `POST /api/v1/release-approvals/{id}/decisions`
+- `POST /api/v1/releases/{id}/dry-run`
+- `POST /api/v1/release-dry-runs/{id}/results`
+- `POST /api/v1/releases/{id}/go-live-decisions`
+- `GET /api/v1/releases/{id}/go-live-package`
+- `POST /api/v1/releases/{id}/deploy`
+- `POST /api/v1/releases/{id}/deployment-results`
+- `POST /api/v1/releases/{id}/rollback`
+- `POST /api/v1/releases/{id}/rollback-results`
+- `POST|GET /api/v1/releases/{id}/stabilization`
+- `GET /api/v1/system/version`
+- `POST /api/v1/operations/diagnostic-bundles`
+
+Deploy/rollback request endpoint’leri gerçek sonucu başarılı göstermez; result
+endpoint’leri ayrıca runtime evidence ister.
