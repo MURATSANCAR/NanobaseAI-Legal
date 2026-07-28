@@ -167,3 +167,26 @@ test("Sprint 7 work, reporting, clarification and decision actions call real API
   assert.match(workflow, /\/api\/v1\/tenders\/\$\{projectId\}\/decision-support-cases/);
   assert.match(workflow, /\/api\/v1\/tenders\/\$\{projectId\}\/finalization-history/);
 });
+
+test("Sprint 9 quality, error analysis, improvement and release workspaces use real APIs", async () => {
+  const portal = await source("../app/page.tsx");
+  const pilot = await source("../src/modules/pilot/api.ts");
+  const release = await source("../src/modules/release/api.ts");
+  assert.match(portal, /function Sprint9ControlCenter/);
+  assert.match(portal, /error-analysis-workspace/);
+  assert.match(portal, /improvement-workspace/);
+  assert.match(portal, /releasePackage\.gates\.map/);
+  assert.match(pilot, /\/api\/v1\/pilot-quality-dashboard/);
+  assert.match(pilot, /\/api\/v1\/feedback\/\$\{id\}\/triage/);
+  assert.match(pilot, /\/api\/v1\/improvement-candidates\/\$\{id\}\/shadow/);
+  assert.match(release, /\/api\/v1\/releases\/\$\{id\}\/go-live-package/);
+  assert.match(release, /\/api\/v1\/releases\/\$\{id\}\/go-live-decisions/);
+});
+
+test("Sprint 9 release screen does not hardcode gate definitions", async () => {
+  const portal = await source("../app/page.tsx");
+  const release = await source("../src/modules/release/api.ts");
+  assert.match(portal, /releasePackage\.gates\.map\(\(gate\)/);
+  assert.match(release, /gates: ReleaseGate\[\]/);
+  assert.doesNotMatch(portal, /const releaseGates =/);
+});

@@ -18,27 +18,27 @@ export async function generateMetadata(): Promise<Metadata> {
   const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host");
   const protocol = requestHeaders.get("x-forwarded-proto") ?? "https";
   const origin = host ? `${protocol}://${host}` : "http://localhost:3000";
-  const image = new URL("/og-sprint8.png", origin).toString();
+  const image = new URL("/og-sprint9.png", origin).toString();
   return {
     metadataBase: new URL(origin),
-    title: "NANObaseAI | Şartname AI",
+    title: "NANObaseAI | Technical Specification Intelligence v1.0 RC",
     description:
-      "Şartname analizini güvenlik, recovery, AI kalite ve pilot kabul kanıtlarıyla yönetin.",
+      "Pilot feedback, kök neden, deney, release gate ve insan go-live kararını kanıt zinciriyle yönetin.",
     icons: {
       icon: "/favicon.svg",
       shortcut: "/favicon.svg",
     },
     openGraph: {
-      title: "NANObaseAI | Şartname AI",
-      description: "Security, recovery, AI quality ve pilot readiness kanıtlarını tek yüzeyde yönetin.",
+      title: "NANObaseAI | Technical Specification Intelligence v1.0 RC",
+      description: "Pilot → Evidence → Release: fail-closed kalite ve go-live yönetişimi.",
       type: "website",
       locale: "tr_TR",
       images: [{ url: image, width: 1536, height: 1024, alt: "NANObaseAI Şartname AI" }],
     },
     twitter: {
       card: "summary_large_image",
-      title: "NANObaseAI | Şartname AI",
-      description: "Security, recovery, AI quality ve pilot readiness kanıtlarını tek yüzeyde yönetin.",
+      title: "NANObaseAI | Technical Specification Intelligence v1.0 RC",
+      description: "Pilot → Evidence → Release: fail-closed kalite ve go-live yönetişimi.",
       images: [image],
     },
   };

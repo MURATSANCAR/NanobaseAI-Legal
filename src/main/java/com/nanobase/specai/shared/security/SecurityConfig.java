@@ -157,6 +157,53 @@ public class SecurityConfig {
                     "/api/v1/tenders/*/members",
                     "/api/v1/tenders/*/archive").hasAnyRole(
                         "SYSTEM_ADMIN", "TENANT_ADMIN", "TENDER_MANAGER")
+                .requestMatchers(HttpMethod.POST,
+                    "/api/v1/feedback",
+                    "/api/v1/feedback/*/triage",
+                    "/api/v1/pilot-sessions",
+                    "/api/v1/pilot-sessions/*/events",
+                    "/api/v1/review-disagreements",
+                    "/api/v1/review-disagreements/*/adjudicate").hasAnyRole(
+                        "SYSTEM_ADMIN", "TENANT_ADMIN", "TENDER_MANAGER",
+                        "TECHNICAL_REVIEWER")
+                .requestMatchers(HttpMethod.POST,
+                    "/api/v1/feedback/*/assign",
+                    "/api/v1/feedback/*/resolve").hasAnyRole(
+                        "SYSTEM_ADMIN", "TENANT_ADMIN", "TENDER_MANAGER")
+                .requestMatchers(HttpMethod.POST,
+                    "/api/v1/configuration-snapshots",
+                    "/api/v1/pilot-sessions/*/metrics",
+                    "/api/v1/reproduction-packages",
+                    "/api/v1/regression-suites",
+                    "/api/v1/improvement-candidates",
+                    "/api/v1/improvement-candidates/*/experiments",
+                    "/api/v1/improvement-candidates/*/shadow",
+                    "/api/v1/improvement-candidates/*/canary",
+                    "/api/v1/improvement-candidates/*/activate",
+                    "/api/v1/improvement-candidates/*/reject",
+                    "/api/v1/experiments/*/runs",
+                    "/api/v1/experiment-runs/*/results",
+                    "/api/v1/shadow-executions/*/results",
+                    "/api/v1/canary-assignments/*/results",
+                    "/api/v1/configuration-activations/rollback",
+                    "/api/v1/quality-debt",
+                    "/api/v1/quality-debt/*/accept",
+                    "/api/v1/releases",
+                    "/api/v1/releases/*/gates",
+                    "/api/v1/releases/*/manifest",
+                    "/api/v1/releases/*/artifacts",
+                    "/api/v1/releases/*/approve",
+                    "/api/v1/releases/*/dry-run",
+                    "/api/v1/releases/*/deploy",
+                    "/api/v1/releases/*/deployment-results",
+                    "/api/v1/releases/*/rollback",
+                    "/api/v1/releases/*/rollback-results",
+                    "/api/v1/releases/*/go-live-decisions",
+                    "/api/v1/releases/*/stabilization",
+                    "/api/v1/release-approvals/*/decisions",
+                    "/api/v1/release-dry-runs/*/results",
+                    "/api/v1/operations/diagnostic-bundles").hasAnyRole(
+                        "SYSTEM_ADMIN", "TENANT_ADMIN")
                 .requestMatchers(HttpMethod.PUT, "/api/v1/tenders/**").hasAnyRole(
                     "SYSTEM_ADMIN", "TENANT_ADMIN", "TENDER_MANAGER")
                 .requestMatchers(HttpMethod.PUT, "/api/v1/requirements/*").hasAnyRole(

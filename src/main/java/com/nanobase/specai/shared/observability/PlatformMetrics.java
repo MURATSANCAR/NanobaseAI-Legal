@@ -24,6 +24,17 @@ public class PlatformMetrics {
         "decision_support_total", "project_finalized_total",
         "project_reopened_total", "notification_sent_total",
         "notification_failed_total");
+    private static final Set<String> SPRINT_9_METRICS = Set.of(
+        "pilot_feedback_total", "feedback_blocker_total",
+        "feedback_resolution_duration_seconds", "root_cause_distribution",
+        "regression_case_total", "regression_failure_total",
+        "experiment_total", "experiment_failure_total",
+        "quality_gate_failure_total", "shadow_disagreement_rate",
+        "canary_error_rate", "configuration_rollback_total",
+        "release_gate_failure_total", "release_deployment_total",
+        "release_rollback_total", "go_live_no_go_total",
+        "stabilization_incident_total", "user_satisfaction_score",
+        "manual_time_saved_minutes");
     private final MeterRegistry registry;
     private final Counter documentUpload;
     private final Counter documentUploadFailed;
@@ -138,6 +149,7 @@ public class PlatformMetrics {
         registry.timer("conflict_analysis_duration_seconds");
         registry.timer("impact_analysis_duration_seconds");
         SPRINT_7_METRICS.forEach(registry::counter);
+        SPRINT_9_METRICS.forEach(registry::counter);
         Gauge.builder("outbox.pending.total", outbox,
                 repository -> repository.countByStatus(OutboxStatus.PENDING))
             .register(registry);
@@ -244,6 +256,13 @@ public class PlatformMetrics {
     public void sprint7(String metricName) {
         if (!SPRINT_7_METRICS.contains(metricName)) {
             throw new IllegalArgumentException("Unknown Sprint 7 metric");
+        }
+        registry.counter(metricName).increment();
+    }
+
+    public void sprint9(String metricName) {
+        if (!SPRINT_9_METRICS.contains(metricName)) {
+            throw new IllegalArgumentException("Unknown Sprint 9 metric");
         }
         registry.counter(metricName).increment();
     }

@@ -92,6 +92,9 @@ specai:
   environment: ${SPECAI_ENVIRONMENT:development}
   release:
     version: ${SPECAI_RELEASE_VERSION:development}
+    build-number: ${SPECAI_BUILD_NUMBER:local}
+    commit-hash: ${SPECAI_COMMIT_HASH:unknown}
+    date: ${SPECAI_RELEASE_DATE:unreleased}
   bootstrap:
     enabled: ${SPECAI_BOOTSTRAP_ENABLED:false}
     tenant-id: ${SPECAI_BOOTSTRAP_TENANT_ID:00000000-0000-0000-0000-000000000000}
