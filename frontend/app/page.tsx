@@ -11,7 +11,6 @@ import {
   LoaderCircle,
   LogIn,
   ServerCog,
-  ShieldCheck,
   X,
 } from "lucide-react";
 import type { AuthSession } from "@/src/modules/auth/auth";
@@ -90,11 +89,12 @@ export default function SpecAiPortal() {
   const canWrite = Boolean(session) && roles.some((role) =>
     ["SYSTEM_ADMIN", "TENANT_ADMIN", "TENDER_MANAGER"].includes(role),
   );
-  const canAnalyze = directAccess || canWrite || roles.includes("TECHNICAL_REVIEWER");
+  const canAnalyze =
+    Boolean(session) &&
+    (canWrite || roles.includes("TECHNICAL_REVIEWER"));
   const canOperate =
-    directAccess ||
-    (Boolean(session) &&
-      roles.some((role) => ["SYSTEM_ADMIN", "TENANT_ADMIN"].includes(role)));
+    Boolean(session) &&
+    roles.some((role) => ["SYSTEM_ADMIN", "TENANT_ADMIN"].includes(role));
 
   const showProblem = useCallback((error: unknown) => {
     if (isApiError(error)) setProblem(error.problem);
@@ -105,13 +105,6 @@ export default function SpecAiPortal() {
         detail: error instanceof Error ? error.message : "İşlem tamamlanamadı.",
       });
   }, []);
-
-  const showSurfaceProblem = useCallback(
-    (error: unknown) => {
-      if (!directAccess) showProblem(error);
-    },
-    [directAccess, showProblem],
-  );
 
   const notify = useCallback((message: string) => {
     setToast(message);
@@ -181,7 +174,7 @@ export default function SpecAiPortal() {
           try {
             await loadProjects(user.access_token);
           } catch (error) {
-            showSurfaceProblem(error);
+            showProblem(error);
           }
         }
       } catch (error) {
@@ -240,7 +233,7 @@ export default function SpecAiPortal() {
 
   async function createProject(event: FormEvent) {
     event.preventDefault();
-    if (wizardStep < 4) {
+    if (wizardStep < 3) {
       setWizardStep((step) => step + 1);
       return;
     }
@@ -313,16 +306,16 @@ export default function SpecAiPortal() {
         }
       },
     },
-    {
-      id: "workflows",
-      label: "Workflow merkezi",
-      icon: ClipboardCheck,
-      group: "Çalışma alanı",
-      active: screen === "workflows",
-      onClick: () => setScreen("workflows"),
-    },
     ...(canAnalyze
       ? [
+          {
+            id: "workflows",
+            label: "Workflow merkezi",
+            icon: ClipboardCheck,
+            group: "Çalışma alanı",
+            active: screen === "workflows",
+            onClick: () => setScreen("workflows"),
+          } satisfies SidebarNavItem,
           {
             id: "pilot-quality",
             label: "Pilot kalite merkezi",
@@ -333,13 +326,6 @@ export default function SpecAiPortal() {
           } satisfies SidebarNavItem,
         ]
       : []),
-    {
-      id: "roles",
-      label: "Yetkilerim",
-      icon: ShieldCheck,
-      group: "Güvenlik",
-      onClick: () => notify(`Roller: ${roles.join(", ")}`),
-    },
     ...(canOperate
       ? [
           {
@@ -366,12 +352,11 @@ export default function SpecAiPortal() {
       profileRole={session ? (roles[0] ?? "Kullanıcı") : "Salt okunur"}
       profileInitials={session ? initials(displayName(session)) : "DA"}
       onProfileClick={() => {
-        if (session) {
-          void signOut().then(() => {
-            setSession(null);
-            notify("Oturum kapatıldı");
-          });
-        } else notify("Doğrudan erişim modu · değişiklik işlemleri kapalı");
+        if (!session) return;
+        void signOut().then(() => {
+          setSession(null);
+          notify("Oturum kapatıldı");
+        });
       }}
       searchQuery={query}
       onSearchChange={setQuery}
@@ -500,24 +485,24 @@ export default function SpecAiPortal() {
           token={token}
           projects={projects}
           documents={allDocuments}
-          onProblem={showSurfaceProblem}
+          onProblem={showProblem}
         />
       )}
-      {screen === "workflows" && (
+      {screen === "workflows" && canAnalyze && (
         <Sprint7Workspace
           token={token}
           project={selectedProject}
-          canConfigure={!directAccess && canOperate}
-          canWrite={!directAccess && canAnalyze}
-          onProblem={showSurfaceProblem}
+          canConfigure={canOperate}
+          canWrite={canAnalyze}
+          onProblem={showProblem}
           onNotify={notify}
         />
       )}
       {screen === "pilot-quality" && canAnalyze && (
         <Sprint9ControlCenter
           token={token}
-          canOperate={!directAccess && canOperate}
-          onProblem={showSurfaceProblem}
+          canOperate={canOperate}
+          onProblem={showProblem}
           onNotify={notify}
         />
       )}

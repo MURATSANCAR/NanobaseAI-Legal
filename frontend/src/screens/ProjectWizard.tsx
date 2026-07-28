@@ -5,7 +5,6 @@ import {
   AlertTriangle,
   Archive,
   ArrowLeft,
-  Building2,
   CalendarDays,
   CheckCircle2,
   ChevronLeft,
@@ -157,10 +156,10 @@ export function ProjectWizard({ step, draft, busy, onDraft, onStep, onClose, onS
     onDraft({ ...draft, [field]: value });
   return <div className="modal-backdrop">
     <form className="modal wizard" onSubmit={onSubmit}>
-      <div className="modal-head"><div><p className="eyebrow">YENİ PROJE · ADIM {step}/4</p>
-        <h2>{["Temel bilgiler", "Tarihler", "Firma ve ürün", "Ekip"][step - 1]}</h2></div>
+      <div className="modal-head"><div><p className="eyebrow">YENİ PROJE · ADIM {step}/3</p>
+        <h2>{["Temel bilgiler", "Tarihler", "Ekip"][step - 1]}</h2></div>
         <button type="button" onClick={onClose} aria-label="Kapat"><X /></button></div>
-      <div className="stepper">{[1, 2, 3, 4].map((item) =>
+      <div className="stepper">{[1, 2, 3].map((item) =>
         <span key={item} className={item <= step ? "active" : ""}>{item}</span>)}</div>
       {step === 1 && <div className="form-grid">
         <label className="wide">Proje adı<input value={draft.name}
@@ -192,11 +191,7 @@ export function ProjectWizard({ step, draft, busy, onDraft, onStep, onClose, onS
         <label className="wide">Açıklama<textarea rows={5} value={draft.description}
           onChange={(event) => change("description", event.target.value)} /></label>
       </div>}
-      {step === 3 && <div className="phase-note"><Building2 />
-        <h3>Firma ve ürün eşleştirme sonraki fazda</h3>
-        <p>Bu modül henüz mevcut olmadığı için sahte seçenek gösterilmiyor.
-          Proje oluşturulduktan sonra daha sonra eklenebilecek.</p></div>}
-      {step === 4 && <div className="phase-note"><Users />
+      {step === 3 && <div className="phase-note"><Users />
         <h3>Proje sahibi otomatik eklenir</h3>
         <p>Oturum açan kullanıcı OWNER rolü ve tam proje yetkileriyle üye yapılır.
           Diğer ekip üyelerini proje ayarlarından ekleyebilirsiniz.</p></div>}
@@ -204,8 +199,8 @@ export function ProjectWizard({ step, draft, busy, onDraft, onStep, onClose, onS
         {step > 1 && <button type="button" className="secondary"
           onClick={() => onStep(step - 1)}>Geri</button>}
         <button className="btn-primary" disabled={busy}>
-          {busy ? <LoaderCircle className="spin" /> : step === 4 ? <Plus /> : <ChevronRight />}
-          {step === 4 ? "Projeyi oluştur" : "Devam"}
+          {busy ? <LoaderCircle className="spin" /> : step === 3 ? <Plus /> : <ChevronRight />}
+          {step === 3 ? "Projeyi oluştur" : "Devam"}
         </button>
       </div>
     </form>

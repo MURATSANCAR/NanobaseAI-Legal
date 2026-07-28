@@ -318,8 +318,17 @@ export function ComplianceWorkspace({ project, token, canWrite, onProblem, onNot
             <label>Gerekçe<textarea value={reason}
               onChange={(event) => setReason(event.target.value)}
               placeholder="Karar gerekçesi ve eksik belge notu" /></label>
+            {(!changeTypes.some((item) =>
+              conceptMetadata(item).changeProvider === "EVALUATION_REVIEWED")) && (
+              <p className="field-hint">Değerlendirme onay tipi yapılandırılmadığı için karar kaydı kapalı.</p>
+            )}
             <button className="primary" onClick={review}
-              disabled={!decisionId || !reason.trim()}><CheckCircle2 />Kararı kaydet</button>
+              disabled={
+                !decisionId ||
+                !reason.trim() ||
+                !changeTypes.some((item) =>
+                  conceptMetadata(item).changeProvider === "EVALUATION_REVIEWED")
+              }><CheckCircle2 />Kararı kaydet</button>
           </div>}
         </> : <Empty text="Değerlendirme seçin." />}
       </aside>

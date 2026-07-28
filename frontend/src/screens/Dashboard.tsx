@@ -178,7 +178,6 @@ export function Dashboard({ metrics, projects, onProjects }: {
             icon={Icon}
             tone={tone}
             delay={index * 60}
-            onClick={onProjects}
           />
         ))}
       </section>

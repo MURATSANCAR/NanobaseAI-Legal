@@ -213,8 +213,6 @@ export function AmbiguityWorkspace({ project, token, canWrite, onProblem, onNoti
         source={source} token={token} onProblem={onProblem} />)}
       <h3>Muhtemel yorumlar</h3>
       <JsonList values={selected.interpretations} empty="Henüz uzman yorumu eklenmedi." />
-      <h3>Clarification candidate</h3>
-      <p>Aday soru oluşturulabilir; insan onayı olmadan dışarı gönderilemez.</p>
       {canWrite && <div className="review-actions">
         <button className="primary" onClick={() => review("APPROVED")}>
           <CheckCircle2 />Onayla</button>

@@ -245,6 +245,7 @@ export function ChangeImpactWorkspace({ documents, token, canWrite, onProblem, o
         {changeSet.items.map((item) => <button key={item.id}
           className={selectedItem?.id === item.id ? "change-item active" : "change-item"}
           onClick={() => {
+            if (!canWrite) return;
             setSelectedItem(item);
             setBaseClauseId(item.baseClauseId ?? "");
             setTargetClauseId(item.targetClauseId ?? "");
@@ -266,7 +267,7 @@ export function ChangeImpactWorkspace({ documents, token, canWrite, onProblem, o
         {!impact && <Empty text="Etki analizi henüz çalıştırılmadı." />}
       </article>
     </div>}
-    {selectedItem && <div className="modal-backdrop">
+    {selectedItem && canWrite && <div className="modal-backdrop">
       <section className="modal change-correction">
         <div className="modal-head"><div><p className="eyebrow">UZMAN EŞLEŞME DÜZELTMESİ</p>
           <h2>{selectedItem.changeType}</h2></div>

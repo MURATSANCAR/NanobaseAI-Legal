@@ -561,7 +561,7 @@ export function Sprint7Workspace({ token, project, canConfigure, canWrite, onPro
             <label>Son geçiş koşulu<textarea value={conditionText}
               onChange={(event) => setConditionText(event.target.value)} /></label>
             <button className="secondary" onClick={connectWorkflowNodes}
-              disabled={workflowNodes.length < 2 || !transitionTypes.length}>
+              disabled={!canConfigure || workflowNodes.length < 2 || !transitionTypes.length}>
               Adımları bağla
             </button>
             <button className="primary" disabled={!canConfigure || busy || !workflowNodes.length}

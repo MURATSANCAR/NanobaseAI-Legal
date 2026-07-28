@@ -451,7 +451,7 @@ export function Sprint9ControlCenter({ token, canOperate, onProblem, onNotify }:
               {readUnknown(triage, "release_blocker") ? "EVET" : "HAYIR"}</dd></div>
             <div><dt>Onaylayan</dt><dd>{String(readUnknown(triage, "triaged_by"))}</dd></div>
           </dl>
-        </div> : selectedFeedback ? <form className="triage-form" onSubmit={submitTriage}>
+        </div> : selectedFeedback && canOperate ? <form className="triage-form" onSubmit={submitTriage}>
           <label>Kök neden
             <select value={rootCauseCode}
               onChange={(event) => setRootCauseCode(event.target.value)}>
@@ -481,7 +481,11 @@ export function Sprint9ControlCenter({ token, canOperate, onProblem, onNotify }:
             {busySprint9 ? <LoaderCircle className="spin" /> : <ShieldCheck />}
             Triage’ı kaydet
           </button>
-        </form> : <Empty text="Feedback seçimi bekleniyor." />}
+        </form> : <Empty text={
+          selectedFeedback
+            ? "Triage için yetkiniz yok."
+            : "Feedback seçimi bekleniyor."
+        } />}
       </aside>
     </section>}
 
@@ -530,6 +534,7 @@ export function Sprint9ControlCenter({ token, canOperate, onProblem, onNotify }:
       <aside className="candidate-actions panel">
         <div className="workspace-panel-title"><span>C</span><div>
           <b>Kontrollü geçiş</b><small>Her aşama önceki kanıtı ister</small></div></div>
+        {!canOperate ? <Empty text="Geçiş aksiyonları için yetkiniz yok." /> : <>
         <button disabled={!selectedCandidate || busySprint9}
           onClick={() => void candidateAction("shadow")}>
           <Eye /><div><b>Shadow başlat</b><small>Production davranışını değiştirmez</small></div>
@@ -547,6 +552,7 @@ export function Sprint9ControlCenter({ token, canOperate, onProblem, onNotify }:
           onClick={() => void candidateAction("reject")}>
           <X /><div><b>Candidate’ı reddet</b><small>Aktif sürüm korunur</small></div>
         </button>
+        </>}
       </aside>
     </section>}
 
@@ -563,12 +569,21 @@ export function Sprint9ControlCenter({ token, canOperate, onProblem, onNotify }:
           </button>) : <Empty text="Release kaydı bulunmuyor." />}
         <button className="diagnostic-action" onClick={async () => {
           try {
-            await releaseApi.diagnosticBundle(token);
-            onNotify("Sanitize diagnostic bundle oluşturuldu");
+            const bundle = await releaseApi.diagnosticBundle(token);
+            const blob = new Blob([JSON.stringify(bundle, null, 2)], {
+              type: "application/json",
+            });
+            const href = URL.createObjectURL(blob);
+            const anchor = document.createElement("a");
+            anchor.href = href;
+            anchor.download = `diagnostic-bundle-${Date.now()}.json`;
+            anchor.click();
+            URL.revokeObjectURL(href);
+            onNotify("Diagnostic bundle indirildi");
           } catch (error) {
             onProblem(error);
           }
-        }}><ServerCog />Diagnostic bundle</button>
+        }}><ServerCog />Diagnostic bundle indir</button>
       </aside>
       <article className="release-evidence panel">
         <div className="workspace-panel-title"><span>01</span><div>

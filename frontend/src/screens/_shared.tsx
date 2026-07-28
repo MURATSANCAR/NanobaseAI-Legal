@@ -186,19 +186,32 @@ export function EvidenceDocumentPane({ evidence, token }: {
   token: string;
 }) {
   const [url, setUrl] = useState("");
+  const [pdfState, setPdfState] = useState<"idle" | "loading" | "ready" | "failed">("idle");
 
   useEffect(() => {
     let active = true;
     if (!evidence?.document_id) {
-      const timer = window.setTimeout(() => setUrl(""), 0);
+      const timer = window.setTimeout(() => {
+        setUrl("");
+        setPdfState("idle");
+      }, 0);
       return () => {
         active = false;
         window.clearTimeout(timer);
       };
     }
+    setPdfState("loading");
     documentApi.downloadUrl(token, evidence.document_id)
-      .then((response) => active && setUrl(response.url))
-      .catch(() => active && setUrl(""));
+      .then((response) => {
+        if (!active) return;
+        setUrl(response.url);
+        setPdfState("ready");
+      })
+      .catch(() => {
+        if (!active) return;
+        setUrl("");
+        setPdfState("failed");
+      });
     return () => { active = false; };
   }, [evidence?.document_id, token]);
 
@@ -213,9 +226,15 @@ export function EvidenceDocumentPane({ evidence, token }: {
         {" "}%{Math.round((evidence.ocr_quality ?? 0) * 100)}</small>
     </div>
     <blockquote>{evidence.fragment_text || "Kaynak metin detay isteğiyle yüklenir."}</blockquote>
-    {url ? <PdfCanvas url={url} pageNumber={evidence.page_number ?? 1}
+    {pdfState === "ready" && url ? <PdfCanvas url={url} pageNumber={evidence.page_number ?? 1}
       zoom={0.72} highlights={highlights} /> :
-      <div className="pdf-placeholder"><FileText /><p>PDF önizlemesi hazırlanıyor.</p></div>}
+      <div className="pdf-placeholder"><FileText /><p>
+        {pdfState === "failed"
+          ? "PDF önizlemesi yüklenemedi."
+          : pdfState === "loading"
+            ? "PDF önizlemesi hazırlanıyor."
+            : "PDF önizlemesi yok."}
+      </p></div>}
   </div>;
 }
 

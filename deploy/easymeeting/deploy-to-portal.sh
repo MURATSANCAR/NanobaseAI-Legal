@@ -64,16 +64,9 @@ else:
 if "location /legal/" in text and "upstream legal_api" in text:
     print("nginx /legal already configured")
 else:
-    # Drop stale partial inserts if any
-    import re
+    # Drop stale partial inserts if any (keep /legal-api/ if present)
     text = re.sub(r"\nupstream legal_api \{.*?\n\}\n", "\n", text, flags=re.S)
     text = re.sub(r"\nupstream legal_portal \{.*?\n\}\n", "\n", text, flags=re.S)
-    text = re.sub(
-        r"\n\s*# SpecAI Legal.*?location /legal/ \{.*?\n\s*\}\n",
-        "\n",
-        text,
-        flags=re.S,
-    )
 
     # Insert upstreams after first upstream block header area
     if "upstream legal_api" not in text:
@@ -97,7 +90,8 @@ upstream legal_portal {
 
     locations = """
     # SpecAI Legal — https://portal.nanobase.ai/legal/
-    location /legal-api/ {
+    # IMPORTANT: ^~ /legal-api/ must win over prefix /legal/ (otherwise POSTs hit the FE → 405)
+    location ^~ /legal-api/ {
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -144,6 +138,37 @@ upstream legal_portal {
     if "location /legal/" not in text:
         text = text.replace(needle, locations + needle, 1)
     print("nginx /legal locations inserted")
+
+# Always ensure API location exists and outranks /legal/ prefix matching.
+text = text.replace("location /legal-api/ {", "location ^~ /legal-api/ {")
+if "location ^~ /legal-api/" not in text:
+    api_block = """
+    # IMPORTANT: ^~ /legal-api/ must win over prefix /legal/
+    location ^~ /legal-api/ {
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection "";
+        proxy_read_timeout 300s;
+        client_max_body_size 100M;
+        proxy_pass http://legal_api/;
+    }
+
+"""
+    if "    location /legal/ {" in text:
+        text = text.replace("    location /legal/ {", api_block + "    location /legal/ {", 1)
+        print("nginx /legal-api/ restored before /legal/")
+    elif "    location ^~ /legal/assets/" in text:
+        text = text.replace(
+            "    location ^~ /legal/assets/ {",
+            api_block + "    location ^~ /legal/assets/ {",
+            1,
+        )
+        print("nginx /legal-api/ restored before /legal/assets/")
+    else:
+        print("WARNING: could not restore /legal-api/")
 
 # Ensure asset rewrite exists even when /legal/ was configured earlier
 assets_block = """

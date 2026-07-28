@@ -185,8 +185,6 @@ export function OperationsCenter({ token, projects, documents, onProblem }: {
     ["Backup", snapshot?.recovery.lastBackupStatus === "SUCCESS"],
     ["Restore", snapshot?.recovery.lastRestoreStatus === "SUCCESS"],
     ["Evaluation", Boolean(quality?.recentEvaluationRuns.length)],
-    ["UAT", false],
-    ["Offline package", false],
   ] as const;
   const readiness = Math.round(
     checklist.filter(([, complete]) => complete).length / checklist.length * 100,

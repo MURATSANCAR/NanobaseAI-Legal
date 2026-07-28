@@ -35,8 +35,10 @@ test("portal opens directly while write actions remain session-gated", async () 
   assert.match(portal, /const canWrite = Boolean\(session\)/);
   assert.match(portal, /Doğrudan erişim açık/);
   assert.match(portal, /NEXT_PUBLIC_AUTO_LOGIN/);
-  assert.match(portal, /canConfigure=\{!directAccess && canOperate\}/);
+  assert.match(portal, /canConfigure=\{canOperate\}/);
   assert.doesNotMatch(portal, /return <LoginScreen/);
+  assert.doesNotMatch(portal, /Yetkilerim/);
+  assert.doesNotMatch(portal, /sonraki fazda/);
 });
 
 test("project creation and document upload use the real API", async () => {
