@@ -38,12 +38,67 @@ function writeStored(session: AuthSession | null): void {
 
 export async function restoreSession(): Promise<AuthSession | null> {
   const session = readStored();
-  if (!session) return null;
-  if (session.expires_at * 1000 <= Date.now()) {
-    writeStored(null);
-    return null;
+  if (session) {
+    if (session.expires_at * 1000 <= Date.now()) {
+      writeStored(null);
+    } else {
+      return session;
+    }
   }
+  if (autoLoginEnabled()) {
+    try {
+      return await autoSignIn();
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+function autoLoginEnabled(): boolean {
+  return (process.env.NEXT_PUBLIC_AUTO_LOGIN ?? "").toLowerCase() === "true";
+}
+
+function sessionFromLoginBody(body: {
+  accessToken: string;
+  expiresInSeconds: number;
+  email: string;
+  displayName: string;
+  roles: string[];
+  tenantId: string;
+}): AuthSession {
+  const session: AuthSession = {
+    access_token: body.accessToken,
+    expires_at: Math.floor(Date.now() / 1000) + body.expiresInSeconds,
+    profile: {
+      sub: body.email,
+      email: body.email,
+      name: body.displayName,
+      tenant_id: body.tenantId,
+      realm_access: { roles: body.roles },
+    },
+  };
+  writeStored(session);
   return session;
+}
+
+export async function autoSignIn(): Promise<AuthSession> {
+  const response = await fetch(`${apiBase()}/api/v1/auth/auto-login`, {
+    method: "POST",
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) {
+    throw new Error("Otomatik giriş başarısız.");
+  }
+  const body = (await response.json()) as {
+    accessToken: string;
+    expiresInSeconds: number;
+    email: string;
+    displayName: string;
+    roles: string[];
+    tenantId: string;
+  };
+  return sessionFromLoginBody(body);
 }
 
 export async function signIn(email: string, password: string): Promise<AuthSession> {
@@ -70,19 +125,7 @@ export async function signIn(email: string, password: string): Promise<AuthSessi
     roles: string[];
     tenantId: string;
   };
-  const session: AuthSession = {
-    access_token: body.accessToken,
-    expires_at: Math.floor(Date.now() / 1000) + body.expiresInSeconds,
-    profile: {
-      sub: body.email,
-      email: body.email,
-      name: body.displayName,
-      tenant_id: body.tenantId,
-      realm_access: { roles: body.roles },
-    },
-  };
-  writeStored(session);
-  return session;
+  return sessionFromLoginBody(body);
 }
 
 export async function signOut(): Promise<void> {

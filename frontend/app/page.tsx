@@ -363,7 +363,7 @@ export default function SpecAiPortal() {
       onSearchChange={setQuery}
       onRefresh={() => loadProjects().catch(showProblem)}
     >
-      {directAccess && (
+      {directAccess && !(process.env.NEXT_PUBLIC_AUTO_LOGIN ?? "").toLowerCase().includes("true") && (
         <section className="direct-access-banner">
           <div>
             <Eye />

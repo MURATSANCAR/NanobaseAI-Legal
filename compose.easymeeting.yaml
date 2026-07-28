@@ -54,6 +54,7 @@ services:
       DATABASE_PASSWORD: ${DATABASE_PASSWORD}
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-development}
       SPECAI_AUTH_MODE: local
+      SPECAI_AUTO_LOGIN: "true"
       SPECAI_JWT_SECRET: ${SPECAI_JWT_SECRET}
       SPECAI_LOCAL_ADMIN_EMAIL: ${SPECAI_LOCAL_ADMIN_EMAIL:-admin@nanobase.local}
       SPECAI_LOCAL_ADMIN_PASSWORD: ${SPECAI_LOCAL_ADMIN_PASSWORD}
@@ -104,9 +105,11 @@ services:
       args:
         NEXT_PUBLIC_API_BASE_URL: ${PUBLIC_API_BASE_URL:-https://portal.nanobase.ai/legal-api}
         NEXT_PUBLIC_BASE_PATH: ${PUBLIC_BASE_PATH:-/legal}
+        NEXT_PUBLIC_AUTO_LOGIN: "true"
     environment:
       NEXT_PUBLIC_API_BASE_URL: ${PUBLIC_API_BASE_URL:-https://portal.nanobase.ai/legal-api}
       NEXT_PUBLIC_BASE_PATH: ${PUBLIC_BASE_PATH:-/legal}
+      NEXT_PUBLIC_AUTO_LOGIN: "true"
     ports: !override
       - "127.0.0.1:3020:3000"
     networks:

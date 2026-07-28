@@ -22,6 +22,7 @@ async function portalSource() {
 test("portal uses local JWT login session flow", async () => {
   const auth = await source("../src/modules/auth/auth.ts");
   assert.match(auth, /\/api\/v1\/auth\/login/);
+  assert.match(auth, /\/api\/v1\/auth\/auto-login/);
   assert.match(auth, /specai\.local\.session/);
   assert.match(auth, /accessToken/);
   assert.doesNotMatch(auth, /oidc-client-ts/);
@@ -33,6 +34,7 @@ test("portal opens directly while write actions remain session-gated", async () 
   assert.match(portal, /const directAccess = session === null/);
   assert.match(portal, /const canWrite = Boolean\(session\)/);
   assert.match(portal, /Doğrudan erişim açık/);
+  assert.match(portal, /NEXT_PUBLIC_AUTO_LOGIN/);
   assert.match(portal, /canConfigure=\{!directAccess && canOperate\}/);
   assert.doesNotMatch(portal, /return <LoginScreen/);
 });
