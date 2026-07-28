@@ -50,6 +50,21 @@ public class SecurityConfig {
                     "/api/v1/documents/*/requirement-extractions",
                     "/api/v1/requirement-extractions/*/cancel",
                     "/api/v1/requirement-extractions/*/reprocess",
+                    "/api/v1/documents/*/knowledge-extractions",
+                    "/api/v1/knowledge-extractions/*/cancel",
+                    "/api/v1/tenders/*/compliance-analyses",
+                    "/api/v1/compliance-analyses/*/cancel",
+                    "/api/v1/compliance-analyses/*/retry-failed",
+                    "/api/v1/knowledge/entities",
+                    "/api/v1/knowledge/entities/*/merge",
+                    "/api/v1/knowledge/entities/*/split",
+                    "/api/v1/knowledge/entities/*/attributes",
+                    "/api/v1/knowledge/entities/*/capabilities",
+                    "/api/v1/knowledge/relations",
+                    "/api/v1/evidence/*/verify",
+                    "/api/v1/evidence/*/invalidate",
+                    "/api/v1/compliance-evaluations/*/review",
+                    "/api/v1/compliance-evaluations/*/evidence",
                     "/api/v1/tenders/*/risk-analyses",
                     "/api/v1/risk-analyses/*/cancel",
                     "/api/v1/risk-analyses/*/retry-failed",
@@ -68,7 +83,9 @@ public class SecurityConfig {
                     "/api/v1/ambiguities/*/clarification-candidates",
                     "/api/v1/conflicts/*/review",
                     "/api/v1/conflicts/*/resolve",
-                    "/api/v1/conflicts/*/clarification-candidates").hasAnyRole(
+                    "/api/v1/conflicts/*/clarification-candidates",
+                    "/api/v1/documents/*/change-sets",
+                    "/api/v1/change-sets/*/impact-analyses").hasAnyRole(
                         "SYSTEM_ADMIN", "TENANT_ADMIN", "TENDER_MANAGER",
                         "TECHNICAL_REVIEWER")
                 .requestMatchers(HttpMethod.POST,
@@ -88,8 +105,19 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.PUT, "/api/v1/risks/*").hasAnyRole(
                     "SYSTEM_ADMIN", "TENANT_ADMIN", "TENDER_MANAGER",
                     "TECHNICAL_REVIEWER")
+                .requestMatchers(HttpMethod.PUT, "/api/v1/change-sets/*/items/*").hasAnyRole(
+                    "SYSTEM_ADMIN", "TENANT_ADMIN", "TENDER_MANAGER",
+                    "TECHNICAL_REVIEWER")
+                .requestMatchers(HttpMethod.PUT, "/api/v1/knowledge/**").hasAnyRole(
+                    "SYSTEM_ADMIN", "TENANT_ADMIN", "TENDER_MANAGER",
+                    "TECHNICAL_REVIEWER")
                 .requestMatchers(HttpMethod.DELETE, "/api/v1/tenders/*/members/*").hasAnyRole(
                     "SYSTEM_ADMIN", "TENANT_ADMIN", "TENDER_MANAGER")
+                .requestMatchers(HttpMethod.DELETE,
+                    "/api/v1/knowledge/**",
+                    "/api/v1/compliance-evaluations/*/evidence/*").hasAnyRole(
+                    "SYSTEM_ADMIN", "TENANT_ADMIN", "TENDER_MANAGER",
+                    "TECHNICAL_REVIEWER")
                 .requestMatchers("/api/v1/**").denyAll()
                 .anyRequest().authenticated())
             .oauth2ResourceServer(resource ->

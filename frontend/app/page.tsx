@@ -67,10 +67,31 @@ import {
   type Requirement,
   type RequirementColumn,
 } from "@/src/modules/requirements/api";
+import {
+  riskApi,
+  type AmbiguityFinding,
+  type ChangeItem,
+  type ChangeSet,
+  type ConflictRecord,
+  type DynamicColumn,
+  type ImpactAnalysis,
+  type RiskAnalysisJob,
+  type RiskRecord,
+  type RiskSource,
+} from "@/src/modules/risks/api";
 import { isApiError, type ApiProblem } from "@/src/shared/api";
 
 type Screen = "dashboard" | "projects" | "project";
-type ProjectTab = "overview" | "documents" | "requirements" | "activity" | "settings";
+type ProjectTab =
+  | "overview"
+  | "documents"
+  | "requirements"
+  | "risks"
+  | "conflicts"
+  | "ambiguities"
+  | "changes"
+  | "activity"
+  | "settings";
 
 const emptyDraft: TenderDraft = {
   name: "",
@@ -557,6 +578,8 @@ function ProjectDetail({ project, tab, onTab, documents, members, auditEvents, t
     <nav className="tabs" aria-label="Proje detay sekmeleri">
       {([["overview", "Genel bakış"], ["documents", "Dokümanlar"],
         ["requirements", "Gereksinim matrisi"],
+        ["risks", "Risk merkezi"], ["conflicts", "Çelişkiler"],
+        ["ambiguities", "Belirsizlikler"], ["changes", "Değişiklik ve etki"],
         ["activity", "Aktivite geçmişi"], ["settings", "Ayarlar"]] as const)
         .map(([id, label]) => <button key={id} className={tab === id ? "active" : ""}
           onClick={() => onTab(id)}>{label}</button>)}
@@ -567,6 +590,15 @@ function ProjectDetail({ project, tab, onTab, documents, members, auditEvents, t
         token={token} canWrite={canWrite} onDocuments={onDocuments}
         onProblem={onProblem} onNotify={onNotify} />}
       {tab === "requirements" && <RequirementsMatrix project={project}
+        documents={documents} token={token} canWrite={canAnalyze}
+        onProblem={onProblem} onNotify={onNotify} />}
+      {tab === "risks" && <RiskCenter project={project} token={token}
+        canWrite={canAnalyze} onProblem={onProblem} onNotify={onNotify} />}
+      {tab === "conflicts" && <ConflictWorkspace project={project} token={token}
+        canWrite={canAnalyze} onProblem={onProblem} onNotify={onNotify} />}
+      {tab === "ambiguities" && <AmbiguityWorkspace project={project} token={token}
+        canWrite={canAnalyze} onProblem={onProblem} onNotify={onNotify} />}
+      {tab === "changes" && <ChangeImpactWorkspace project={project}
         documents={documents} token={token} canWrite={canAnalyze}
         onProblem={onProblem} onNotify={onNotify} />}
       {tab === "activity" && <ActivityHistory events={auditEvents} />}

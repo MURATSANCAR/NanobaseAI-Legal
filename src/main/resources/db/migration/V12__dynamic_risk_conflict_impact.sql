@@ -621,7 +621,10 @@ INSERT INTO ontology_concept (
      'TASK_TYPE', '{"bootstrap":true}', TRUE, 115, now()),
     ('60000000-0000-0000-0000-000000000017', NULL,
      '40000000-0000-0000-0000-000000000002', 'REQUEST_CLARIFICATION', 'Request clarification',
-     'ACTION', '{"bootstrap":true}', TRUE, 116, now());
+     'ACTION', '{"bootstrap":true}', TRUE, 116, now()),
+    ('60000000-0000-0000-0000-000000000018', NULL,
+     '40000000-0000-0000-0000-000000000002', 'UNCHANGED', 'Unchanged',
+     'CHANGE_TYPE', '{"bootstrap":true}', TRUE, 117, now());
 
 INSERT INTO risk_taxonomy (
     id, organization_id, name, scope, status, created_at, updated_at
@@ -745,7 +748,10 @@ INSERT INTO policy_version (
      '60000000-0000-0000-0000-000000000133', 1,
      '{"maximumDepth":4,"minimumConfidence":0.50,
        "impactConceptCode":"REQUIRES_REANALYSIS",
-       "stalenessStatusCode":"STALE","stalenessTriggerCode":"SOURCE_CHANGED"}'::jsonb,
+       "stalenessStatusCode":"STALE","stalenessTriggerCode":"SOURCE_CHANGED",
+       "changeMatching":{"minimumSimilarity":0.62,
+         "addedConceptCode":"ADDED","removedConceptCode":"REMOVED",
+         "modifiedConceptCode":"MODIFIED","unchangedConceptCode":"UNCHANGED"}}'::jsonb,
      'ACTIVE', 'platform', now(), now());
 
 -- Propagation is an impact-policy behavior; keeping it in the same version makes

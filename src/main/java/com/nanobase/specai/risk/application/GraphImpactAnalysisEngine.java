@@ -35,7 +35,14 @@ public class GraphImpactAnalysisEngine implements ImpactAnalysisEngine {
         List<AffectedEntity> affected = new ArrayList<>();
         Set<String> seen = new HashSet<>();
         ArrayDeque<Traversal> queue = new ArrayDeque<>();
+        UUID ignoredChange = configuration.path("changeMatching")
+            .hasNonNull("unchangedConceptId")
+            ? UUID.fromString(configuration.path("changeMatching")
+                .path("unchangedConceptId").asText()) : null;
         for (ChangeItem item : changeSet.items()) {
+            if (item.changeTypeConceptId().equals(ignoredChange)) {
+                continue;
+            }
             UUID seed = item.targetId() == null ? item.sourceId() : item.targetId();
             String seedType = item.targetId() == null ? item.sourceType() : item.targetType();
             queue.add(new Traversal(seedType, seed, 0, item.confidence(),

@@ -69,6 +69,19 @@ class ComplianceEvaluationRequest(BaseModel):
     maximumOutputTokens: int = Field(gt=0)
 
 
+class GovernedAnalysisRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    model: str
+    profile: str
+    promptComponents: list[str] = Field(min_length=1)
+    outputSchema: dict[str, Any]
+    ontologyConcepts: list[dict[str, Any]] = Field(min_length=1)
+    sources: list[dict[str, Any]] = Field(min_length=1, max_length=50)
+    policy: dict[str, Any]
+    context: dict[str, Any] = Field(default_factory=dict)
+    maximumOutputTokens: int = Field(gt=0)
+
+
 def load_deployments() -> tuple[Deployment, ...]:
     try:
         configured = json.loads(os.getenv("MODEL_DEPLOYMENTS_JSON", "[]"))
@@ -405,6 +418,121 @@ def _collect_evidence_ids(value: Any) -> set[str]:
     return collected
 
 
+def _collect_source_ids(value: Any) -> set[str]:
+    collected: set[str] = set()
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if key in {"sourceIds", "supportingSourceIds"} and isinstance(child, list):
+                collected.update(str(item) for item in child)
+            elif key == "preferredSourceId" and child is not None:
+                collected.add(str(child))
+            else:
+                collected.update(_collect_source_ids(child))
+    elif isinstance(value, list):
+        for child in value:
+            collected.update(_collect_source_ids(child))
+    return collected
+
+
+def _collect_concepts(value: Any) -> set[str]:
+    concept_keys = {
+        "riskConcept",
+        "conflictConcept",
+        "ambiguityConcept",
+        "recommendedActionConcept",
+        "priorityConcept",
+        "severityConcept",
+        "statusConcept",
+    }
+    collected: set[str] = set()
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if key in concept_keys and child is not None:
+                collected.add(str(child))
+            else:
+                collected.update(_collect_concepts(child))
+    elif isinstance(value, list):
+        for child in value:
+            collected.update(_collect_concepts(child))
+    return collected
+
+
+def _validate_governed_output(
+    *,
+    request: GovernedAnalysisRequest,
+    output: dict[str, Any],
+    task: str,
+) -> None:
+    allowed_sources = {
+        str(item.get("id")) for item in request.sources if item.get("id") is not None
+    }
+    used_sources = _collect_source_ids(output)
+    if not used_sources.issubset(allowed_sources):
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "UNKNOWN_SOURCE_ID"},
+        )
+    known_concepts = {
+        str(item.get("code"))
+        for item in request.ontologyConcepts
+        if item.get("code") is not None
+    }
+    if not _collect_concepts(output).issubset(known_concepts):
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "UNKNOWN_ONTOLOGY_CONCEPT"},
+        )
+    if task == "conflict_analysis" and output.get("isConflict") is True:
+        supporting = output.get("supportingSourceIds")
+        if not isinstance(supporting, list) or len(set(map(str, supporting))) < 2:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "UNGROUNDED_CONFLICT"},
+            )
+    authority = output.get("authorityAssessment")
+    if isinstance(authority, dict) and authority.get("preferredSourceId") is not None:
+        if (
+            request.policy.get("onUnknown") == "MANUAL_REVIEW"
+            and not request.policy.get("matchedAuthorityRuleId")
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "INVALID_AUTHORITY_ASSUMPTION"},
+            )
+    if output.get("reviewStatus") == "FINAL" and not used_sources:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "UNGROUNDED_FINAL_RESULT"},
+        )
+
+
+async def _governed_analysis(
+    *,
+    request: GovernedAnalysisRequest,
+    task: str,
+    schema_name: str,
+    correlation_id: str | None,
+) -> ExtractionResponse:
+    deployment = _deployment(request.model, request.profile)
+    response = await _structured_runtime_call(
+        deployment=deployment,
+        prompt_components=request.promptComponents,
+        output_schema=request.outputSchema,
+        schema_name=schema_name,
+        task=task,
+        untrusted_context={
+            "selectedSources": request.sources,
+            "ontologyConcepts": request.ontologyConcepts,
+            "policy": request.policy,
+            "analysisContext": request.context,
+        },
+        maximum_output_tokens=request.maximumOutputTokens,
+        correlation_id=correlation_id,
+    )
+    _validate_governed_output(request=request, output=response.output, task=task)
+    return response
+
+
 @app.post("/v1/compliance-evaluations", response_model=ExtractionResponse)
 async def evaluate_compliance(
     request: ComplianceEvaluationRequest,
@@ -455,5 +583,68 @@ async def evaluate_compliance(
         raise HTTPException(
             status_code=422,
             detail={"code": "CONTRADICTION_OMISSION"},
+        )
+    return response
+
+
+@app.post("/v1/risk-analyses", response_model=ExtractionResponse)
+async def analyze_risk(
+    request: GovernedAnalysisRequest,
+    x_correlation_id: str | None = Header(default=None),
+) -> ExtractionResponse:
+    return await _governed_analysis(
+        request=request,
+        task="risk_analysis",
+        schema_name="dynamic_risk_output",
+        correlation_id=x_correlation_id,
+    )
+
+
+@app.post("/v1/conflict-analyses", response_model=ExtractionResponse)
+async def analyze_conflict(
+    request: GovernedAnalysisRequest,
+    x_correlation_id: str | None = Header(default=None),
+) -> ExtractionResponse:
+    if len(request.sources) != 2:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "CONFLICT_REQUIRES_TWO_SELECTED_SOURCES"},
+        )
+    return await _governed_analysis(
+        request=request,
+        task="conflict_analysis",
+        schema_name="dynamic_conflict_output",
+        correlation_id=x_correlation_id,
+    )
+
+
+@app.post("/v1/ambiguity-analyses", response_model=ExtractionResponse)
+async def analyze_ambiguity(
+    request: GovernedAnalysisRequest,
+    x_correlation_id: str | None = Header(default=None),
+) -> ExtractionResponse:
+    return await _governed_analysis(
+        request=request,
+        task="ambiguity_analysis",
+        schema_name="dynamic_ambiguity_output",
+        correlation_id=x_correlation_id,
+    )
+
+
+@app.post("/v1/clarification-candidates", response_model=ExtractionResponse)
+async def clarification_candidate(
+    request: GovernedAnalysisRequest,
+    x_correlation_id: str | None = Header(default=None),
+) -> ExtractionResponse:
+    response = await _governed_analysis(
+        request=request,
+        task="clarification_candidate",
+        schema_name="dynamic_clarification_output",
+        correlation_id=x_correlation_id,
+    )
+    if response.output.get("deliveryStatus") not in {None, "CANDIDATE"}:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "CLARIFICATION_MUST_REMAIN_CANDIDATE"},
         )
     return response

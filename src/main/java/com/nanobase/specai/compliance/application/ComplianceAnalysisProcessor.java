@@ -308,18 +308,19 @@ public class ComplianceAnalysisProcessor {
         jdbc.update("""
             insert into compliance_evaluation (
                 id, organization_id, project_id, requirement_id, target_scope_json,
-                analysis_job_id, suggested_decision_concept_id,
+                analysis_job_id, knowledge_snapshot_id, suggested_decision_concept_id,
                 comparison_summary_json, combined_confidence,
                 grounding_status_concept_id, review_status, analysis_profile_id,
                 retrieval_policy_version_id, matching_policy_version_id,
                 comparison_policy_version_id, confidence_policy_version_id,
                 prompt_package_version_id, created_at, updated_at
-            ) values (?, ?, ?, ?, ?::jsonb, ?, ?, ?::jsonb, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+            ) values (?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                       now(), now())
             """, evaluationId, organizationId, job.projectId(), requirement.id(),
             task.targetEntityId() == null ? "{}"
                 : json(Map.of("targetEntityId", task.targetEntityId())),
-            job.id(), outcome.decisionConceptId(), outcome.summary().toString(),
+            job.id(), job.snapshotId(), outcome.decisionConceptId(),
+            outcome.summary().toString(),
             outcome.confidence(), grounding,
             outcome.requiresReview() ? "REQUIRES_REVIEW" : "AI_RECOMMENDATION",
             job.analysisProfileId(), job.retrievalPolicyVersionId(),

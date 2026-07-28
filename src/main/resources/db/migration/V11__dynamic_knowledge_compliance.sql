@@ -13,6 +13,19 @@ ALTER TABLE clause
 ALTER TABLE requirement
     ADD CONSTRAINT uq_requirement_id_organization UNIQUE (id, organization_id);
 
+-- Materialized catalog snapshot is shared by requirement, knowledge, compliance and
+-- downstream risk analysis. Existing Sprint 4 jobs keep their opaque snapshot UUIDs;
+-- new snapshots can be materialized without making historical rows invalid.
+CREATE TABLE terminology_snapshot (
+    id UUID PRIMARY KEY,
+    organization_id UUID NOT NULL REFERENCES organization(id),
+    project_id UUID NOT NULL REFERENCES tender_project(id),
+    catalog_ids_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+    entries_hash VARCHAR(64) NOT NULL,
+    snapshot_json JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL
+);
+
 CREATE TABLE evidence_fragment (
     id UUID PRIMARY KEY,
     organization_id UUID NOT NULL REFERENCES organization(id),
@@ -199,6 +212,11 @@ CREATE TABLE evidence_validity_assessment (
     factors_json JSONB NOT NULL DEFAULT '[]'::jsonb,
     assessed_at TIMESTAMPTZ NOT NULL,
     assessed_by_type VARCHAR(120) NOT NULL,
+    evidence_claim_id UUID REFERENCES evidence_claim(id),
+    validity_concept_id UUID GENERATED ALWAYS AS (status_concept_id) STORED,
+    explanation_json JSONB GENERATED ALWAYS AS (factors_json) STORED,
+    assessed_by VARCHAR(120) GENERATED ALWAYS AS (assessed_by_type) STORED,
+    valid_until TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL,
     UNIQUE (id, organization_id),
     FOREIGN KEY (evidence_fragment_id, organization_id)
@@ -456,6 +474,7 @@ CREATE TABLE compliance_evaluation (
     requirement_id UUID NOT NULL,
     target_scope_json JSONB NOT NULL DEFAULT '{}'::jsonb,
     analysis_job_id UUID NOT NULL,
+    knowledge_snapshot_id UUID NOT NULL,
     suggested_decision_concept_id UUID NOT NULL REFERENCES ontology_concept(id),
     final_decision_concept_id UUID REFERENCES ontology_concept(id),
     comparison_summary_json JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -468,6 +487,12 @@ CREATE TABLE compliance_evaluation (
     comparison_policy_version_id UUID NOT NULL REFERENCES policy_version(id),
     confidence_policy_version_id UUID NOT NULL REFERENCES policy_version(id),
     prompt_package_version_id UUID NOT NULL REFERENCES prompt_package_version(id),
+    decision_concept_id UUID GENERATED ALWAYS AS (
+        coalesce(final_decision_concept_id, suggested_decision_concept_id)
+    ) STORED,
+    confidence NUMERIC(10,6) GENERATED ALWAYS AS (combined_confidence) STORED,
+    explanation_json JSONB GENERATED ALWAYS AS (comparison_summary_json) STORED,
+    policy_version_id UUID GENERATED ALWAYS AS (matching_policy_version_id) STORED,
     created_at TIMESTAMPTZ NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL,
     version BIGINT NOT NULL DEFAULT 0,
@@ -478,6 +503,8 @@ CREATE TABLE compliance_evaluation (
         REFERENCES requirement(id, organization_id),
     FOREIGN KEY (analysis_job_id, organization_id)
         REFERENCES compliance_analysis_job(id, organization_id),
+    FOREIGN KEY (knowledge_snapshot_id, organization_id)
+        REFERENCES knowledge_snapshot(id, organization_id),
     CHECK (combined_confidence BETWEEN 0 AND 1)
 );
 
@@ -493,6 +520,8 @@ CREATE TABLE compliance_evidence_link (
     support_strength NUMERIC(10,6) NOT NULL DEFAULT 0,
     contradiction_strength NUMERIC(10,6) NOT NULL DEFAULT 0,
     selected_by_type VARCHAR(120) NOT NULL,
+    link_role_concept_id UUID GENERATED ALWAYS AS (relation_role_concept_id) STORED,
+    explanation TEXT,
     created_at TIMESTAMPTZ NOT NULL,
     UNIQUE (id, organization_id),
     FOREIGN KEY (compliance_evaluation_id, organization_id)
@@ -589,6 +618,8 @@ CREATE INDEX ix_knowledge_event_job
     ON knowledge_extraction_event (extraction_job_id, occurred_at);
 CREATE INDEX ix_compliance_event_job
     ON compliance_analysis_event (compliance_job_id, occurred_at);
+CREATE INDEX ix_terminology_snapshot_project
+    ON terminology_snapshot (organization_id, project_id, created_at DESC);
 
 -- Extensible global catalog roots and safe baseline decision/evidence concepts.
 INSERT INTO ontology_concept (
@@ -943,7 +974,7 @@ DECLARE
     table_name TEXT;
 BEGIN
     FOREACH table_name IN ARRAY ARRAY[
-        'evidence_fragment', 'knowledge_entity', 'entity_attribute',
+        'terminology_snapshot', 'evidence_fragment', 'knowledge_entity', 'entity_attribute',
         'knowledge_relation', 'capability', 'capability_evidence', 'evidence_claim',
         'evidence_validity_assessment', 'source_authority_profile', 'candidate_concept',
         'knowledge_extraction_profile', 'knowledge_extraction_job',

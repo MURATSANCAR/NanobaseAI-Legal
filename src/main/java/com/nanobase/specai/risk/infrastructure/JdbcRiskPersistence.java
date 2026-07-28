@@ -704,6 +704,21 @@ public class JdbcRiskPersistence implements RiskPersistencePort {
     public List<ImpactGraphEdge> dependencyGraph(UUID organizationId, UUID projectId) {
         List<ImpactGraphEdge> edges = new ArrayList<>();
         edges.addAll(jdbc.query("""
+            select requirement.source_clause_id, requirement.id,
+                   coalesce(requirement.primary_concept_id, requirement.modality_concept_id)
+                       as dependency_concept_id,
+                   requirement.combined_confidence
+            from requirement
+            where requirement.organization_id = ? and requirement.project_id = ?
+              and coalesce(requirement.primary_concept_id,
+                           requirement.modality_concept_id) is not null
+              and requirement.review_status <> 'REJECTED'
+            """, (result, row) -> new ImpactGraphEdge(
+                "CLAUSE", result.getObject("source_clause_id", UUID.class),
+                "REQUIREMENT", result.getObject("id", UUID.class),
+                result.getObject("dependency_concept_id", UUID.class),
+                result.getDouble("combined_confidence")), organizationId, projectId));
+        edges.addAll(jdbc.query("""
             select dependency.source_requirement_id, dependency.target_requirement_id,
                    dependency.dependency_concept_id, dependency.confidence
             from requirement_dependency dependency

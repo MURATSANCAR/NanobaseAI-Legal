@@ -32,6 +32,19 @@ public class PlatformMetrics {
     private final AtomicInteger sseActive = new AtomicInteger();
     private final Counter rabbitConsumerRetry;
     private final Timer documentProcessingDuration;
+    private final Counter riskAnalysis;
+    private final Counter riskRecordCreated;
+    private final Counter riskManualReview;
+    private final Counter riskPropagationCandidate;
+    private final Counter ambiguityDetected;
+    private final Counter conflictCandidate;
+    private final Counter conflictConfirmed;
+    private final Counter documentChangeItem;
+    private final Counter impactAnalysis;
+    private final Counter analysisStale;
+    private final Counter reanalysisRequired;
+    private final Counter clarificationCandidate;
+    private final Counter mitigationCandidate;
 
     public PlatformMetrics(MeterRegistry registry, OutboxEventRepository outbox) {
         this.registry = registry;
@@ -55,6 +68,22 @@ public class PlatformMetrics {
             .register(registry);
         rabbitConsumerRetry = registry.counter("rabbitmq.consumer.retry.total");
         documentProcessingDuration = registry.timer("document.processing.duration");
+        riskAnalysis = registry.counter("risk_analysis_total");
+        riskRecordCreated = registry.counter("risk_record_created_total");
+        riskManualReview = registry.counter("risk_manual_review_total");
+        riskPropagationCandidate = registry.counter("risk_propagation_candidate_total");
+        ambiguityDetected = registry.counter("ambiguity_detected_total");
+        conflictCandidate = registry.counter("conflict_candidate_total");
+        conflictConfirmed = registry.counter("conflict_confirmed_total");
+        documentChangeItem = registry.counter("document_change_item_total");
+        impactAnalysis = registry.counter("impact_analysis_total");
+        analysisStale = registry.counter("analysis_stale_total");
+        reanalysisRequired = registry.counter("reanalysis_required_total");
+        clarificationCandidate = registry.counter("clarification_candidate_total");
+        mitigationCandidate = registry.counter("mitigation_candidate_total");
+        registry.timer("risk_analysis_duration_seconds");
+        registry.timer("conflict_analysis_duration_seconds");
+        registry.timer("impact_analysis_duration_seconds");
         Gauge.builder("outbox.pending.total", outbox,
                 repository -> repository.countByStatus(OutboxStatus.PENDING))
             .register(registry);
@@ -106,4 +135,19 @@ public class PlatformMetrics {
         sseActive.updateAndGet(value -> Math.max(0, value - 1));
     }
     public void consumerRetried() { rabbitConsumerRetry.increment(); }
+    public void riskAnalysis() { riskAnalysis.increment(); }
+    public void riskCreated() { riskRecordCreated.increment(); }
+    public void riskManualReview() { riskManualReview.increment(); }
+    public void riskPropagationCandidates(int count) {
+        riskPropagationCandidate.increment(count);
+    }
+    public void ambiguityDetected() { ambiguityDetected.increment(); }
+    public void conflictCandidates(int count) { conflictCandidate.increment(count); }
+    public void conflictConfirmed() { conflictConfirmed.increment(); }
+    public void documentChangeItems(int count) { documentChangeItem.increment(count); }
+    public void impactAnalysis() { impactAnalysis.increment(); }
+    public void staleDetected(int count) { analysisStale.increment(count); }
+    public void reanalysisRequired(int count) { reanalysisRequired.increment(count); }
+    public void clarificationCandidate() { clarificationCandidate.increment(); }
+    public void mitigationCandidate() { mitigationCandidate.increment(); }
 }
