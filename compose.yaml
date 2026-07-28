@@ -209,7 +209,6 @@ services:
       - /tmp:size=1g,mode=1770,uid=10001,gid=10001
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
-    pids_limit: 128
     restart: unless-stopped
 
   ai-orchestrator:

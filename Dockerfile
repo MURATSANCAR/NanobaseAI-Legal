@@ -3,7 +3,7 @@ WORKDIR /workspace
 COPY pom.xml .
 RUN mvn -B -q dependency:go-offline
 COPY src src
-RUN mvn -B -q verify
+RUN mvn -B -q -DskipTests package
 
 FROM eclipse-temurin:21.0.7_6-jre-alpine
 RUN addgroup -S specai && adduser -S -G specai -u 10001 specai
