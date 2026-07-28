@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.nanobase.specai.audit.application.AuditService;
 import com.nanobase.specai.integration.outbox.OutboxService;
+import com.nanobase.specai.shared.observability.PlatformMetrics;
 import com.nanobase.specai.shared.security.CurrentTenant;
 import com.nanobase.specai.shared.security.TenantPrincipal;
 import com.nanobase.specai.workflow.api.WorkflowContracts.CreateWorkflowRequest;
@@ -56,13 +57,15 @@ public class DynamicWorkflowService {
     private final WorkflowNodeHandlerRegistry handlers;
     private final AuditService audit;
     private final OutboxService outbox;
+    private final PlatformMetrics metrics;
 
     public DynamicWorkflowService(JdbcTemplate jdbc, ObjectMapper mapper,
                                   CurrentTenant currentTenant,
                                   WorkflowSimulationService simulation,
                                   WorkflowConditionEngine conditions,
                                   WorkflowNodeHandlerRegistry handlers,
-                                  AuditService audit, OutboxService outbox) {
+                                  AuditService audit, OutboxService outbox,
+                                  PlatformMetrics metrics) {
         this.jdbc = jdbc;
         this.mapper = mapper;
         this.currentTenant = currentTenant;
@@ -71,6 +74,7 @@ public class DynamicWorkflowService {
         this.handlers = handlers;
         this.audit = audit;
         this.outbox = outbox;
+        this.metrics = metrics;
     }
 
     @Transactional
@@ -327,6 +331,7 @@ public class DynamicWorkflowService {
             "workflow.instance.started.v1", "workflow.instance.started.v1",
             Map.of("workflowInstanceId", instanceId, "projectId",
                 request.projectId() == null ? "" : request.projectId()), null);
+        metrics.sprint7("workflow_instance_total");
         run(instanceId, tokenId, snapshot, principal);
         WorkflowInstanceResponse started = instance(instanceId);
         audit.record("workflow.instance.started.v1", "WorkflowInstance", instanceId,
@@ -514,10 +519,17 @@ public class DynamicWorkflowService {
             outbox.publish(principal.tenantId(), "WorkflowInstance", instanceId,
                 "workflow.node.entered.v1", "workflow.node.entered.v1",
                 Map.of("workflowInstanceId", instanceId, "nodeId", node.id()), null);
-            var result = handlers.require(node.typeConceptCode()).execute(
-                new WorkflowNodeExecutionContext(principal.tenantId(), instanceId,
-                    tokenId, executionId, node.id(), node.typeConceptCode(), node.configuration(),
-                    snapshot, variables));
+            metrics.sprint7("workflow_node_execution_total");
+            WorkflowModels.WorkflowNodeExecutionResult result;
+            try {
+                result = handlers.require(node.typeConceptCode()).execute(
+                    new WorkflowNodeExecutionContext(principal.tenantId(), instanceId,
+                        tokenId, executionId, node.id(), node.typeConceptCode(),
+                        node.configuration(), snapshot, variables));
+            } catch (RuntimeException failure) {
+                metrics.sprint7("workflow_instance_failed_total");
+                throw failure;
+            }
             jdbc.update("""
                 update workflow_execution
                    set execution_status_concept_id = ?, output_snapshot_json = ?::jsonb,
@@ -525,6 +537,12 @@ public class DynamicWorkflowService {
                  where id = ?
                 """, result.completed() ? complete : pending, json(result.output()),
                 result.completed(), executionId);
+            if (result.completed()) {
+                outbox.publish(principal.tenantId(), "WorkflowInstance", instanceId,
+                    "workflow.node.completed.v1", "workflow.node.completed.v1",
+                    Map.of("workflowInstanceId", instanceId, "nodeId", node.id(),
+                        "workflowExecutionId", executionId), null);
+            }
             if (result.waiting()) {
                 continue;
             }
@@ -543,6 +561,7 @@ public class DynamicWorkflowService {
                            error_message = 'No transition condition matched'
                      where id = ?
                     """, executionId);
+                metrics.sprint7("workflow_dead_end_total");
                 throw new IllegalStateException("Workflow reached a condition dead-end at "
                     + node.code());
             }
@@ -572,6 +591,7 @@ public class DynamicWorkflowService {
                     "workflow.transition.executed.v1", "workflow.transition.executed.v1",
                     Map.of("workflowInstanceId", instanceId,
                         "transitionId", transition.id()), null);
+                metrics.sprint7("workflow_transition_total");
                 tokens.addLast(nextToken);
             }
         }
