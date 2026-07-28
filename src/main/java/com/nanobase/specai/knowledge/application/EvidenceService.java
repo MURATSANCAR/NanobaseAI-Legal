@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.nanobase.specai.audit.application.AuditService;
 import com.nanobase.specai.integration.outbox.OutboxService;
 import com.nanobase.specai.knowledge.api.KnowledgeContracts.EvidenceAssessmentRequest;
+import com.nanobase.specai.shared.observability.PlatformMetrics;
 import com.nanobase.specai.shared.security.CurrentTenant;
 import com.nanobase.specai.shared.security.TenantPrincipal;
 import com.nanobase.specai.shared.web.RequestContext;
@@ -20,13 +21,16 @@ public class EvidenceService {
     private final CurrentTenant currentTenant;
     private final AuditService audit;
     private final OutboxService outbox;
+    private final PlatformMetrics metrics;
 
     public EvidenceService(JdbcTemplate jdbc, CurrentTenant currentTenant,
-                           AuditService audit, OutboxService outbox) {
+                           AuditService audit, OutboxService outbox,
+                           PlatformMetrics metrics) {
         this.jdbc = jdbc;
         this.currentTenant = currentTenant;
         this.audit = audit;
         this.outbox = outbox;
+        this.metrics = metrics;
     }
 
     @Transactional(readOnly = true)
@@ -115,6 +119,7 @@ public class EvidenceService {
                 update evidence_fragment set valid_until = coalesce(valid_until, now())
                 where id = ? and organization_id = ?
                 """, id, principal.tenantId());
+            metrics.evidenceInvalid();
         }
         Map<String, Object> after = get(id);
         String action = invalidating ? "EVIDENCE_INVALIDATED" : "EVIDENCE_VERIFIED";

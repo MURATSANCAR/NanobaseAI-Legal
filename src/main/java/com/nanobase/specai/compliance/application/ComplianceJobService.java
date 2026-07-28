@@ -2,6 +2,7 @@ package com.nanobase.specai.compliance.application;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nanobase.specai.analysis.api.ExtractionEventStream;
 import com.nanobase.specai.integration.outbox.OutboxService;
 import com.nanobase.specai.shared.security.CurrentTenant;
 import com.nanobase.specai.shared.security.TenantPrincipal;
@@ -27,15 +28,18 @@ public class ComplianceJobService {
     private final CurrentTenant currentTenant;
     private final ProjectAccessService access;
     private final OutboxService outbox;
+    private final ExtractionEventStream eventStream;
 
     public ComplianceJobService(JdbcTemplate jdbc, ObjectMapper mapper,
                                 CurrentTenant currentTenant, ProjectAccessService access,
-                                OutboxService outbox) {
+                                OutboxService outbox,
+                                ExtractionEventStream eventStream) {
         this.jdbc = jdbc;
         this.mapper = mapper;
         this.currentTenant = currentTenant;
         this.access = access;
         this.outbox = outbox;
+        this.eventStream = eventStream;
     }
 
     @Transactional
@@ -207,13 +211,24 @@ public class ComplianceJobService {
 
     void event(UUID organizationId, UUID jobId, String type, int progress,
                String message, Object metadata) {
+        UUID eventId = UUID.randomUUID();
         jdbc.update("""
             insert into compliance_analysis_event (
                 id, organization_id, compliance_job_id, event_type, progress,
                 message, metadata_json, occurred_at
             ) values (?, ?, ?, ?, ?, ?, ?::jsonb, now())
-            """, UUID.randomUUID(), organizationId, jobId, type, progress,
+            """, eventId, organizationId, jobId, type, progress,
             message, json(metadata));
+        eventStream.publish(jobId, type, Map.of(
+            "id", eventId,
+            "eventType", type,
+            "progress", progress,
+            "message", message,
+            "metadata", metadata == null ? Map.of() : metadata
+        ));
+        if (TERMINAL.contains(type)) {
+            eventStream.complete(jobId);
+        }
     }
 
     private Profile latestProfile(UUID organizationId, UUID projectId) {

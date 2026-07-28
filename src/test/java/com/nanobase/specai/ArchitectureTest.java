@@ -88,4 +88,68 @@ class ArchitectureTest {
             .should().beInterfaces()
             .check(classes);
     }
+
+    @Test
+    void riskTaxonomiesSeverityAndAuthorityAreNotJavaEnums() {
+        noClasses().that().resideInAPackage("..risk..")
+            .should().beEnums()
+            .check(classes);
+    }
+
+    @Test
+    void riskPoliciesAndStrategiesAreAccessedThroughPorts() {
+        classes().that().haveSimpleName("RiskSignalEngine")
+            .or().haveSimpleName("RiskExposurePolicyEngine")
+            .or().haveSimpleName("RiskConfidencePolicyEngine")
+            .or().haveSimpleName("AmbiguityAnalysisEngine")
+            .or().haveSimpleName("ConflictCandidateGenerator")
+            .or().haveSimpleName("ConflictComparisonStrategy")
+            .or().haveSimpleName("ConflictStrategyRegistry")
+            .or().haveSimpleName("ImpactAnalysisEngine")
+            .or().haveSimpleName("RiskPropagationEngine")
+            .or().haveSimpleName("DocumentChangeMatcher")
+            .should().beInterfaces()
+            .check(classes);
+    }
+
+    @Test
+    void controllersDoNotCalculateRiskOrCompareConflicts() {
+        noClasses().that().areAnnotatedWith(RestController.class)
+            .should().dependOnClassesThat().areAssignableTo(
+                com.nanobase.specai.risk.application.RiskSignalEngine.class)
+            .orShould().dependOnClassesThat().areAssignableTo(
+                com.nanobase.specai.risk.application.RiskExposurePolicyEngine.class)
+            .orShould().dependOnClassesThat().areAssignableTo(
+                com.nanobase.specai.risk.application.ConflictComparisonStrategy.class)
+            .check(classes);
+    }
+
+    @Test
+    void dynamicKnowledgeDomainHasNoFixedCompanyProductOrDecisionEnums() {
+        noClasses().that().resideInAPackage("..knowledge.domain..")
+            .should().haveSimpleNameContaining("Company")
+            .orShould().haveSimpleNameContaining("Product")
+            .orShould().haveSimpleNameContaining("ComplianceDecision")
+            .check(classes);
+    }
+
+    @Test
+    void comparisonAndRetrievalAreAccessedThroughPorts() {
+        classes().that().haveSimpleName("ComparisonStrategy")
+            .or().haveSimpleName("EvidenceReranker")
+            .or().haveSimpleName("EvidenceCandidateRetriever")
+            .or().haveSimpleName("EntityResolutionService")
+            .should().beInterfaces()
+            .check(classes);
+    }
+
+    @Test
+    void controllersDoNotPerformEvidenceRetrievalOrComparison() {
+        noClasses().that().areAnnotatedWith(RestController.class)
+            .should().dependOnClassesThat().areAssignableTo(
+                com.nanobase.specai.compliance.application.EvidenceCandidateRetriever.class)
+            .orShould().dependOnClassesThat().areAssignableTo(
+                com.nanobase.specai.compliance.application.ComparisonStrategy.class)
+            .check(classes);
+    }
 }

@@ -86,3 +86,30 @@
 - Standalone `tsc --noEmit`, mevcut Cloudflare worker ambient type paketleri tsconfig'e
   bağlı olmadığı için `cloudflare:workers`, `Fetcher` ve `D1Database` hataları verir.
   Vinext production build bu worker tiplerini kendi build ortamında başarıyla çözer.
+
+## Sprint 6 Bilinen Konular
+
+- Docker daemon olmadığı için V11–V12 Flyway, RLS ve RabbitMQ risk consumer
+  entegrasyonu Testcontainers ile çalıştırılamadı. CI/Docker hostunda `mvn verify`
+  zorunludur.
+- Contract-golden evaluation 19 sentetik case içerir; gerçek müşteri dokümanı ve
+  lokal model quality benchmark’ı değildir.
+- Semantic contradiction provider sözleşmesi ve guarded AI endpoint’i hazırdır;
+  gerçek model deployment olmadığı için canlı entailment/timeout/fallback çağrısı
+  çalıştırılmadı.
+- Mevcut deterministic conflict provider structured numeric/duration JSON pointer
+  kurallarını kapsar. Date/range/composite logical provider’ları registry’ye sonraki
+  iterasyonda eklenmelidir.
+- Risk propagation graph clause, requirement, compliance ve risk edge’lerini
+  birleştirir. Shared evidence/capability/task/report adapter’larının tamamı henüz
+  graph sorgusuna bağlı değildir.
+- Mitigation modeli, katalogları ve review endpoint’i hazırdır; bootstrap katalog
+  kasıtlı olarak boştur. Müşteri-onaylı playbook olmadan öneri uydurulmaz.
+- Clarification persistence/API ve AI guard vardır; portalda soru düzenleme formu
+  henüz yoktur.
+- Change matching düzeltme UI’ı clause UUID düzenler. Görsel iki dokümanlı clause
+  seçici ve moved/split/merged özel eşleştirme provider’ları sonraki iterasyondadır.
+- Risk source DTO’suna evidence redaction/masking policy adapter’ı ve auditli export
+  endpoint’i henüz eklenmedi.
+- Frontend production build ve source-contract testleri başarılıdır; imzalı giriş,
+  gerçek API ve PDF bbox davranışı browser E2E ile doğrulanmadı.

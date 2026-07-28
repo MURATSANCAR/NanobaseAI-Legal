@@ -22,6 +22,7 @@ public class DynamicValueValidator {
                 throw new IllegalArgumentException("Unsupported dynamic value type");
             }
             Map<String, Object> metadata = value.unsupportedMetadata() == null
+                || value.unsupportedMetadata().isEmpty()
                 ? Map.of("originalType", value.type()) : value.unsupportedMetadata();
             return new DynamicValue(value.type(), value.textValue(), value.numericValue(),
                 value.numericValueEnd(), value.booleanValue(), value.dateValue(),

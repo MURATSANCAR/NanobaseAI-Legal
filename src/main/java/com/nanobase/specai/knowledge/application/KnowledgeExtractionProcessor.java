@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nanobase.specai.integration.outbox.OutboxService;
 import com.nanobase.specai.knowledge.application.KnowledgeAiGateway.KnowledgeRequest;
+import com.nanobase.specai.shared.observability.PlatformMetrics;
 import com.nanobase.specai.shared.security.TenantDatabaseContext;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -28,18 +29,24 @@ public class KnowledgeExtractionProcessor {
     private final KnowledgeAiGateway gateway;
     private final KnowledgeExtractionJobService jobs;
     private final OutboxService outbox;
+    private final PlatformMetrics metrics;
+    private final KnowledgeEvidencePolicyService evidencePolicies;
 
     public KnowledgeExtractionProcessor(TenantDatabaseContext tenantDatabase,
                                         JdbcTemplate jdbc, ObjectMapper mapper,
                                         KnowledgeAiGateway gateway,
                                         KnowledgeExtractionJobService jobs,
-                                        OutboxService outbox) {
+                                        OutboxService outbox,
+                                        PlatformMetrics metrics,
+                                        KnowledgeEvidencePolicyService evidencePolicies) {
         this.tenantDatabase = tenantDatabase;
         this.jdbc = jdbc;
         this.mapper = mapper;
         this.gateway = gateway;
         this.jobs = jobs;
         this.outbox = outbox;
+        this.metrics = metrics;
+        this.evidencePolicies = evidencePolicies;
     }
 
     @Transactional
@@ -56,6 +63,7 @@ public class KnowledgeExtractionProcessor {
         Profile profile = profile(organizationId, profileId);
         List<Map<String, Object>> fragments = evidenceFragments(
             organizationId, documentId, versionId);
+        evidencePolicies.assess(organizationId, versionId);
         jdbc.update("""
             update knowledge_extraction_job set status = 'RUNNING', started_at = now(),
                 total_fragment_count = ?, updated_at = now(), version = version + 1
@@ -73,6 +81,10 @@ public class KnowledgeExtractionProcessor {
                 correlationId));
             PersistResult persisted = persistOutput(organizationId, jobId, versionId,
                 profile.ontologyVersionId(), response.output());
+            metrics.knowledgeEntitiesCreated(persisted.entities());
+            metrics.knowledgeAttributesExtracted(persisted.attributes());
+            metrics.knowledgeRelationsExtracted(persisted.relations());
+            metrics.capabilitiesExtracted(persisted.capabilities());
             jdbc.update("""
                 update knowledge_extraction_job set status = 'COMPLETED',
                     processed_fragment_count = total_fragment_count,
@@ -137,6 +149,7 @@ public class KnowledgeExtractionProcessor {
                     clause.get("id"), clause.get("page_start"), clause.get("raw_text"),
                     clause.get("normalized_text"), clause.get("bounding_boxes_json"),
                     contentHash);
+                metrics.evidenceFragmentsCreated(1);
             }
             Map<String, Object> safe = new LinkedHashMap<>();
             safe.put("fragmentId", fragmentId.toString());
@@ -163,6 +176,9 @@ public class KnowledgeExtractionProcessor {
             }, organizationId, versionId);
         Map<String, UUID> entities = new HashMap<>();
         int reviews = 0;
+        int attributes = 0;
+        int relations = 0;
+        int capabilities = 0;
         for (JsonNode entity : output.path("entities")) {
             List<UUID> sources = sourceIds(entity.path("sourceFragments"), fragmentIds);
             if (sources.isEmpty()) {
@@ -188,8 +204,12 @@ public class KnowledgeExtractionProcessor {
                 sources.getFirst());
             entities.put(temporaryId, entityId);
             for (JsonNode attribute : entity.path("attributes")) {
-                reviews += persistAttribute(organizationId, ontologyVersionId, entityId,
-                    attribute, fragmentIds);
+                int attributeReviews = persistAttribute(
+                    organizationId, ontologyVersionId, entityId, attribute, fragmentIds);
+                reviews += attributeReviews;
+                if (attributeReviews == 0) {
+                    attributes++;
+                }
             }
         }
         for (JsonNode relation : output.path("relations")) {
@@ -216,6 +236,7 @@ public class KnowledgeExtractionProcessor {
                 relation.path("attributes").isMissingNode() ? "{}"
                     : relation.path("attributes").toString(),
                 confidence(relation), sources.getFirst());
+            relations++;
         }
         for (JsonNode capability : output.path("capabilities")) {
             UUID owner = entities.get(capability.path("ownerTemporaryId").asText());
@@ -242,6 +263,7 @@ public class KnowledgeExtractionProcessor {
                 capability.path("name").asText(), nullable(capability.path("description")),
                 capability.path("attributes").isMissingNode() ? "{}"
                     : capability.path("attributes").toString(), confidence(capability));
+            capabilities++;
             for (UUID source : sources) {
                 UUID role = firstConceptByType(organizationId, "EVIDENCE_ROLE");
                 jdbc.update("""
@@ -253,7 +275,8 @@ public class KnowledgeExtractionProcessor {
                     role, confidence(capability));
             }
         }
-        return new PersistResult(entities.size(), reviews);
+        return new PersistResult(entities.size(), attributes, relations, capabilities,
+            reviews);
     }
 
     private int persistAttribute(UUID organizationId, UUID ontologyVersionId,
@@ -455,6 +478,7 @@ public class KnowledgeExtractionProcessor {
                            String modelProfile) {
     }
 
-    private record PersistResult(int entities, int reviews) {
+    private record PersistResult(int entities, int attributes, int relations,
+                                 int capabilities, int reviews) {
     }
 }

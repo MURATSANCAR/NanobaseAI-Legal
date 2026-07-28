@@ -15,6 +15,7 @@ import com.nanobase.specai.compliance.application.ComplianceModels.PolicyVersion
 import com.nanobase.specai.compliance.application.ComplianceModels.RankedEvidence;
 import com.nanobase.specai.compliance.application.ComplianceModels.RankedEvidenceResult;
 import com.nanobase.specai.integration.outbox.OutboxService;
+import com.nanobase.specai.shared.observability.PlatformMetrics;
 import com.nanobase.specai.shared.security.TenantDatabaseContext;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
@@ -40,6 +41,7 @@ public class ComplianceAnalysisProcessor {
     private final ComplianceAiGateway aiGateway;
     private final ComplianceJobService jobs;
     private final OutboxService outbox;
+    private final PlatformMetrics metrics;
 
     public ComplianceAnalysisProcessor(
         TenantDatabaseContext tenantDatabase,
@@ -51,7 +53,8 @@ public class ComplianceAnalysisProcessor {
         PolicyComplianceConfidenceEngine confidenceEngine,
         ComplianceAiGateway aiGateway,
         ComplianceJobService jobs,
-        OutboxService outbox
+        OutboxService outbox,
+        PlatformMetrics metrics
     ) {
         this.tenantDatabase = tenantDatabase;
         this.jdbc = jdbc;
@@ -63,6 +66,7 @@ public class ComplianceAnalysisProcessor {
         this.aiGateway = aiGateway;
         this.jobs = jobs;
         this.outbox = outbox;
+        this.metrics = metrics;
     }
 
     @Transactional
@@ -72,6 +76,7 @@ public class ComplianceAnalysisProcessor {
         if (!"QUEUED".equals(job.status())) {
             return;
         }
+        metrics.complianceAnalysis();
         jdbc.update("""
             update compliance_analysis_job
             set status = 'RUNNING', started_at = coalesce(started_at, now()),
@@ -150,21 +155,42 @@ public class ComplianceAnalysisProcessor {
         PolicyVersion retrievalPolicy = retrievalPolicy(
             organizationId, job.retrievalPolicyVersionId());
         Snapshot snapshot = snapshot(organizationId, job.snapshotId());
-        List<CandidateEvidence> candidates = retriever.retrieve(
-            organizationId, task.requirementId(), task.targetEntityId(),
-            snapshot.entityCutoff(), snapshot.evidenceCutoff(), retrievalPolicy);
-        RankedEvidenceResult ranked = reranker.rerank(
-            new EvidenceRerankingContext(organizationId, task.requirementId(),
-                task.targetEntityId(), candidates, Map.of()), retrievalPolicy);
+        var retrievalTimer = metrics.retrievalStarted();
+        List<CandidateEvidence> candidates;
+        try {
+            candidates = retriever.retrieve(
+                organizationId, task.requirementId(), task.targetEntityId(),
+                snapshot.entityCutoff(), snapshot.evidenceCutoff(), retrievalPolicy);
+        } finally {
+            metrics.retrievalCompleted(retrievalTimer);
+        }
+        metrics.retrievalCandidates(candidates.size());
+        var rerankingTimer = metrics.rerankingStarted();
+        RankedEvidenceResult ranked;
+        try {
+            ranked = reranker.rerank(
+                new EvidenceRerankingContext(organizationId, task.requirementId(),
+                    task.targetEntityId(), candidates, Map.of()), retrievalPolicy);
+        } finally {
+            metrics.rerankingCompleted(rerankingTimer);
+        }
         Requirement requirement = requirement(organizationId, task.requirementId());
         EvaluationOutcome outcome;
         if (ranked.ranked().isEmpty()) {
             outcome = missingOutcome(organizationId, job, requirement);
+            metrics.complianceMissingEvidence();
         } else {
             String provider = comparisonProvider(organizationId, requirement.attributes());
-            outcome = provider == null || "manual-only".equals(provider)
-                ? semanticOutcome(organizationId, job, requirement, ranked, correlationId)
-                : deterministicOutcome(organizationId, job, requirement, ranked, provider);
+            if (provider == null || "manual-only".equals(provider)) {
+                outcome = semanticOutcome(
+                    organizationId, job, requirement, ranked, correlationId);
+                metrics.complianceLlm();
+            } else {
+                outcome = deterministicOutcome(
+                    organizationId, job, requirement, ranked, provider);
+                metrics.complianceDeterministic();
+                metrics.comparisonStrategy(provider);
+            }
         }
         UUID evaluationId = persistEvaluation(organizationId, job, task, requirement,
             ranked, outcome);
@@ -178,11 +204,16 @@ public class ComplianceAnalysisProcessor {
             """, candidates.size(), ranked.ranked().size(), outcome.selectedEvidence().size(),
             outcome.modelRunId(), task.id(), organizationId);
         if (outcome.requiresReview()) {
+            metrics.complianceManualReview();
             outbox.publish(organizationId, "ComplianceEvaluation", evaluationId,
                 "ComplianceReviewRequired", "compliance.review.required.v1",
                 Map.of("evaluationId", evaluationId,
                     "requirementId", task.requirementId()), correlationId);
         }
+        if (outcome.contradiction()) {
+            metrics.complianceContradictoryEvidence();
+        }
+        metrics.complianceEvaluation();
         return new TaskResult(outcome.requiresReview());
     }
 

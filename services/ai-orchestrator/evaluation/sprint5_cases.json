@@ -1,0 +1,17 @@
+[
+  {"id":"numeric-full-match","category":"numeric_full_compliance","expected":"COMPLIANT","predicted":"COMPLIANT","grounded":true,"manualReview":false,"llmCalled":false,"tokens":0,"durationMs":4},
+  {"id":"numeric-non-compliance","category":"numeric_non_compliance","expected":"NON_COMPLIANT","predicted":"NON_COMPLIANT","grounded":true,"manualReview":true,"llmCalled":false,"tokens":0,"durationMs":4},
+  {"id":"dynamic-unit-conversion","category":"unit_conversion","expected":"COMPLIANT","predicted":"COMPLIANT","grounded":true,"manualReview":false,"llmCalled":false,"tokens":0,"durationMs":5},
+  {"id":"range-match","category":"range_compliance","expected":"COMPLIANT","predicted":"COMPLIANT","grounded":true,"manualReview":false,"llmCalled":false,"tokens":0,"durationMs":4},
+  {"id":"expired-certificate","category":"expired_certificate","expected":"INSUFFICIENT_INFORMATION","predicted":"INSUFFICIENT_INFORMATION","grounded":true,"manualReview":true,"llmCalled":false,"tokens":0,"durationMs":5},
+  {"id":"missing-certificate","category":"missing_certificate","expected":"INSUFFICIENT_INFORMATION","predicted":"INSUFFICIENT_INFORMATION","grounded":false,"manualReview":true,"llmCalled":false,"tokens":0,"durationMs":3},
+  {"id":"indirect-capability","category":"indirect_capability","expected":"PARTIALLY_COMPLIANT","predicted":"PARTIALLY_COMPLIANT","grounded":true,"manualReview":true,"llmCalled":true,"tokens":420,"durationMs":116},
+  {"id":"multi-document-evidence","category":"multi_document_evidence","expected":"COMPLIANT","predicted":"COMPLIANT","grounded":true,"manualReview":true,"llmCalled":true,"tokens":510,"durationMs":132},
+  {"id":"contradicting-catalogs","category":"contradicting_catalogs","expected":"REQUIRES_REVIEW","predicted":"REQUIRES_REVIEW","grounded":true,"manualReview":true,"llmCalled":false,"tokens":0,"durationMs":7},
+  {"id":"different-product-versions","category":"product_version_scope","expected":"REQUIRES_REVIEW","predicted":"REQUIRES_REVIEW","grounded":true,"manualReview":true,"llmCalled":false,"tokens":0,"durationMs":7},
+  {"id":"declaration-versus-official","category":"source_authority","expected":"REQUIRES_REVIEW","predicted":"REQUIRES_REVIEW","grounded":true,"manualReview":true,"llmCalled":false,"tokens":0,"durationMs":6},
+  {"id":"composite-condition","category":"composite_condition","expected":"PARTIALLY_COMPLIANT","predicted":"PARTIALLY_COMPLIANT","grounded":true,"manualReview":true,"llmCalled":false,"tokens":0,"durationMs":8},
+  {"id":"conditional-compliance","category":"conditional_compliance","expected":"CONDITIONALLY_COMPLIANT","predicted":"CONDITIONALLY_COMPLIANT","grounded":true,"manualReview":true,"llmCalled":true,"tokens":455,"durationMs":124},
+  {"id":"insufficient-information","category":"insufficient_information","expected":"INSUFFICIENT_INFORMATION","predicted":"INSUFFICIENT_INFORMATION","grounded":false,"manualReview":true,"llmCalled":false,"tokens":0,"durationMs":3},
+  {"id":"wrong-entity-match","category":"entity_resolution","expected":"REQUIRES_REVIEW","predicted":"REQUIRES_REVIEW","grounded":true,"manualReview":true,"llmCalled":false,"tokens":0,"durationMs":5}
+]

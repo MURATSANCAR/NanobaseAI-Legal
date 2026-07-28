@@ -42,7 +42,7 @@ public interface RiskPersistencePort {
     UUID createRisk(UUID organizationId, UUID projectId, UUID profileId,
                     RequirementCandidate source, UUID riskConceptId, UUID statusConceptId,
                     UUID sourceRoleConceptId, RiskSignalResult signal,
-                    RiskExposureResult exposure, double confidence);
+                    RiskExposureResult exposure, RiskModels.RiskConfidenceResult confidence);
     UUID createAmbiguity(UUID organizationId, UUID projectId, UUID profileId,
                          RequirementCandidate source, AmbiguityResult result,
                          UUID severityConceptId);

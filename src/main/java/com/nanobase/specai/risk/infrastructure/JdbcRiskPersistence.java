@@ -227,7 +227,7 @@ public class JdbcRiskPersistence implements RiskPersistencePort {
                            RequirementCandidate source, UUID riskConceptId,
                            UUID statusConceptId, UUID sourceRoleConceptId,
                            RiskSignalResult signal, RiskExposureResult exposure,
-                           double confidence) {
+                           RiskModels.RiskConfidenceResult confidence) {
         UUID id = UUID.randomUUID();
         String riskCode = "R-" + id.toString().substring(0, 8).toUpperCase();
         jdbc.update("""
@@ -244,7 +244,7 @@ public class JdbcRiskPersistence implements RiskPersistencePort {
                 ? source.requirementCode() : source.title(),
             source.text(), source.id(), profileId, exposure.probability().score(),
             exposure.impact().score(), exposure.exposure(), exposure.severityConceptId(),
-            confidence, statusConceptId);
+            confidence.score(), statusConceptId);
         jdbc.update("""
             insert into risk_source (
                 id, organization_id, risk_id, source_type, source_id, document_id,
@@ -263,6 +263,18 @@ public class JdbcRiskPersistence implements RiskPersistencePort {
                 """, UUID.randomUUID(), organizationId, id, riskConceptId,
                 json(mapper.valueToTree(Map.of("code", factor.code(), "value", factor.value()))),
                 factor.effect(), factor.code(),
+                json(mapper.valueToTree(Map.of("requirementId", source.id()))));
+        }
+        for (var factor : confidence.factors()) {
+            jdbc.update("""
+                insert into risk_factor (
+                    id, organization_id, risk_id, factor_concept_id, factor_value,
+                    effect_score, explanation, source_reference_json, created_at
+                ) values (?, ?, ?, ?, ?::jsonb, ?, ?, ?::jsonb, now())
+                """, UUID.randomUUID(), organizationId, id, riskConceptId,
+                json(mapper.valueToTree(Map.of("code", factor.code(),
+                    "input", factor.input(), "weight", factor.weight()))),
+                factor.effect(), "CONFIDENCE:" + factor.code(),
                 json(mapper.valueToTree(Map.of("requirementId", source.id()))));
         }
         return id;

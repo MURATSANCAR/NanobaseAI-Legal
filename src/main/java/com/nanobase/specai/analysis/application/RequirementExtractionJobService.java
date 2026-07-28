@@ -101,10 +101,11 @@ public class RequirementExtractionJobService {
                 "Requirement extraction requires a READY document");
         }
         AnalysisProfile profile = profiles.createSnapshot(documentId);
-        UUID terminologySnapshotId = UUID.nameUUIDFromBytes(
-            profile.terminologySetIdsJson().getBytes(StandardCharsets.UTF_8));
-        UUID correlationId = RequestContext.current().correlationId();
         Instant now = clock.instant();
+        UUID terminologySnapshotId = store.terminologySnapshot(
+            principal.tenantId(), document.projectId(),
+            profile.terminologySetIdsJson(), now);
+        UUID correlationId = RequestContext.current().correlationId();
         RequirementExtractionJob job = jobs.save(new RequirementExtractionJob(
             UUID.randomUUID(), principal.tenantId(), document.projectId(), document.id(),
             profile.documentVersionId(), profile, terminologySnapshotId, correlationId,

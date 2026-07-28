@@ -719,6 +719,8 @@ INSERT INTO policy_version (
      '60000000-0000-0000-0000-000000000131', 1,
      '{"candidateLimit":100,"retrievalLimit":250,"minimumRetrievalScore":0.55,
        "stages":["ENTITY_SCOPE","ONTOLOGY_CONCEPT","ATTRIBUTE","VERSION","NUMERIC","RERANK"],
+       "stageWeights":{"entityScope":0.25,"ontologyConcept":0.30,
+         "attribute":0.30,"version":0.15},
        "strategies":["STRUCTURED_VALUE"],
        "structuredRules":[
          {"path":"/value","strategyCode":"STRUCTURED_VALUE",

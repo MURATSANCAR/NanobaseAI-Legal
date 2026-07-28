@@ -312,12 +312,59 @@ async def _structured_runtime_call(
 
 
 def _deployment(model: str, profile: str) -> Deployment:
+    return _deployments(model, profile)[0]
+
+
+def _deployments(model: str, profile: str) -> tuple[Deployment, ...]:
     if model != LOGICAL_MODEL:
         raise HTTPException(status_code=422, detail="Unsupported logical model")
-    deployment = next((item for item in DEPLOYMENTS if item.profile == profile), None)
-    if deployment is None:
+    deployments = tuple(item for item in DEPLOYMENTS if item.profile == profile)
+    if not deployments:
         raise HTTPException(status_code=503, detail="No deployment for requested profile")
-    return deployment
+    return deployments
+
+
+async def _structured_runtime_call_with_fallback(
+    *,
+    deployments: tuple[Deployment, ...],
+    prompt_components: list[str],
+    output_schema: dict[str, Any],
+    schema_name: str,
+    task: str,
+    untrusted_context: dict[str, Any],
+    maximum_output_tokens: int,
+    correlation_id: str | None,
+) -> ExtractionResponse:
+    attempts = max(1, int(os.getenv("MODEL_RUNTIME_RETRY_ATTEMPTS", "2")))
+    last_failure: HTTPException | None = None
+    for deployment in deployments:
+        for attempt in range(1, attempts + 1):
+            try:
+                return await _structured_runtime_call(
+                    deployment=deployment,
+                    prompt_components=prompt_components,
+                    output_schema=output_schema,
+                    schema_name=schema_name,
+                    task=task,
+                    untrusted_context=untrusted_context,
+                    maximum_output_tokens=maximum_output_tokens,
+                    correlation_id=correlation_id,
+                )
+            except HTTPException as failure:
+                if failure.status_code != 502:
+                    raise
+                last_failure = failure
+                LOG.warning(
+                    "runtime_attempt_failed correlation_id=%s profile=%s "
+                    "runtime_model=%s attempt=%s",
+                    correlation_id,
+                    deployment.profile,
+                    deployment.runtime_model,
+                    attempt,
+                )
+    if last_failure is not None:
+        raise last_failure
+    raise HTTPException(status_code=503, detail="No model deployment available")
 
 
 def _source_fragment_ids(source_fragments: Any) -> set[str]:
@@ -337,9 +384,9 @@ async def extract_knowledge(
     request: KnowledgeExtractionRequest,
     x_correlation_id: str | None = Header(default=None),
 ) -> ExtractionResponse:
-    deployment = _deployment(request.model, request.profile)
-    response = await _structured_runtime_call(
-        deployment=deployment,
+    deployments = _deployments(request.model, request.profile)
+    response = await _structured_runtime_call_with_fallback(
+        deployments=deployments,
         prompt_components=request.promptComponents,
         output_schema=request.outputSchema,
         schema_name="dynamic_knowledge_output",
@@ -416,6 +463,19 @@ def _collect_evidence_ids(value: Any) -> set[str]:
         for child in value:
             collected.update(_collect_evidence_ids(child))
     return collected
+
+
+def _ontology_metadata(concept: dict[str, Any]) -> dict[str, Any]:
+    metadata = concept.get("metadata")
+    if isinstance(metadata, dict):
+        return metadata
+    if isinstance(metadata, str):
+        try:
+            parsed = json.loads(metadata)
+            return parsed if isinstance(parsed, dict) else {}
+        except json.JSONDecodeError:
+            return {}
+    return {}
 
 
 def _collect_source_ids(value: Any) -> set[str]:
@@ -513,9 +573,9 @@ async def _governed_analysis(
     schema_name: str,
     correlation_id: str | None,
 ) -> ExtractionResponse:
-    deployment = _deployment(request.model, request.profile)
-    response = await _structured_runtime_call(
-        deployment=deployment,
+    deployments = _deployments(request.model, request.profile)
+    response = await _structured_runtime_call_with_fallback(
+        deployments=deployments,
         prompt_components=request.promptComponents,
         output_schema=request.outputSchema,
         schema_name=schema_name,
@@ -538,9 +598,9 @@ async def evaluate_compliance(
     request: ComplianceEvaluationRequest,
     x_correlation_id: str | None = Header(default=None),
 ) -> ExtractionResponse:
-    deployment = _deployment(request.model, request.profile)
-    response = await _structured_runtime_call(
-        deployment=deployment,
+    deployments = _deployments(request.model, request.profile)
+    response = await _structured_runtime_call_with_fallback(
+        deployments=deployments,
         prompt_components=request.promptComponents,
         output_schema=request.outputSchema,
         schema_name="dynamic_compliance_output",
@@ -568,6 +628,27 @@ async def evaluate_compliance(
         raise HTTPException(
             status_code=422,
             detail={"code": "INVALID_EVIDENCE_ID"},
+        )
+    decision_code = str(output.get("recommendedDecisionConcept"))
+    decision_metadata = next(
+        (
+            _ontology_metadata(item)
+            for item in request.ontologyConcepts
+            if str(item.get("code")) == decision_code
+        ),
+        {},
+    )
+    positive = decision_metadata.get("positive") is True
+    satisfied_without_support = any(
+        evaluation.get("statusConcept") == "SATISFIED"
+        and not evaluation.get("supportingEvidenceIds")
+        for evaluation in output.get("conditionEvaluations", [])
+        if isinstance(evaluation, dict)
+    )
+    if (positive and not used_evidence) or satisfied_without_support:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "UNGROUNDED_POSITIVE_DECISION"},
         )
     contradictions = {
         str(item.get("id"))

@@ -20,6 +20,15 @@ public class StagedConflictCandidateGenerator implements ConflictCandidateGenera
         JsonNode configuration = policy.configuration();
         int limit = Math.max(1, configuration.path("candidateLimit").asInt(100));
         double minimum = configuration.path("minimumRetrievalScore").asDouble(0);
+        JsonNode weights = configuration.path("stageWeights");
+        double scopeWeight = nonNegative(weights.path("entityScope").asDouble());
+        double conceptWeight = nonNegative(weights.path("ontologyConcept").asDouble());
+        double attributeWeight = nonNegative(weights.path("attribute").asDouble());
+        double versionWeight = nonNegative(weights.path("version").asDouble());
+        double totalWeight = scopeWeight + conceptWeight + attributeWeight + versionWeight;
+        if (totalWeight == 0) {
+            throw new IllegalArgumentException("Conflict candidate stageWeights are required");
+        }
         List<ConflictCandidate> candidates = new ArrayList<>();
         for (ConflictEntity entity : context.retrievedCandidates()) {
             if (entity.id().equals(context.seed().id())
@@ -28,21 +37,21 @@ public class StagedConflictCandidateGenerator implements ConflictCandidateGenera
             }
             List<String> stages = new ArrayList<>();
             stages.add("ENTITY_SCOPE");
-            double score = .25;
+            double score = scopeWeight;
             if (Objects.equals(entity.conceptId(), context.seed().conceptId())) {
-                score += .30;
+                score += conceptWeight;
                 stages.add("ONTOLOGY_CONCEPT");
             }
             double structured = structuredOverlap(context.seed().attributes(), entity.attributes());
             if (structured > 0) {
-                score += .30 * structured;
+                score += attributeWeight * structured;
                 stages.add("ATTRIBUTE");
             }
             if (!Objects.equals(entity.documentVersionId(), context.seed().documentVersionId())) {
-                score += .15;
+                score += versionWeight;
                 stages.add("VERSION");
             }
-            score = ConfigurableRiskSignalEngine.clamp(score);
+            score = ConfigurableRiskSignalEngine.clamp(score / totalWeight);
             if (score >= minimum) {
                 stages.add("RERANK");
                 candidates.add(new ConflictCandidate(context.seed(), entity, score,
@@ -69,5 +78,9 @@ public class StagedConflictCandidateGenerator implements ConflictCandidateGenera
             }
         }
         return total == 0 ? 0 : (double) shared / total;
+    }
+
+    private double nonNegative(double value) {
+        return Math.max(0, value);
     }
 }

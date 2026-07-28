@@ -31,6 +31,7 @@ public class RiskAnalysisProcessor {
     private final RiskPersistencePort store;
     private final RiskSignalEngine signalEngine;
     private final RiskExposurePolicyEngine exposureEngine;
+    private final RiskConfidencePolicyEngine confidenceEngine;
     private final AmbiguityAnalysisEngine ambiguityEngine;
     private final ConflictCandidateGenerator candidateGenerator;
     private final ConflictStrategyRegistry conflictStrategies;
@@ -41,6 +42,7 @@ public class RiskAnalysisProcessor {
     public RiskAnalysisProcessor(RiskCatalogPort catalog, RiskPersistencePort store,
                                  RiskSignalEngine signalEngine,
                                  RiskExposurePolicyEngine exposureEngine,
+                                 RiskConfidencePolicyEngine confidenceEngine,
                                  AmbiguityAnalysisEngine ambiguityEngine,
                                  ConflictCandidateGenerator candidateGenerator,
                                  ConflictStrategyRegistry conflictStrategies,
@@ -50,6 +52,7 @@ public class RiskAnalysisProcessor {
         this.store = store;
         this.signalEngine = signalEngine;
         this.exposureEngine = exposureEngine;
+        this.confidenceEngine = confidenceEngine;
         this.ambiguityEngine = ambiguityEngine;
         this.candidateGenerator = candidateGenerator;
         this.conflictStrategies = conflictStrategies;
@@ -70,6 +73,9 @@ public class RiskAnalysisProcessor {
                 catalog.policy(organizationId, profile.riskPolicyVersionId()));
             VersionedPolicy ambiguityPolicy = hydrated(organizationId, profile.ontologyVersionId(),
                 catalog.policy(organizationId, profile.ambiguityPolicyVersionId()));
+            VersionedPolicy confidencePolicy = hydrated(organizationId,
+                profile.ontologyVersionId(),
+                catalog.policy(organizationId, profile.confidencePolicyVersionId()));
             VersionedPolicy conflictPolicy = hydrated(organizationId, profile.ontologyVersionId(),
                 catalog.policy(organizationId, profile.conflictPolicyVersionId()));
             VersionedPolicy impactPolicy = hydrated(organizationId, profile.ontologyVersionId(),
@@ -113,7 +119,8 @@ public class RiskAnalysisProcessor {
                             riskPolicy.configuration().path("sourceRoleConceptCode").asText());
                         UUID riskId = store.createRisk(organizationId, projectId, profileId,
                             source, selected.conceptId(), status, sourceRole, signal, exposure,
-                            confidence(source, signal.signalScore()));
+                            confidenceEngine.calculate(confidenceInputs(source,
+                                signal.signalScore()), confidencePolicy));
                         createdRisks.add(new CreatedRisk(riskId, source.id()));
                         riskCount++;
                     }
@@ -281,9 +288,16 @@ public class RiskAnalysisProcessor {
         return Map.copyOf(result);
     }
 
-    private double confidence(RequirementCandidate source, double signalScore) {
-        return Math.max(0, Math.min(1,
-            (source.groundingCoverage() + source.confidence() + signalScore) / 3));
+    private Map<String, Double> confidenceInputs(RequirementCandidate source,
+                                                 double signalScore) {
+        return Map.of(
+            "groundingCoverage", source.groundingCoverage(),
+            "schemaValidation", 1d,
+            "parserQuality", source.attributes().path("parserQuality").asDouble(0),
+            "ocrQuality", source.attributes().path("ocrQuality").asDouble(0),
+            "clauseSignal", signalScore,
+            "ontologyMatch", source.conceptId() == null ? 0d : 1d,
+            "unitValidation", source.attributes().path("unitValidation").asDouble(0));
     }
 
     private UUID requiredConcept(UUID organizationId, UUID ontologyVersionId, String code) {

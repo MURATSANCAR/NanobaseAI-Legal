@@ -69,7 +69,9 @@ public class PolicyEntityResolutionService implements EntityResolutionService {
         double weighted = 0;
         double totalWeight = 0;
         for (Map.Entry<String, Double> signal : signals.entrySet()) {
-            double weight = weights.path(signal.getKey()).asDouble(defaultWeight);
+            double weight = weights.isObject() && !weights.isEmpty()
+                ? weights.path(signal.getKey()).asDouble(0)
+                : defaultWeight;
             weighted += signal.getValue() * weight;
             totalWeight += weight;
         }
@@ -90,6 +92,9 @@ public class PolicyEntityResolutionService implements EntityResolutionService {
             return 0;
         }
         if (left.equals(right)) {
+            return 1;
+        }
+        if (left.replace(" ", "").equals(right.replace(" ", ""))) {
             return 1;
         }
         var leftTokens = SetSupport.tokens(left);
@@ -127,7 +132,7 @@ public class PolicyEntityResolutionService implements EntityResolutionService {
         }
 
         static java.util.Set<String> tokens(String value) {
-            return java.util.Set.of(value.split("\\s+"));
+            return new java.util.HashSet<>(java.util.List.of(value.split("\\s+")));
         }
     }
 }

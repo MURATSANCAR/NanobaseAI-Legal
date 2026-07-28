@@ -32,7 +32,11 @@ public class NumericThresholdComparisonStrategy implements ComparisonStrategy {
         BigDecimal evidence = context.evidenceValue();
         boolean compatible = context.requiredUnitConceptId() == null
             && context.evidenceUnitConceptId() == null;
-        if (context.requiredUnitConceptId() != null && context.evidenceUnitConceptId() != null) {
+        if (context.requiredUnitConceptId() != null
+            && context.requiredUnitConceptId().equals(context.evidenceUnitConceptId())) {
+            compatible = true;
+        } else if (context.requiredUnitConceptId() != null
+            && context.evidenceUnitConceptId() != null) {
             var conversion = units.convert(
                 (java.util.UUID) context.metadata().get("organizationId"), evidence,
                 context.evidenceUnitConceptId(), context.requiredUnitConceptId());

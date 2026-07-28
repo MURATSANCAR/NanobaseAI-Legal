@@ -78,3 +78,54 @@ test("parser errors manual review and tenant authorization errors are visible", 
   assert.match(shared, /if \(!response\.ok\)/);
   assert.match(shared, /throw new ApiError/);
 });
+
+test("risk center is API-backed and grid columns are dynamic", async () => {
+  const risks = await source("../src/modules/risks/api.ts");
+  const portal = await source("../app/page.tsx");
+  assert.match(risks, /ui-configurations\/risk-grid/);
+  assert.match(risks, /tenders\/\$\{projectId\}\/risk-analyses/);
+  assert.match(portal, /grid\.columns\.filter\(\(column\) => column\.visible\)/);
+  assert.match(portal, /formatRiskValue\(risk, column\)/);
+});
+
+test("conflict ambiguity and change impact workspaces use real APIs", async () => {
+  const risks = await source("../src/modules/risks/api.ts");
+  const portal = await source("../app/page.tsx");
+  assert.match(risks, /\/conflicts/);
+  assert.match(risks, /\/ambiguities/);
+  assert.match(risks, /\/change-sets/);
+  assert.match(risks, /\/impact-analyses/);
+  assert.match(portal, /function ConflictWorkspace/);
+  assert.match(portal, /function AmbiguityWorkspace/);
+  assert.match(portal, /function ChangeImpactWorkspace/);
+});
+
+test("grounded sources can navigate to the relevant PDF page", async () => {
+  const portal = await source("../app/page.tsx");
+  assert.match(portal, /downloadUrl\(token, source\.documentId\)/);
+  assert.match(portal, /#page=\$\{source\.pageNumber \?\? 1\}/);
+  assert.match(portal, /PDF bölgesini aç/);
+});
+
+test("dynamic knowledge center uses ontology configuration and real evidence APIs", async () => {
+  const portal = await source("../app/page.tsx");
+  const knowledge = await source("../src/modules/knowledge/api.ts");
+  assert.match(knowledge, /ui-configurations\/entity-types/);
+  assert.match(knowledge, /\/api\/v1\/knowledge\/entities/);
+  assert.match(knowledge, /\/api\/v1\/evidence\/\$\{id\}/);
+  assert.match(knowledge, /knowledge-extractions/);
+  assert.match(portal, /configuration\.profile\.tabs\.map/);
+  assert.match(portal, /dynamicValueLabel\(attribute\.value\)/);
+  assert.match(portal, /EvidenceDocumentPane/);
+});
+
+test("compliance workspace is evidence-first and matrix columns come from backend", async () => {
+  const portal = await source("../app/page.tsx");
+  const compliance = await source("../src/modules/compliance/api.ts");
+  assert.match(compliance, /tenders\/\$\{projectId\}\/compliance-analyses/);
+  assert.match(compliance, /ui-configurations\/compliance-matrix/);
+  assert.match(compliance, /ui-configurations\/compliance-decisions/);
+  assert.match(portal, /columns\.map\(\(column\)/);
+  assert.match(portal, /item\.contradiction_strength > 0/);
+  assert.match(portal, /finalDecisionConceptId/);
+});

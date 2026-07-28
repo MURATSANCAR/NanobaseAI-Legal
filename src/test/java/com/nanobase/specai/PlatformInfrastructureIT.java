@@ -101,13 +101,25 @@ class PlatformInfrastructureIT {
             "ontology_concept", "terminology_catalog", "terminology_entry",
             "policy_definition", "policy_version", "analysis_profile",
             "requirement_extraction_job", "requirement", "requirement_revision",
-            "expert_feedback", "evaluation_dataset", "evaluation_case");
+            "expert_feedback", "evaluation_dataset", "evaluation_case",
+            "terminology_snapshot", "knowledge_entity", "entity_attribute",
+            "knowledge_relation", "capability", "evidence_fragment", "evidence_claim",
+            "evidence_validity_assessment", "knowledge_snapshot",
+            "compliance_evaluation", "compliance_evidence_link",
+            "risk_taxonomy", "risk_taxonomy_version", "risk_analysis_profile",
+            "risk_analysis_job", "risk_record", "risk_source", "risk_factor",
+            "risk_revision", "ambiguity_finding", "conflict_record",
+            "requirement_dependency", "document_change_set", "document_change_item",
+            "impact_analysis_job", "impact_analysis_result",
+            "analysis_staleness_record", "risk_propagation_candidate",
+            "mitigation_catalog", "clarification_strategy");
         assertThat(minio.bucketExists(
             BucketExistsArgs.builder().bucket("specai-original").build())).isTrue();
         assertThat(rabbitAdmin.getQueueInfo("document-processing.request")).isNotNull();
         assertThat(rabbitAdmin.getQueueInfo("document-processing.result")).isNotNull();
         assertThat(rabbitAdmin.getQueueInfo("document-processing.dlq")).isNotNull();
         assertThat(rabbitAdmin.getQueueInfo("requirement-extraction.request")).isNotNull();
+        assertThat(rabbitAdmin.getQueueInfo("risk-analysis.request")).isNotNull();
         try (var connection = redis.getConnection()) {
             assertThat(connection.ping()).isEqualTo("PONG");
         }

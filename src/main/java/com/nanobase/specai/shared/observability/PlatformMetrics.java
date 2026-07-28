@@ -45,6 +45,24 @@ public class PlatformMetrics {
     private final Counter reanalysisRequired;
     private final Counter clarificationCandidate;
     private final Counter mitigationCandidate;
+    private final Counter knowledgeEntityCreated;
+    private final Counter knowledgeAttributeExtracted;
+    private final Counter knowledgeRelationExtracted;
+    private final Counter capabilityExtracted;
+    private final Counter evidenceFragmentCreated;
+    private final Counter evidenceInvalid;
+    private final Counter entityResolutionAmbiguous;
+    private final Counter complianceAnalysis;
+    private final Counter complianceEvaluation;
+    private final Counter complianceDeterministic;
+    private final Counter complianceLlm;
+    private final Counter complianceManualReview;
+    private final Counter complianceMissingEvidence;
+    private final Counter complianceContradictoryEvidence;
+    private final Counter retrievalCandidate;
+    private final Counter comparisonStrategy;
+    private final Timer retrievalDuration;
+    private final Timer rerankingDuration;
 
     public PlatformMetrics(MeterRegistry registry, OutboxEventRepository outbox) {
         this.registry = registry;
@@ -81,6 +99,29 @@ public class PlatformMetrics {
         reanalysisRequired = registry.counter("reanalysis_required_total");
         clarificationCandidate = registry.counter("clarification_candidate_total");
         mitigationCandidate = registry.counter("mitigation_candidate_total");
+        knowledgeEntityCreated = registry.counter("knowledge_entity_created_total");
+        knowledgeAttributeExtracted =
+            registry.counter("knowledge_attribute_extracted_total");
+        knowledgeRelationExtracted =
+            registry.counter("knowledge_relation_extracted_total");
+        capabilityExtracted = registry.counter("capability_extracted_total");
+        evidenceFragmentCreated = registry.counter("evidence_fragment_created_total");
+        evidenceInvalid = registry.counter("evidence_invalid_total");
+        entityResolutionAmbiguous =
+            registry.counter("entity_resolution_ambiguous_total");
+        complianceAnalysis = registry.counter("compliance_analysis_total");
+        complianceEvaluation = registry.counter("compliance_evaluation_total");
+        complianceDeterministic = registry.counter("compliance_deterministic_total");
+        complianceLlm = registry.counter("compliance_llm_total");
+        complianceManualReview = registry.counter("compliance_manual_review_total");
+        complianceMissingEvidence =
+            registry.counter("compliance_missing_evidence_total");
+        complianceContradictoryEvidence =
+            registry.counter("compliance_contradictory_evidence_total");
+        retrievalCandidate = registry.counter("retrieval_candidate_total");
+        comparisonStrategy = registry.counter("comparison_strategy_total");
+        retrievalDuration = registry.timer("retrieval_duration_seconds");
+        rerankingDuration = registry.timer("reranking_duration_seconds");
         registry.timer("risk_analysis_duration_seconds");
         registry.timer("conflict_analysis_duration_seconds");
         registry.timer("impact_analysis_duration_seconds");
@@ -150,4 +191,40 @@ public class PlatformMetrics {
     public void reanalysisRequired(int count) { reanalysisRequired.increment(count); }
     public void clarificationCandidate() { clarificationCandidate.increment(); }
     public void mitigationCandidate() { mitigationCandidate.increment(); }
+    public void knowledgeEntitiesCreated(int count) {
+        knowledgeEntityCreated.increment(count);
+    }
+    public void knowledgeAttributesExtracted(int count) {
+        knowledgeAttributeExtracted.increment(count);
+    }
+    public void knowledgeRelationsExtracted(int count) {
+        knowledgeRelationExtracted.increment(count);
+    }
+    public void capabilitiesExtracted(int count) {
+        capabilityExtracted.increment(count);
+    }
+    public void evidenceFragmentsCreated(int count) {
+        evidenceFragmentCreated.increment(count);
+    }
+    public void evidenceInvalid() { evidenceInvalid.increment(); }
+    public void entityResolutionAmbiguous() { entityResolutionAmbiguous.increment(); }
+    public void complianceAnalysis() { complianceAnalysis.increment(); }
+    public void complianceEvaluation() { complianceEvaluation.increment(); }
+    public void complianceDeterministic() { complianceDeterministic.increment(); }
+    public void complianceLlm() { complianceLlm.increment(); }
+    public void complianceManualReview() { complianceManualReview.increment(); }
+    public void complianceMissingEvidence() { complianceMissingEvidence.increment(); }
+    public void complianceContradictoryEvidence() {
+        complianceContradictoryEvidence.increment();
+    }
+    public void retrievalCandidates(int count) { retrievalCandidate.increment(count); }
+    public Timer.Sample retrievalStarted() { return Timer.start(registry); }
+    public void retrievalCompleted(Timer.Sample sample) { sample.stop(retrievalDuration); }
+    public Timer.Sample rerankingStarted() { return Timer.start(registry); }
+    public void rerankingCompleted(Timer.Sample sample) { sample.stop(rerankingDuration); }
+    public void comparisonStrategy(String provider) {
+        comparisonStrategy.increment();
+        registry.counter("comparison_strategy_provider_total", "provider", provider)
+            .increment();
+    }
 }

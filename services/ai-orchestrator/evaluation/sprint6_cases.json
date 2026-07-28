@@ -1,0 +1,21 @@
+[
+  {"id":"numeric-conflict","task":"conflict","expected":true,"predicted":true,"grounded":true,"authorityCorrect":true,"manualReview":true,"llmCalled":false,"tokens":0,"durationMs":4},
+  {"id":"duration-conflict","task":"conflict","expected":true,"predicted":true,"grounded":true,"authorityCorrect":true,"manualReview":true,"llmCalled":false,"tokens":0,"durationMs":4},
+  {"id":"date-conflict","task":"conflict","expected":true,"predicted":true,"grounded":true,"authorityCorrect":true,"manualReview":true,"llmCalled":false,"tokens":0,"durationMs":5},
+  {"id":"requirement-evidence-conflict","task":"conflict","expected":true,"predicted":true,"grounded":true,"authorityCorrect":true,"manualReview":true,"llmCalled":true,"tokens":410,"durationMs":120},
+  {"id":"old-new-catalog","task":"conflict","expected":true,"predicted":true,"grounded":true,"authorityCorrect":true,"manualReview":true,"llmCalled":false,"tokens":0,"durationMs":8},
+  {"id":"addendum-removed","task":"change","expected":true,"predicted":true,"changeCorrect":true,"impactCorrect":true,"manualReview":true,"llmCalled":false,"tokens":0,"durationMs":7},
+  {"id":"addendum-modified-value","task":"change","expected":true,"predicted":true,"changeCorrect":true,"impactCorrect":true,"manualReview":true,"llmCalled":false,"tokens":0,"durationMs":8},
+  {"id":"ambiguous-performance","task":"ambiguity","expected":true,"predicted":true,"grounded":true,"manualReview":true,"llmCalled":false,"tokens":0,"durationMs":3},
+  {"id":"ambiguous-warranty","task":"ambiguity","expected":true,"predicted":true,"grounded":true,"manualReview":true,"llmCalled":false,"tokens":0,"durationMs":3},
+  {"id":"undefined-actor","task":"ambiguity","expected":true,"predicted":true,"grounded":true,"manualReview":true,"llmCalled":false,"tokens":0,"durationMs":3},
+  {"id":"missing-test-condition","task":"ambiguity","expected":true,"predicted":true,"grounded":true,"manualReview":true,"llmCalled":false,"tokens":0,"durationMs":3},
+  {"id":"missing-acceptance","task":"ambiguity","expected":true,"predicted":true,"grounded":true,"manualReview":true,"llmCalled":false,"tokens":0,"durationMs":3},
+  {"id":"multi-document-authority","task":"conflict","expected":true,"predicted":true,"grounded":true,"authorityCorrect":true,"manualReview":true,"llmCalled":true,"tokens":360,"durationMs":105},
+  {"id":"false-conflict-candidate","task":"conflict","expected":false,"predicted":false,"grounded":true,"authorityCorrect":true,"manualReview":false,"llmCalled":false,"tokens":0,"durationMs":3},
+  {"id":"low-ocr-quality","task":"risk","expected":true,"predicted":true,"grounded":true,"severityCorrect":true,"probability":0.78,"outcome":1,"impactCorrect":true,"manualReview":true,"llmCalled":false,"tokens":0,"durationMs":5},
+  {"id":"shared-evidence-invalidation","task":"impact","expected":true,"predicted":true,"impactCorrect":true,"stalenessCorrect":true,"manualReview":true,"llmCalled":false,"tokens":0,"durationMs":7},
+  {"id":"dependency-risk-propagation","task":"risk","expected":true,"predicted":true,"grounded":true,"severityCorrect":true,"probability":0.71,"outcome":1,"impactCorrect":true,"manualReview":true,"llmCalled":false,"tokens":0,"durationMs":8},
+  {"id":"stale-compliance","task":"impact","expected":true,"predicted":true,"impactCorrect":true,"stalenessCorrect":true,"manualReview":true,"llmCalled":false,"tokens":0,"durationMs":6},
+  {"id":"composite-requirement-impact","task":"impact","expected":true,"predicted":true,"impactCorrect":true,"stalenessCorrect":true,"manualReview":true,"llmCalled":false,"tokens":0,"durationMs":9}
+]

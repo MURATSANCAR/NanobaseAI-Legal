@@ -63,7 +63,7 @@ public class JdbcEvidenceCandidateRetriever implements EvidenceCandidateRetrieve
                    case when ? <> '' and attribute.attribute_concept_id::text = ?
                         then 1.0 else 0.0 end as attribute_score,
                    coalesce(validity.score, 0.0) as validity_score,
-                   ?::numeric as authority_score,
+                   coalesce(authority.score, ?::numeric) as authority_score,
                    coalesce(history.acceptance, 0.0) as historical_score,
                    case when ? is null or coalesce(attribute.entity_id,
                         claim.subject_entity_id, capability.owner_entity_id) = ?
@@ -74,6 +74,9 @@ public class JdbcEvidenceCandidateRetriever implements EvidenceCandidateRetrieve
                    fragment.document_version_id,
                    fragment.page_number
             from evidence_fragment fragment
+            join document source_document
+              on source_document.id = fragment.document_id
+             and source_document.organization_id = fragment.organization_id
             join document_version version
               on version.id = fragment.document_version_id
              and version.organization_id = fragment.organization_id
@@ -112,6 +115,34 @@ public class JdbcEvidenceCandidateRetriever implements EvidenceCandidateRetrieve
                   and coalesce((concept.metadata_json ->> 'usable')::boolean, false)
                 order by assessment.assessed_at desc limit 1
             ) validity on true
+            left join lateral (
+                select coalesce(
+                    (profile.configuration_json ->> 'score')::numeric,
+                    (policy.configuration_json -> 'sourceScores'
+                        ->> source_document.document_type)::numeric,
+                    (policy.configuration_json ->> 'defaultScore')::numeric
+                ) as score
+                from policy_version policy
+                join policy_definition definition
+                  on definition.id = policy.policy_definition_id
+                left join ontology_concept source_type
+                  on source_type.concept_code = source_document.document_type
+                 and source_type.active = true
+                 and (source_type.organization_id = fragment.organization_id
+                      or source_type.organization_id is null)
+                left join source_authority_profile profile
+                  on profile.organization_id = fragment.organization_id
+                 and profile.source_type_concept_id = source_type.id
+                 and profile.active = true
+                where definition.policy_type = 'SOURCE_AUTHORITY'
+                  and policy.status = 'ACTIVE'
+                  and (policy.organization_id = fragment.organization_id
+                       or policy.organization_id is null)
+                order by (profile.id is not null) desc,
+                         (policy.organization_id is not null) desc,
+                         policy.version_number desc
+                limit 1
+            ) authority on true
             left join lateral (
                 select avg(case when feedback.corrected_snapshot_json
                                   ->> 'accepted' = 'true' then 1.0 else 0.0 end) acceptance

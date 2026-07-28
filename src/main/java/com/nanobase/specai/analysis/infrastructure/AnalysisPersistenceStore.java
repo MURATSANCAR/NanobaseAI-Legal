@@ -165,6 +165,31 @@ public class AnalysisPersistenceStore {
         return id;
     }
 
+    public UUID terminologySnapshot(UUID organizationId, UUID projectId,
+                                    String catalogIdsJson, Instant now) {
+        String source = catalogIdsJson == null ? "[]" : catalogIdsJson;
+        UUID id = UUID.nameUUIDFromBytes(
+            (organizationId + ":" + projectId + ":" + source)
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        String hash;
+        try {
+            hash = java.util.HexFormat.of().formatHex(
+                java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(source.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        } catch (java.security.NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 is unavailable", exception);
+        }
+        jdbc.update("""
+            insert into terminology_snapshot (
+                id, organization_id, project_id, catalog_ids_json,
+                entries_hash, snapshot_json, created_at
+            ) values (?, ?, ?, cast(? as jsonb), ?, cast(? as jsonb), ?)
+            on conflict (id) do nothing
+            """, id, organizationId, projectId, source, hash,
+            json(Map.of("catalogIds", jsonNode(source))), now);
+        return id;
+    }
+
     private String normalize(String value) {
         return java.text.Normalizer.normalize(value, java.text.Normalizer.Form.NFKC)
             .toLowerCase(java.util.Locale.ROOT).replaceAll("\\s+", " ").trim();

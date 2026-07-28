@@ -133,6 +133,22 @@ export type KnowledgeExtractionJob = {
 };
 
 export const knowledgeApi = {
+  create: (
+    token: string,
+    input: {
+      entityCode: string;
+      entityTypeConceptId: string;
+      name: string;
+      description?: string;
+      status: string;
+      attributes: Record<string, unknown>;
+      sourceType: string;
+    },
+  ) =>
+    apiRequest<KnowledgeEntity>("/api/v1/knowledge/entities", token, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
   entities: (token: string, entityTypeConceptId?: string, query?: string) => {
     const parameters = new URLSearchParams();
     if (entityTypeConceptId) parameters.set("entityTypeConceptId", entityTypeConceptId);

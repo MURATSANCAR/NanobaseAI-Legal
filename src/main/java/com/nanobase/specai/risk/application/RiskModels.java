@@ -52,6 +52,15 @@ public final class RiskModels {
                                    boolean requiresDetailedAnalysis) {
     }
 
+    public record RiskConfidenceFactor(String code, double input,
+                                       double weight, double effect) {
+    }
+
+    public record RiskConfidenceResult(double score,
+                                       List<RiskConfidenceFactor> factors,
+                                       boolean requiresReview) {
+    }
+
     public record RiskExposureContext(Map<String, Double> signals,
                                       Map<String, Object> metadata) {
     }

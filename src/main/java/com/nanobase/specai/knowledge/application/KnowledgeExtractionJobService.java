@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.nanobase.specai.analysis.application.AnalysisProfileService;
+import com.nanobase.specai.analysis.api.ExtractionEventStream;
 import com.nanobase.specai.analysis.domain.AnalysisProfile;
 import com.nanobase.specai.integration.outbox.OutboxService;
 import com.nanobase.specai.shared.security.CurrentTenant;
@@ -30,15 +31,18 @@ public class KnowledgeExtractionJobService {
     private final AnalysisProfileService analysisProfiles;
     private final ObjectMapper mapper;
     private final OutboxService outbox;
+    private final ExtractionEventStream eventStream;
 
     public KnowledgeExtractionJobService(JdbcTemplate jdbc, CurrentTenant currentTenant,
                                          AnalysisProfileService analysisProfiles,
-                                         ObjectMapper mapper, OutboxService outbox) {
+                                         ObjectMapper mapper, OutboxService outbox,
+                                         ExtractionEventStream eventStream) {
         this.jdbc = jdbc;
         this.currentTenant = currentTenant;
         this.analysisProfiles = analysisProfiles;
         this.mapper = mapper;
         this.outbox = outbox;
+        this.eventStream = eventStream;
     }
 
     @Transactional
@@ -143,13 +147,24 @@ public class KnowledgeExtractionJobService {
 
     void event(UUID organizationId, UUID jobId, String type, int progress,
                String message, Object metadata) {
+        UUID eventId = UUID.randomUUID();
         jdbc.update("""
             insert into knowledge_extraction_event (
                 id, organization_id, extraction_job_id, event_type, progress,
                 message, metadata_json, occurred_at
             ) values (?, ?, ?, ?, ?, ?, ?::jsonb, now())
-            """, UUID.randomUUID(), organizationId, jobId, type, progress,
+            """, eventId, organizationId, jobId, type, progress,
             message, json(metadata));
+        eventStream.publish(jobId, type, Map.of(
+            "id", eventId,
+            "eventType", type,
+            "progress", progress,
+            "message", message,
+            "metadata", metadata == null ? Map.of() : metadata
+        ));
+        if (TERMINAL.contains(type)) {
+            eventStream.complete(jobId);
+        }
     }
 
     private UUID policy(UUID organizationId, String policyType) {

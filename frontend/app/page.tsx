@@ -68,6 +68,23 @@ import {
   type RequirementColumn,
 } from "@/src/modules/requirements/api";
 import {
+  complianceApi,
+  type ComplianceColumn,
+  type ComplianceEvaluation,
+  type ComplianceEvaluationDetail,
+  type ComplianceJob,
+} from "@/src/modules/compliance/api";
+import {
+  dynamicValueLabel,
+  knowledgeApi,
+  type ConceptOption,
+  type EntityDetail,
+  type EntityUiConfiguration,
+  type EvidenceFragment,
+  type KnowledgeEntity,
+  type KnowledgeExtractionJob,
+} from "@/src/modules/knowledge/api";
+import {
   riskApi,
   type AmbiguityFinding,
   type ChangeItem,
@@ -86,6 +103,8 @@ type ProjectTab =
   | "overview"
   | "documents"
   | "requirements"
+  | "knowledge"
+  | "compliance"
   | "risks"
   | "conflicts"
   | "ambiguities"
@@ -336,7 +355,17 @@ export default function SpecAiPortal() {
           onClick={() => { setScreen("projects"); setSidebarOpen(false); }}>
           <FolderKanban /><span>İhale projeleri</span><b>{projects.length}</b>
         </button>
-        <button className="nav" disabled title="Bir sonraki fazda etkinleştirilecek">
+        <button className={screen === "project" && projectTab === "knowledge"
+          ? "nav active" : "nav"}
+          onClick={() => {
+            if (selectedProject) {
+              setScreen("project");
+              setProjectTab("knowledge");
+            } else {
+              setScreen("projects");
+            }
+            setSidebarOpen(false);
+          }}>
           <Building2 /><span>Firma ve ürünler</span>
         </button>
         <p className="nav-label">GÜVENLİK</p>
@@ -578,6 +607,7 @@ function ProjectDetail({ project, tab, onTab, documents, members, auditEvents, t
     <nav className="tabs" aria-label="Proje detay sekmeleri">
       {([["overview", "Genel bakış"], ["documents", "Dokümanlar"],
         ["requirements", "Gereksinim matrisi"],
+        ["knowledge", "Firma ve ürünler"], ["compliance", "Uygunluk"],
         ["risks", "Risk merkezi"], ["conflicts", "Çelişkiler"],
         ["ambiguities", "Belirsizlikler"], ["changes", "Değişiklik ve etki"],
         ["activity", "Aktivite geçmişi"], ["settings", "Ayarlar"]] as const)
@@ -591,6 +621,12 @@ function ProjectDetail({ project, tab, onTab, documents, members, auditEvents, t
         onProblem={onProblem} onNotify={onNotify} />}
       {tab === "requirements" && <RequirementsMatrix project={project}
         documents={documents} token={token} canWrite={canAnalyze}
+        onProblem={onProblem} onNotify={onNotify} />}
+      {tab === "knowledge" && <KnowledgeCenter project={project}
+        documents={documents} token={token} canWrite={canAnalyze}
+        onProblem={onProblem} onNotify={onNotify} />}
+      {tab === "compliance" && <ComplianceWorkspace project={project}
+        token={token} canWrite={canAnalyze}
         onProblem={onProblem} onNotify={onNotify} />}
       {tab === "risks" && <RiskCenter project={project} token={token}
         canWrite={canAnalyze} onProblem={onProblem} onNotify={onNotify} />}
@@ -636,6 +672,532 @@ function Overview({ project, documents, members }: {
     <article className="panel detail-card wide"><h2>Açıklama</h2>
       <p>{project.description || "Bu proje için açıklama eklenmemiş."}</p></article>
   </section>;
+}
+
+function KnowledgeCenter({ project, documents, token, canWrite, onProblem, onNotify }: {
+  project: TenderProject;
+  documents: ProjectDocument[];
+  token: string;
+  canWrite: boolean;
+  onProblem: (error: unknown) => void;
+  onNotify: (message: string) => void;
+}) {
+  const [entities, setEntities] = useState<KnowledgeEntity[]>([]);
+  const [entityTypes, setEntityTypes] = useState<ConceptOption[]>([]);
+  const [selectedType, setSelectedType] = useState("");
+  const [selected, setSelected] = useState<EntityDetail>();
+  const [configuration, setConfiguration] = useState<EntityUiConfiguration>();
+  const [activeTab, setActiveTab] = useState("overview");
+  const [evidence, setEvidence] = useState<EvidenceFragment>();
+  const [query, setQuery] = useState("");
+  const [documentId, setDocumentId] = useState(
+    documents.find((document) => document.status === "READY")?.id ?? "",
+  );
+  const [job, setJob] = useState<KnowledgeExtractionJob>();
+  const [loading, setLoading] = useState(true);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [draft, setDraft] = useState({
+    entityCode: "",
+    entityTypeConceptId: "",
+    name: "",
+    description: "",
+  });
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [nextEntities, types] = await Promise.all([
+        knowledgeApi.entities(token, selectedType || undefined, query || undefined),
+        knowledgeApi.entityTypes(token),
+      ]);
+      setEntities(nextEntities);
+      setEntityTypes(types);
+    } catch (error) {
+      onProblem(error);
+    } finally {
+      setLoading(false);
+    }
+  }, [onProblem, query, selectedType, token]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void load(); }, 150);
+    return () => window.clearTimeout(timer);
+  }, [load]);
+
+  useEffect(() => {
+    if (!job || ["COMPLETED", "FAILED", "CANCELLED"].includes(job.status)) return;
+    const timer = window.setInterval(async () => {
+      try {
+        const current = await knowledgeApi.extractionJob(token, job.id);
+        setJob(current);
+        if (current.status === "COMPLETED") {
+          window.clearInterval(timer);
+          await load();
+          onNotify(`${current.extracted_entity_count} entity bilgi tabanına eklendi`);
+        }
+      } catch (error) {
+        window.clearInterval(timer);
+        onProblem(error);
+      }
+    }, 2200);
+    return () => window.clearInterval(timer);
+  }, [job, load, onNotify, onProblem, token]);
+
+  async function selectEntity(entity: KnowledgeEntity) {
+    try {
+      const [detail, config] = await Promise.all([
+        knowledgeApi.entity(token, entity.id),
+        knowledgeApi.entityConfiguration(token, entity.entityTypeConceptId),
+      ]);
+      setSelected(detail);
+      setConfiguration(config);
+      setActiveTab(config.profile.tabs[0]?.key ?? "overview");
+      setEvidence(undefined);
+    } catch (error) {
+      onProblem(error);
+    }
+  }
+
+  async function selectEvidence(fragmentId: string) {
+    try {
+      setEvidence(await knowledgeApi.evidence(token, fragmentId));
+    } catch (error) {
+      onProblem(error);
+    }
+  }
+
+  async function startExtraction() {
+    if (!documentId) return;
+    try {
+      const created = await knowledgeApi.startExtraction(token, documentId);
+      setJob(created);
+      onNotify("Knowledge extraction snapshot oluşturuldu");
+    } catch (error) {
+      onProblem(error);
+    }
+  }
+
+  async function createEntity(event: FormEvent) {
+    event.preventDefault();
+    try {
+      const created = await knowledgeApi.create(token, {
+        ...draft,
+        status: "ACTIVE",
+        attributes: {},
+        sourceType: "MANUAL_REVIEW",
+      });
+      setCreateOpen(false);
+      setDraft({ entityCode: "", entityTypeConceptId: "", name: "", description: "" });
+      await load();
+      await selectEntity(created);
+      onNotify("Entity oluşturuldu");
+    } catch (error) {
+      onProblem(error);
+    }
+  }
+
+  return <section className="knowledge-center">
+    <div className="panel knowledge-toolbar">
+      <div><p className="eyebrow">DİNAMİK BİLGİ GRAFI</p>
+        <h2>Firma ve ürün bilgi merkezi</h2>
+        <span>Form, sekme ve alanlar aktif ontology konfigürasyonundan gelir.</span></div>
+      <div className="knowledge-actions">
+        <select value={documentId} onChange={(event) => setDocumentId(event.target.value)}
+          aria-label="Bilgi çıkarılacak doküman">
+          <option value="">Hazır doküman seçin</option>
+          {documents.filter((document) => document.status === "READY").map((document) =>
+            <option key={document.id} value={document.id}>{document.logicalName}</option>)}
+        </select>
+        {canWrite && <button className="secondary" onClick={() => setCreateOpen(true)}
+          disabled={!entityTypes.length}><Plus />Yeni entity</button>}
+        {canWrite && <button className="primary" onClick={startExtraction}
+          disabled={!documentId || Boolean(job &&
+            !["COMPLETED", "FAILED", "CANCELLED"].includes(job.status))}>
+          <Activity />Bilgi çıkar</button>}
+      </div>
+    </div>
+    {job && <div className="extraction-progress">
+      <div><b>{job.status.replaceAll("_", " ")}</b>
+        <span>{job.processed_fragment_count}/{job.total_fragment_count} fragman ·
+          {" "}{job.extracted_entity_count} entity ·
+          {" "}{job.manual_review_count} inceleme</span></div>
+      <progress max={Math.max(job.total_fragment_count, 1)}
+        value={job.processed_fragment_count} />
+    </div>}
+    <div className="knowledge-layout">
+      <aside className="panel entity-browser">
+        <div className="entity-filters">
+          <input value={query} onChange={(event) => setQuery(event.target.value)}
+            placeholder="Entity ara" aria-label="Entity ara" />
+          <select value={selectedType} onChange={(event) => setSelectedType(event.target.value)}
+            aria-label="Entity türü">
+            <option value="">Tüm ontology türleri</option>
+            {entityTypes.map((type) =>
+              <option key={type.id} value={type.id}>{type.name}</option>)}
+          </select>
+        </div>
+        {loading ? <div className="processing"><LoaderCircle className="spin" /></div>
+          : entities.map((entity) => <button key={entity.id}
+            className={selected?.entity.id === entity.id ? "entity-row active" : "entity-row"}
+            onClick={() => selectEntity(entity)}>
+            <span>{initials(entity.name)}</span>
+            <div><b>{entity.name}</b>
+              <small>{entity.entityTypeCode} · {entity.entityCode}</small></div>
+            <ChevronRight />
+          </button>)}
+        {!loading && !entities.length &&
+          <Empty text="Bu kapsamda entity bulunmuyor. Önce bir bilgi dokümanı işleyin." />}
+      </aside>
+      <main className="panel entity-profile">
+        {selected && configuration ? <>
+          <div className="entity-title"><div><p className="eyebrow">
+            {configuration.conceptCode}</p><h2>{selected.entity.name}</h2>
+            <span>{selected.entity.description || "Açıklama eklenmemiş"}</span></div>
+            <em>{selected.entity.status}</em></div>
+          <nav className="subtabs" aria-label="Dinamik entity bölümleri">
+            {configuration.profile.tabs.map((tab) =>
+              <button key={tab.key} className={activeTab === tab.key ? "active" : ""}
+                onClick={() => setActiveTab(tab.key)}>{tab.label}</button>)}
+          </nav>
+          {activeTab === "overview" && <div className="dynamic-field-grid">
+            <DynamicField label="Entity kodu" value={selected.entity.entityCode} />
+            <DynamicField label="Kaynak türü" value={selected.entity.sourceType} />
+            {selected.attributes.map((attribute) =>
+              <button className="dynamic-field" key={attribute.id}
+                onClick={() => selectEvidence(attribute.sourceFragmentId)}>
+                <span>{attribute.attributeConceptCode}</span>
+                <b>{dynamicValueLabel(attribute.value)}</b>
+                <small>%{Math.round(attribute.confidence * 100)} confidence ·
+                  {" "}{attribute.reviewStatus}</small>
+              </button>)}
+          </div>}
+          {activeTab === "capabilities" && <div className="card-list">
+            {selected.capabilities.map((capability) => <article key={capability.id}>
+              <b>{capability.name}</b><span>{capability.capabilityConceptCode}</span>
+              <p>{capability.description || JSON.stringify(capability.attributes)}</p>
+              <small>%{Math.round(capability.confidence * 100)} confidence ·
+                {" "}{capability.evidence.length} evidence</small>
+            </article>)}
+            {!selected.capabilities.length && <Empty text="Capability bulunmuyor." />}
+          </div>}
+          {activeTab === "relations" && <div className="card-list">
+            {selected.relations.map((relation) => <button key={relation.id}
+              onClick={() => selectEvidence(relation.sourceFragmentId)}>
+              <b>{relation.relationConceptCode}</b>
+              <span>{relation.sourceEntityId.slice(0, 8)} →
+                {" "}{relation.targetEntityId.slice(0, 8)}</span>
+              <small>%{Math.round(relation.confidence * 100)} confidence</small>
+            </button>)}
+            {!selected.relations.length && <Empty text="İlişki bulunmuyor." />}
+          </div>}
+          {activeTab === "evidence" && <div className="card-list">
+            {selected.evidence.map((item) => <button key={item.id}
+              onClick={() => selectEvidence(item.id)}>
+              <b>Sayfa {item.page_number ?? "—"}</b>
+              <span>{item.validity_status ?? "Değerlendirilmemiş"}</span>
+              <small>{item.content_hash.slice(0, 12)} ·
+                {" "}%{Math.round((item.validity_score ?? 0) * 100)} validity</small>
+            </button>)}
+            {!selected.evidence.length && <Empty text="Bağlı evidence bulunmuyor." />}
+          </div>}
+          {activeTab === "history" && <pre className="json-panel">
+            {JSON.stringify(selected.revisions, null, 2)}</pre>}
+        </> : <Empty text="Dinamik profili açmak için soldan bir entity seçin." />}
+      </main>
+      <aside className="panel evidence-inspector">
+        <EvidenceDocumentPane evidence={evidence} token={token} />
+      </aside>
+    </div>
+    {createOpen && <div className="modal-backdrop" onMouseDown={() => setCreateOpen(false)}>
+      <form className="modal-card entity-create" onSubmit={createEntity}
+        onMouseDown={(event) => event.stopPropagation()}>
+        <div className="modal-head"><div><p className="eyebrow">ONTOLOGY TABANLI</p>
+          <h2>Yeni entity</h2></div><button type="button" onClick={() => setCreateOpen(false)}
+            aria-label="Kapat"><X /></button></div>
+        <label>Entity türü<select required value={draft.entityTypeConceptId}
+          onChange={(event) => setDraft({ ...draft,
+            entityTypeConceptId: event.target.value })}>
+          <option value="">Ontology concept seçin</option>
+          {entityTypes.map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}
+        </select></label>
+        <label>Kod<input required value={draft.entityCode}
+          onChange={(event) => setDraft({ ...draft, entityCode: event.target.value })} /></label>
+        <label>Ad<input required value={draft.name}
+          onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label>
+        <label>Açıklama<textarea value={draft.description}
+          onChange={(event) => setDraft({ ...draft, description: event.target.value })} /></label>
+        <button className="primary"><Plus />Oluştur</button>
+      </form>
+    </div>}
+  </section>;
+}
+
+function ComplianceWorkspace({ project, token, canWrite, onProblem, onNotify }: {
+  project: TenderProject;
+  token: string;
+  canWrite: boolean;
+  onProblem: (error: unknown) => void;
+  onNotify: (message: string) => void;
+}) {
+  const [evaluations, setEvaluations] = useState<ComplianceEvaluation[]>([]);
+  const [columns, setColumns] = useState<ComplianceColumn[]>([]);
+  const [decisions, setDecisions] = useState<ConceptOption[]>([]);
+  const [changeTypes, setChangeTypes] = useState<ConceptOption[]>([]);
+  const [selected, setSelected] = useState<ComplianceEvaluationDetail>();
+  const [selectedEvidence, setSelectedEvidence] = useState<EvidenceFragment>();
+  const [decisionId, setDecisionId] = useState("");
+  const [reason, setReason] = useState("");
+  const [job, setJob] = useState<ComplianceJob>();
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [next, matrix, nextDecisions, nextChangeTypes] = await Promise.all([
+        complianceApi.evaluations(token, project.id),
+        complianceApi.matrix(token),
+        complianceApi.decisions(token),
+        complianceApi.changeTypes(token),
+      ]);
+      setEvaluations(next);
+      setColumns(matrix.columns);
+      setDecisions(nextDecisions);
+      setChangeTypes(nextChangeTypes);
+    } catch (error) {
+      onProblem(error);
+    } finally {
+      setLoading(false);
+    }
+  }, [onProblem, project.id, token]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void load(); }, 0);
+    return () => window.clearTimeout(timer);
+  }, [load]);
+
+  useEffect(() => {
+    if (!job || ["COMPLETED", "FAILED", "CANCELLED"].includes(job.status)) return;
+    const timer = window.setInterval(async () => {
+      try {
+        const current = await complianceApi.job(token, job.id);
+        setJob(current);
+        if (current.status === "COMPLETED") {
+          window.clearInterval(timer);
+          await load();
+          onNotify(`${current.completed_count} requirement değerlendirildi`);
+        }
+      } catch (error) {
+        window.clearInterval(timer);
+        onProblem(error);
+      }
+    }, 2200);
+    return () => window.clearInterval(timer);
+  }, [job, load, onNotify, onProblem, token]);
+
+  async function selectEvaluation(evaluation: ComplianceEvaluation) {
+    try {
+      const detail = await complianceApi.evaluation(token, evaluation.id);
+      setSelected(detail);
+      setDecisionId(
+        decisions.find((item) => item.code ===
+          (detail.final_decision || detail.suggested_decision))?.id ?? "",
+      );
+      setSelectedEvidence(detail.evidence[0] as EvidenceFragment | undefined);
+    } catch (error) {
+      onProblem(error);
+    }
+  }
+
+  async function start() {
+    try {
+      setJob(await complianceApi.start(token, project.id));
+      onNotify("Knowledge snapshot alındı; compliance analizi kuyruğa girdi");
+    } catch (error) {
+      onProblem(error);
+    }
+  }
+
+  async function review() {
+    const changeType = changeTypes.find((item) =>
+      conceptMetadata(item).changeProvider === "EVALUATION_REVIEWED");
+    if (!selected || !decisionId || !reason.trim() || !changeType) return;
+    try {
+      const updated = await complianceApi.review(token, selected.id, {
+        finalDecisionConceptId: decisionId,
+        changeTypeConceptId: changeType.id,
+        reason,
+      });
+      setSelected(updated);
+      setReason("");
+      await load();
+      onNotify("Uzman kararı revision ve feedback olarak kaydedildi");
+    } catch (error) {
+      onProblem(error);
+    }
+  }
+
+  return <section className="compliance-center">
+    <div className="panel knowledge-toolbar">
+      <div><p className="eyebrow">EVIDENCE-FIRST</p><h2>Uygunluk çalışma alanı</h2>
+        <span>Requirement, kanıt ve uzman kararı aynı bağlamda.</span></div>
+      {canWrite && <button className="primary" onClick={start}
+        disabled={Boolean(job && !["COMPLETED", "FAILED", "CANCELLED"].includes(job.status))}>
+        <ShieldCheck />Analizi başlat</button>}
+    </div>
+    {job && <div className="extraction-progress">
+      <div><b>{job.status.replaceAll("_", " ")}</b>
+        <span>{job.processed_requirement_count}/{job.total_requirement_count} requirement ·
+          {" "}{job.manual_review_count} uzman incelemesi · {job.failed_count} hata</span></div>
+      <progress max={Math.max(job.total_requirement_count, 1)}
+        value={job.processed_requirement_count} />
+    </div>}
+    <div className="compliance-layout">
+      <aside className="panel requirement-rail">
+        <p className="eyebrow">REQUIREMENT VE KOŞULLAR</p>
+        {evaluations.map((evaluation) => <button key={evaluation.id}
+          className={selected?.id === evaluation.id ? "evaluation-row active" : "evaluation-row"}
+          onClick={() => selectEvaluation(evaluation)}>
+          <span>{evaluation.requirementCode}</span>
+          <b>{evaluation.requirementText}</b>
+          <small>{evaluation.requirementConcept || "Concept yok"} ·
+            {" "}%{Math.round(evaluation.combinedConfidence * 100)}</small>
+          <em>{evaluation.finalDecision || evaluation.suggestedDecision}</em>
+        </button>)}
+        {!loading && !evaluations.length &&
+          <Empty text="Henüz compliance değerlendirmesi yok." />}
+      </aside>
+      <main className="panel compliance-evidence-panel">
+        <p className="eyebrow">ADAY VE SEÇİLMİŞ EVIDENCE</p>
+        {selected ? <>
+          <div className="evidence-chips">
+            {selected.evidence.map((item) => <button key={item.id}
+              className={item.contradiction_strength > 0 ? "contradiction" : "support"}
+              onClick={() => setSelectedEvidence(item)}>
+              <b>{item.relation_role}</b>
+              <span>Sayfa {item.page_number ?? "—"}</span>
+              <small>%{Math.round(item.relevance_score * 100)} relevance ·
+                {" "}%{Math.round(item.validity_score * 100)} validity</small>
+            </button>)}
+          </div>
+          <EvidenceDocumentPane evidence={selectedEvidence} token={token} />
+        </> : <Empty text="Evidence’i görmek için bir requirement seçin." />}
+      </main>
+      <aside className="panel decision-panel">
+        <p className="eyebrow">DEĞERLENDİRME VE UZMAN KARARI</p>
+        {selected ? <>
+          <dl>
+            <div><dt>Önerilen karar</dt><dd>{selected.suggested_decision}</dd></div>
+            <div><dt>Final karar</dt><dd>{selected.final_decision || "Bekliyor"}</dd></div>
+            <div><dt>Grounding</dt><dd>{selected.grounding_status}</dd></div>
+            <div><dt>Confidence</dt><dd>
+              %{Math.round(selected.combined_confidence * 100)}</dd></div>
+            <div><dt>Review</dt><dd>{selected.review_status}</dd></div>
+          </dl>
+          <pre className="json-panel compact">{typeof selected.comparison_summary_json === "string"
+            ? selected.comparison_summary_json
+            : JSON.stringify(selected.comparison_summary_json, null, 2)}</pre>
+          {canWrite && <div className="review-form">
+            <label>Uzman kararı<select value={decisionId}
+              onChange={(event) => setDecisionId(event.target.value)}>
+              <option value="">Karar concept’i seçin</option>
+              {decisions.map((decision) =>
+                <option key={decision.id} value={decision.id}>{decision.name}</option>)}
+            </select></label>
+            <label>Gerekçe<textarea value={reason}
+              onChange={(event) => setReason(event.target.value)}
+              placeholder="Karar gerekçesi ve eksik belge notu" /></label>
+            <button className="primary" onClick={review}
+              disabled={!decisionId || !reason.trim()}><CheckCircle2 />Kararı kaydet</button>
+          </div>}
+        </> : <Empty text="Değerlendirme seçin." />}
+      </aside>
+    </div>
+    <section className="panel compliance-matrix">
+      <div className="panel-head"><div><b>Backend konfigürasyonlu uygunluk matrisi</b>
+        <span>Yeni kolonlar frontend rebuild gerektirmeden render edilir.</span></div></div>
+      <div className="table-wrap"><table><thead><tr>{columns.map((column) =>
+        <th key={column.key}>{column.label}</th>)}</tr></thead>
+        <tbody>{evaluations.map((evaluation) => <tr key={evaluation.id}>
+          {columns.map((column) => <td key={column.key}>
+            {formatComplianceValue(evaluation, column)}</td>)}</tr>)}</tbody>
+      </table></div>
+    </section>
+  </section>;
+}
+
+function DynamicField({ label, value }: { label: string; value: string }) {
+  return <div className="dynamic-field"><span>{label}</span><b>{value}</b></div>;
+}
+
+function EvidenceDocumentPane({ evidence, token }: {
+  evidence?: EvidenceFragment;
+  token: string;
+}) {
+  const [url, setUrl] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    setUrl("");
+    if (!evidence?.document_id) return;
+    documentApi.downloadUrl(token, evidence.document_id)
+      .then((response) => active && setUrl(response.url))
+      .catch(() => active && setUrl(""));
+    return () => { active = false; };
+  }, [evidence?.document_id, token]);
+
+  if (!evidence) return <Empty text="Kaynak metni ve PDF bölgesini görmek için evidence seçin." />;
+  const highlights = parseEvidenceBoxes(evidence.bounding_boxes_json);
+  return <div className="evidence-document">
+    <div className="evidence-meta">
+      <b>{evidence.document_name || evidence.document_type || "Kanıt belgesi"}</b>
+      <span>Sayfa {evidence.page_number ?? "—"} ·
+        {" "}{evidence.validity_status || "Validity bekliyor"}</span>
+      <small>Parser %{Math.round((evidence.parser_quality ?? 0) * 100)} · OCR
+        {" "}%{Math.round((evidence.ocr_quality ?? 0) * 100)}</small>
+    </div>
+    <blockquote>{evidence.fragment_text || "Kaynak metin detay isteğiyle yüklenir."}</blockquote>
+    {url ? <PdfCanvas url={url} pageNumber={evidence.page_number ?? 1}
+      zoom={0.72} highlights={highlights} /> :
+      <div className="pdf-placeholder"><FileText /><p>PDF önizlemesi hazırlanıyor.</p></div>}
+  </div>;
+}
+
+function parseEvidenceBoxes(value?: string): BoundingBox[] {
+  if (!value) return [];
+  try {
+    const boxes = JSON.parse(value);
+    return Array.isArray(boxes) ? boxes : [];
+  } catch {
+    return [];
+  }
+}
+
+function conceptMetadata(concept: ConceptOption): Record<string, unknown> {
+  if (typeof concept.metadata === "object") return concept.metadata;
+  try {
+    return JSON.parse(concept.metadata) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+}
+
+function formatComplianceValue(
+  evaluation: ComplianceEvaluation,
+  column: ComplianceColumn,
+) {
+  const aliases: Record<string, unknown> = {
+    requirementConcept: evaluation.requirementConcept,
+    targetEntity: evaluation.targetScope,
+    suggestedDecision: evaluation.suggestedDecision,
+    finalDecision: evaluation.finalDecision,
+  };
+  const value = column.key in aliases
+    ? aliases[column.key] : valueAt(evaluation, column.key);
+  if (value === undefined || value === null || value === "") return "—";
+  if (column.type === "PERCENT" && typeof value === "number") {
+    return `%${Math.round(value * 100)}`;
+  }
+  return typeof value === "object" ? JSON.stringify(value) : String(value);
 }
 
 function RequirementsMatrix({ project, documents, token, canWrite, onProblem, onNotify }: {
@@ -754,6 +1316,530 @@ function RequirementsMatrix({ project, documents, token, canWrite, onProblem, on
       <pre>{JSON.stringify(explanation, null, 2)}</pre>
     </div>}
   </section>;
+}
+
+function RiskCenter({ project, token, canWrite, onProblem, onNotify }: {
+  project: TenderProject;
+  token: string;
+  canWrite: boolean;
+  onProblem: (error: unknown) => void;
+  onNotify: (message: string) => void;
+}) {
+  const [risks, setRisks] = useState<RiskRecord[]>([]);
+  const [columns, setColumns] = useState<DynamicColumn[]>([]);
+  const [selected, setSelected] = useState<RiskRecord>();
+  const [job, setJob] = useState<RiskAnalysisJob>();
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [records, grid] = await Promise.all([
+        riskApi.list(token, project.id),
+        riskApi.grid(token),
+      ]);
+      setRisks(records);
+      setColumns(grid.columns.filter((column) => column.visible));
+      setSelected((current) => current
+        ? records.find((item) => item.id === current.id) ?? current
+        : current);
+    } catch (error) {
+      onProblem(error);
+    } finally {
+      setLoading(false);
+    }
+  }, [onProblem, project.id, token]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void load(); }, 0);
+    return () => window.clearTimeout(timer);
+  }, [load]);
+
+  useEffect(() => {
+    if (!job || ["COMPLETED", "COMPLETED_WITH_ERRORS", "FAILED", "CANCELLED"]
+      .includes(job.status)) return;
+    const timer = window.setInterval(async () => {
+      try {
+        const current = await riskApi.job(token, job.id);
+        setJob(current);
+        if (["COMPLETED", "COMPLETED_WITH_ERRORS"].includes(current.status)) {
+          window.clearInterval(timer);
+          await load();
+          onNotify(`${current.riskCount} risk, ${current.conflictCount} çelişki üretildi`);
+        }
+      } catch (error) {
+        window.clearInterval(timer);
+        onProblem(error);
+      }
+    }, 2000);
+    return () => window.clearInterval(timer);
+  }, [job, load, onNotify, onProblem, token]);
+
+  async function start() {
+    try {
+      const created = await riskApi.start(token, project.id);
+      setJob(created);
+      onNotify("Sürümlü risk analizi kuyruğa alındı");
+    } catch (error) {
+      onProblem(error);
+    }
+  }
+
+  async function openRisk(risk: RiskRecord) {
+    try {
+      setSelected(await riskApi.get(token, risk.id));
+    } catch (error) {
+      onProblem(error);
+    }
+  }
+
+  async function review(reviewStatus: string) {
+    if (!selected) return;
+    try {
+      const updated = await riskApi.review(token, selected.id, reviewStatus);
+      setSelected(updated);
+      await load();
+      onNotify(reviewStatus === "APPROVED" ? "Risk onaylandı" : "Risk reddedildi");
+    } catch (error) {
+      onProblem(error);
+    }
+  }
+
+  return <section className="intelligence-layout">
+    <article className="panel intelligence-main">
+      <div className="panel-head"><div><b>Dinamik risk merkezi</b>
+        <span>Kolonlar aktif UI configuration ve ontology’den yüklenir</span></div>
+        {canWrite && <button className="primary" onClick={start}
+          disabled={!!job && !["COMPLETED", "COMPLETED_WITH_ERRORS", "FAILED", "CANCELLED"]
+            .includes(job.status)}><Activity />Risk analizi</button>}
+      </div>
+      {job && <AnalysisProgress job={job} />}
+      {loading ? <div className="processing"><LoaderCircle className="spin" />Yükleniyor…</div>
+        : <div className="risk-table-wrap"><table className="risk-table">
+          <thead><tr>{columns.map((column) =>
+            <th key={column.key}>{column.label}</th>)}<th /></tr></thead>
+          <tbody>{risks.map((risk) => <tr key={risk.id}
+            className={selected?.id === risk.id ? "selected" : ""}>
+            {columns.map((column) => <td key={column.key}>
+              {formatRiskValue(risk, column)}</td>)}
+            <td><button className="icon-button" onClick={() => openRisk(risk)}
+              aria-label={`${risk.riskCode} risk detayını aç`}><ChevronRight /></button></td>
+          </tr>)}</tbody>
+        </table>{!risks.length && <Empty text="Henüz risk analizi sonucu bulunmuyor." />}</div>}
+    </article>
+    {selected && <RiskDetail risk={selected} token={token} canWrite={canWrite}
+      onClose={() => setSelected(undefined)} onReview={review} onProblem={onProblem} />}
+  </section>;
+}
+
+function AnalysisProgress({ job }: { job: RiskAnalysisJob }) {
+  return <div className="analysis-progress">
+    <div><b>{job.status.replaceAll("_", " ")}</b>
+      <span>{job.processedCandidateCount}/{job.totalCandidateCount} aday ·
+        {" "}{job.riskCount} risk · {job.ambiguityCount} belirsizlik ·
+        {" "}{job.conflictCount} çelişki</span></div>
+    <progress max={Math.max(job.totalCandidateCount, 1)}
+      value={job.processedCandidateCount} />
+  </div>;
+}
+
+function RiskDetail({ risk, token, canWrite, onClose, onReview, onProblem }: {
+  risk: RiskRecord;
+  token: string;
+  canWrite: boolean;
+  onClose: () => void;
+  onReview: (status: string) => void;
+  onProblem: (error: unknown) => void;
+}) {
+  return <aside className="panel intelligence-detail">
+    <div className="detail-title"><div><p className="eyebrow">{risk.riskCode}</p>
+      <h2>{risk.title}</h2></div>
+      <button onClick={onClose} aria-label="Risk detayını kapat"><X /></button></div>
+    <div className="score-strip">
+      <Score label="Olasılık" value={risk.probabilityScore} />
+      <Score label="Etki" value={risk.impactScore} />
+      <Score label="Maruziyet" value={risk.exposureScore} />
+      <Score label="Güven" value={risk.confidence} />
+    </div>
+    {risk.stalenessStatus && <p className="stale-warning"><FileClock />
+      Bu sonuç {risk.stalenessStatus.replaceAll("_", " ")} durumunda.</p>}
+    <h3>Risk özeti</h3><p>{risk.description}</p>
+    <h3>Kaynaklar</h3>
+    {risk.sources?.map((source) => <SourceCard key={source.id}
+      source={source} token={token} onProblem={onProblem} />)}
+    <h3>Hesaplama faktörleri</h3>
+    <JsonList values={risk.factors} empty="Faktör kaydı bulunmuyor." />
+    <h3>Yayılım adayları</h3>
+    <JsonList values={risk.propagation} empty="Yayılım adayı bulunmuyor." />
+    <h3>Mitigation adayları</h3>
+    <JsonList values={risk.mitigations} empty="Onaylı katalog eşleşmesi bulunmuyor." />
+    <h3>Revision geçmişi</h3>
+    <JsonList values={risk.history} empty="Henüz uzman revizyonu yok." />
+    {canWrite && <div className="review-actions">
+      <button className="primary" onClick={() => onReview("APPROVED")}>
+        <CheckCircle2 />Onayla</button>
+      <button className="danger" onClick={() => onReview("REJECTED")}>
+        <X />Reddet</button>
+    </div>}
+  </aside>;
+}
+
+function ConflictWorkspace({ project, token, canWrite, onProblem, onNotify }: {
+  project: TenderProject;
+  token: string;
+  canWrite: boolean;
+  onProblem: (error: unknown) => void;
+  onNotify: (message: string) => void;
+}) {
+  const [conflicts, setConflicts] = useState<ConflictRecord[]>([]);
+  const [selected, setSelected] = useState<ConflictRecord>();
+  const [loading, setLoading] = useState(true);
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      setConflicts(await riskApi.conflicts(token, project.id));
+    } catch (error) {
+      onProblem(error);
+    } finally {
+      setLoading(false);
+    }
+  }, [onProblem, project.id, token]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void load(); }, 0);
+    return () => window.clearTimeout(timer);
+  }, [load]);
+
+  async function select(item: ConflictRecord) {
+    try {
+      setSelected(await riskApi.conflict(token, item.id));
+    } catch (error) {
+      onProblem(error);
+    }
+  }
+
+  async function review(status: string) {
+    if (!selected) return;
+    try {
+      setSelected(await riskApi.reviewConflict(token, selected.id, status));
+      await load();
+      onNotify("Çelişki uzman kararı kaydedildi");
+    } catch (error) {
+      onProblem(error);
+    }
+  }
+
+  if (loading) return <div className="processing"><LoaderCircle className="spin" />Yükleniyor…</div>;
+  return <section className="workspace-stack">
+    <article className="panel finding-list">
+      <div className="panel-head"><div><b>Çelişki adayları</b>
+        <span>Aşamalı retrieval ve provider registry sonuçları</span></div></div>
+      {conflicts.map((conflict) => <button key={conflict.id}
+        className={selected?.id === conflict.id ? "finding active" : "finding"}
+        onClick={() => select(conflict)}>
+        <b>{conflict.conflictCode} · {conflict.concept}</b>
+        <span>{conflict.description}</span>
+        <small>%{Math.round(conflict.confidence * 100)} güven ·
+          {" "}{conflict.reviewStatus}</small>
+      </button>)}
+      {!conflicts.length && <Empty text="Doğrulanmış kaynaklı çelişki adayı bulunmuyor." />}
+    </article>
+    {selected && <article className="conflict-workspace">
+      <SourcePanel title="Kaynak A" source={selected.sources?.[0]}
+        token={token} onProblem={onProblem} />
+      <SourcePanel title="Kaynak B" source={selected.sources?.[1]}
+        token={token} onProblem={onProblem} />
+      <section className="panel conflict-decision">
+        <p className="eyebrow">ÇELİŞKİ ANALİZİ</p><h2>{selected.concept}</h2>
+        <p>{selected.description}</p>
+        <dl><div><dt>Strateji</dt><dd>{selected.comparisonStrategyCode}</dd></div>
+          <div><dt>Güven</dt><dd>%{Math.round(selected.confidence * 100)}</dd></div>
+          <div><dt>İnceleme</dt><dd>{selected.reviewStatus}</dd></div>
+          <div><dt>Durum</dt><dd>{selected.status}</dd></div></dl>
+        <h3>Authority ve öneri</h3>
+        <p>Authority kararı aktif policy snapshot’ına bağlıdır; öneri final karar değildir.</p>
+        {canWrite && <div className="review-actions">
+          <button className="primary" onClick={() => review("APPROVED")}>
+            <CheckCircle2 />Onayla</button>
+          <button className="danger" onClick={() => review("REJECTED")}><X />Reddet</button>
+        </div>}
+      </section>
+    </article>}
+  </section>;
+}
+
+function AmbiguityWorkspace({ project, token, canWrite, onProblem, onNotify }: {
+  project: TenderProject;
+  token: string;
+  canWrite: boolean;
+  onProblem: (error: unknown) => void;
+  onNotify: (message: string) => void;
+}) {
+  const [findings, setFindings] = useState<AmbiguityFinding[]>([]);
+  const [selected, setSelected] = useState<AmbiguityFinding>();
+  const [loading, setLoading] = useState(true);
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      setFindings(await riskApi.ambiguities(token, project.id));
+    } catch (error) {
+      onProblem(error);
+    } finally {
+      setLoading(false);
+    }
+  }, [onProblem, project.id, token]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void load(); }, 0);
+    return () => window.clearTimeout(timer);
+  }, [load]);
+
+  async function select(item: AmbiguityFinding) {
+    try {
+      setSelected(await riskApi.ambiguity(token, item.id));
+    } catch (error) {
+      onProblem(error);
+    }
+  }
+
+  async function review(status: string) {
+    if (!selected) return;
+    try {
+      setSelected(await riskApi.reviewAmbiguity(token, selected.id, status));
+      await load();
+      onNotify("Belirsizlik uzman kararı kaydedildi");
+    } catch (error) {
+      onProblem(error);
+    }
+  }
+
+  return <section className="intelligence-layout">
+    <article className="panel finding-list intelligence-main">
+      <div className="panel-head"><div><b>Belirsizlik çalışma alanı</b>
+        <span>Yapısal eksikler, semantic sinyaller ve muhtemel yorumlar</span></div></div>
+      {loading ? <div className="processing"><LoaderCircle className="spin" />Yükleniyor…</div>
+        : findings.map((finding) => <button key={finding.id}
+          className={selected?.id === finding.id ? "finding active" : "finding"}
+          onClick={() => select(finding)}>
+          <b>{finding.concept}</b><span>{finding.description}</span>
+          <small>%{Math.round(finding.confidence * 100)} güven ·
+            {" "}{finding.reviewStatus}</small>
+        </button>)}
+      {!loading && !findings.length && <Empty text="Belirsizlik adayı bulunmuyor." />}
+    </article>
+    {selected && <aside className="panel intelligence-detail">
+      <div className="detail-title"><div><p className="eyebrow">BELİRSİZLİK</p>
+        <h2>{selected.concept}</h2></div>
+        <button onClick={() => setSelected(undefined)} aria-label="Detayı kapat"><X /></button></div>
+      <Score label="Güven" value={selected.confidence} />
+      <h3>Eksik alanlar ve etki</h3><p>{selected.description}</p>
+      <h3>Kaynak clause</h3>
+      {selected.sources?.map((source) => <SourceCard key={source.id}
+        source={source} token={token} onProblem={onProblem} />)}
+      <h3>Muhtemel yorumlar</h3>
+      <JsonList values={selected.interpretations} empty="Henüz uzman yorumu eklenmedi." />
+      <h3>Clarification candidate</h3>
+      <p>Aday soru oluşturulabilir; insan onayı olmadan dışarı gönderilemez.</p>
+      {canWrite && <div className="review-actions">
+        <button className="primary" onClick={() => review("APPROVED")}>
+          <CheckCircle2 />Onayla</button>
+        <button className="danger" onClick={() => review("REJECTED")}><X />Reddet</button>
+      </div>}
+    </aside>}
+  </section>;
+}
+
+function ChangeImpactWorkspace({ project, documents, token, canWrite, onProblem, onNotify }: {
+  project: TenderProject;
+  documents: ProjectDocument[];
+  token: string;
+  canWrite: boolean;
+  onProblem: (error: unknown) => void;
+  onNotify: (message: string) => void;
+}) {
+  const [documentId, setDocumentId] = useState("");
+  const [versions, setVersions] = useState<Array<{ id: string; versionNumber: number }>>([]);
+  const [baseVersionId, setBaseVersionId] = useState("");
+  const [targetVersionId, setTargetVersionId] = useState("");
+  const [changeSet, setChangeSet] = useState<ChangeSet>();
+  const [impact, setImpact] = useState<ImpactAnalysis>();
+  const [selectedItem, setSelectedItem] = useState<ChangeItem>();
+  const [baseClauseId, setBaseClauseId] = useState("");
+  const [targetClauseId, setTargetClauseId] = useState("");
+
+  useEffect(() => {
+    if (!documentId) {
+      setVersions([]);
+      return;
+    }
+    documentApi.versions(token, documentId).then((items) => {
+      setVersions(items);
+      setTargetVersionId(items[0]?.id ?? "");
+      setBaseVersionId(items[1]?.id ?? "");
+    }).catch(onProblem);
+  }, [documentId, onProblem, token]);
+
+  async function create() {
+    try {
+      const created = await riskApi.createChangeSet(
+        token, documentId, baseVersionId, targetVersionId);
+      setChangeSet(created);
+      setImpact(undefined);
+      onNotify(`${created.items.length} yapısal değişiklik eşleştirildi`);
+    } catch (error) {
+      onProblem(error);
+    }
+  }
+
+  async function analyze() {
+    if (!changeSet) return;
+    try {
+      const result = await riskApi.impact(token, changeSet.id);
+      setImpact(result);
+      onNotify(`${result.affectedEntities.length} seçici etki kaydedildi`);
+    } catch (error) {
+      onProblem(error);
+    }
+  }
+
+  async function correct() {
+    if (!changeSet || !selectedItem) return;
+    try {
+      const updated = await riskApi.correctChange(token, changeSet.id, selectedItem,
+        baseClauseId, targetClauseId);
+      setChangeSet(updated);
+      setSelectedItem(undefined);
+      onNotify("Değişiklik eşleşmesi uzman kararıyla güncellendi");
+    } catch (error) {
+      onProblem(error);
+    }
+  }
+
+  return <section className="workspace-stack">
+    <article className="panel change-controls">
+      <div className="panel-head"><div><b>Doküman değişikliği ve etki</b>
+        <span>Yapısal diff → requirement graph → seçici re-analysis</span></div></div>
+      <div className="change-form">
+        <label>Doküman<select value={documentId}
+          onChange={(event) => setDocumentId(event.target.value)}>
+          <option value="">Doküman seçin</option>
+          {documents.map((document) => <option key={document.id} value={document.id}>
+            {document.logicalName}</option>)}
+        </select></label>
+        <label>Eski versiyon<select value={baseVersionId}
+          onChange={(event) => setBaseVersionId(event.target.value)}>
+          <option value="">Versiyon seçin</option>{versions.map((version) =>
+            <option key={version.id} value={version.id}>v{version.versionNumber}</option>)}
+        </select></label>
+        <label>Yeni versiyon<select value={targetVersionId}
+          onChange={(event) => setTargetVersionId(event.target.value)}>
+          <option value="">Versiyon seçin</option>{versions.map((version) =>
+            <option key={version.id} value={version.id}>v{version.versionNumber}</option>)}
+        </select></label>
+        {canWrite && <button className="primary" onClick={create}
+          disabled={!documentId || !baseVersionId || !targetVersionId ||
+            baseVersionId === targetVersionId}><FileClock />Değişikliği analiz et</button>}
+      </div>
+    </article>
+    {changeSet && <div className="change-grid">
+      <article className="panel change-items">
+        <div className="panel-head"><div><b>Change set</b>
+          <span>{changeSet.items.length} madde · {changeSet.status}</span></div>
+          {canWrite && <button className="primary" onClick={analyze}>
+            <Activity />Etki analizi</button>}</div>
+        {changeSet.items.map((item) => <button key={item.id}
+          className={selectedItem?.id === item.id ? "change-item active" : "change-item"}
+          onClick={() => {
+            setSelectedItem(item);
+            setBaseClauseId(item.baseClauseId ?? "");
+            setTargetClauseId(item.targetClauseId ?? "");
+          }}>
+          <span className={`change-badge ${item.changeType.toLowerCase()}`}>
+            {item.changeType}</span>
+          <b>{item.baseClauseId || "∅"} → {item.targetClauseId || "∅"}</b>
+          <small>%{Math.round(item.similarityScore * 100)} benzerlik ·
+            {" "}{item.reviewStatus}</small>
+        </button>)}
+      </article>
+      <article className="panel impact-results">
+        <div className="panel-head"><div><b>Etkilenen sonuçlar</b>
+          <span>Eski sonuçlar silinmez; stale işaretlenir</span></div></div>
+        {impact?.affectedEntities.map((entity) => <div className="impact-row" key={entity.id}>
+          <span>{entity.entityType}</span><b>{entity.impactConcept}</b>
+          <small>%{Math.round(entity.confidence * 100)} güven</small>
+        </div>)}
+        {!impact && <Empty text="Etki analizi henüz çalıştırılmadı." />}
+      </article>
+    </div>}
+    {selectedItem && <div className="modal-backdrop">
+      <section className="modal change-correction">
+        <div className="modal-head"><div><p className="eyebrow">UZMAN EŞLEŞME DÜZELTMESİ</p>
+          <h2>{selectedItem.changeType}</h2></div>
+          <button onClick={() => setSelectedItem(undefined)} aria-label="Kapat"><X /></button></div>
+        <label>Eski clause ID<input value={baseClauseId}
+          onChange={(event) => setBaseClauseId(event.target.value)} /></label>
+        <label>Yeni clause ID<input value={targetClauseId}
+          onChange={(event) => setTargetClauseId(event.target.value)} /></label>
+        <p>Boş taraf silinen veya eklenen maddeyi temsil eder.</p>
+        <button className="primary" onClick={correct}><CheckCircle2 />Eşleşmeyi kaydet</button>
+      </section>
+    </div>}
+  </section>;
+}
+
+function SourcePanel({ title, source, token, onProblem }: {
+  title: string;
+  source?: RiskSource;
+  token: string;
+  onProblem: (error: unknown) => void;
+}) {
+  return <section className="panel source-panel"><p className="eyebrow">{title}</p>
+    {source ? <SourceCard source={source} token={token} onProblem={onProblem} />
+      : <Empty text="Kaynak yüklenemedi." />}</section>;
+}
+
+function SourceCard({ source, token, onProblem }: {
+  source: RiskSource;
+  token: string;
+  onProblem: (error: unknown) => void;
+}) {
+  async function openSource() {
+    try {
+      const response = await documentApi.downloadUrl(token, source.documentId);
+      window.open(`${response.url}#page=${source.pageNumber ?? 1}`, "_blank",
+        "noopener,noreferrer");
+    } catch (error) {
+      onProblem(error);
+    }
+  }
+  return <article className="source-card">
+    <div><b>{source.side || source.sourceType || "KAYNAK"}</b>
+      <small>Sayfa {source.pageNumber ?? "—"} · {source.clauseId || "Clause yok"}</small></div>
+    <p>{source.sourceText}</p>
+    <button className="secondary" onClick={openSource}><Eye />PDF bölgesini aç</button>
+  </article>;
+}
+
+function JsonList({ values, empty }: {
+  values?: Record<string, unknown>[];
+  empty: string;
+}) {
+  if (!values?.length) return <p className="muted-copy">{empty}</p>;
+  return <div className="json-list">{values.map((value, index) =>
+    <pre key={String(value.id ?? index)}>{JSON.stringify(value, null, 2)}</pre>)}</div>;
+}
+
+function Score({ label, value }: { label: string; value?: number }) {
+  return <span className="score"><small>{label}</small>
+    <b>{value === undefined || value === null ? "—" : `%${Math.round(value * 100)}`}</b></span>;
+}
+
+function formatRiskValue(risk: RiskRecord, column: DynamicColumn) {
+  const value = (risk as unknown as Record<string, unknown>)[column.key];
+  if (value === undefined || value === null || value === "") return "—";
+  if (column.type === "PERCENT" && typeof value === "number") {
+    return `%${Math.round(value * 100)}`;
+  }
+  if (column.type === "DATE" && typeof value === "string") return formatDate(value);
+  return String(value).replaceAll("_", " ");
 }
 
 function formatRequirementValue(requirement: Requirement, column: RequirementColumn) {
