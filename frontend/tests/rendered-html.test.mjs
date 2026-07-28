@@ -19,11 +19,13 @@ async function portalSource() {
   return parts.join("\n");
 }
 
-test("portal uses protected OIDC PKCE session flow", async () => {
+test("portal uses local JWT login session flow", async () => {
   const auth = await source("../src/modules/auth/auth.ts");
-  assert.match(auth, /response_type: "code"/);
-  assert.match(auth, /signinRedirectCallback/);
-  assert.match(auth, /automaticSilentRenew: true/);
+  assert.match(auth, /\/api\/v1\/auth\/login/);
+  assert.match(auth, /specai\.local\.session/);
+  assert.match(auth, /accessToken/);
+  assert.doesNotMatch(auth, /oidc-client-ts/);
+  assert.doesNotMatch(auth, /signinRedirect/);
 });
 
 test("portal opens directly while write actions remain session-gated", async () => {

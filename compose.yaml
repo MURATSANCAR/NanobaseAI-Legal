@@ -92,51 +92,6 @@ services:
     networks: [specai]
     restart: unless-stopped
 
-  keycloak:
-    image: quay.io/keycloak/keycloak:26.2.5
-    command: start-dev --import-realm --health-enabled=true
-    environment:
-      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-admin}
-      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-}
-    ports:
-      - "127.0.0.1:8081:8080"
-    volumes:
-      - ./infra/keycloak/specai-realm.json:/opt/keycloak/data/import/specai-realm.json:ro
-    healthcheck:
-      test:
-        - CMD-SHELL
-        - "exec 3<>/dev/tcp/127.0.0.1/9000; printf 'GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3; grep '200 OK' <&3"
-      interval: 10s
-      timeout: 5s
-      retries: 30
-    networks: [specai]
-    restart: unless-stopped
-
-  keycloak-init:
-    image: quay.io/keycloak/keycloak:26.2.5
-    depends_on:
-      keycloak:
-        condition: service_healthy
-    entrypoint: ["/bin/bash", "-ec"]
-    command:
-      - |
-        /opt/keycloak/bin/kcadm.sh config credentials \
-          --server http://keycloak:8080 \
-          --realm master \
-          --user "$${KEYCLOAK_ADMIN}" \
-          --password "$${KEYCLOAK_ADMIN_PASSWORD}"
-        /opt/keycloak/bin/kcadm.sh set-password \
-          --realm specai \
-          --username admin@nanobase.local \
-          --new-password "$${LOCAL_USER_PASSWORD}" \
-          --temporary
-    environment:
-      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
-      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-}
-      LOCAL_USER_PASSWORD: ${LOCAL_USER_PASSWORD:-}
-    networks: [specai]
-    restart: "no"
-
   clamav:
     image: clamav/clamav:1.4.3
     volumes:
@@ -157,8 +112,11 @@ services:
       DATABASE_URL: jdbc:postgresql://postgres:5432/specai
       DATABASE_USER: specai
       DATABASE_PASSWORD: ${DATABASE_PASSWORD:-}
-      OIDC_ISSUER_URI: ${OIDC_ISSUER_URI:-http://localhost:8081/realms/specai}
-      OIDC_JWK_SET_URI: http://keycloak:8080/realms/specai/protocol/openid-connect/certs
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-development}
+      SPECAI_AUTH_MODE: ${SPECAI_AUTH_MODE:-local}
+      SPECAI_JWT_SECRET: ${SPECAI_JWT_SECRET:-}
+      SPECAI_LOCAL_ADMIN_EMAIL: ${SPECAI_LOCAL_ADMIN_EMAIL:-admin@nanobase.local}
+      SPECAI_LOCAL_ADMIN_PASSWORD: ${SPECAI_LOCAL_ADMIN_PASSWORD:-${LOCAL_USER_PASSWORD:-}}
       SPECAI_BOOTSTRAP_ENABLED: "true"
       SPECAI_BOOTSTRAP_TENANT_ID: 11111111-1111-1111-1111-111111111111
       SPECAI_BOOTSTRAP_TENANT_NAME: Nano Teknoloji A.Ş.
@@ -192,8 +150,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      keycloak-init:
-        condition: service_completed_successfully
       document-intelligence:
         condition: service_healthy
       ai-orchestrator:
@@ -283,12 +239,8 @@ services:
       context: ./frontend
       args:
         NEXT_PUBLIC_API_BASE_URL: ${PUBLIC_API_BASE_URL:-http://localhost:8080}
-        NEXT_PUBLIC_OIDC_ISSUER: ${PUBLIC_OIDC_ISSUER:-http://localhost:8081/realms/specai}
-        NEXT_PUBLIC_OIDC_CLIENT_ID: ${PUBLIC_OIDC_CLIENT_ID:-specai-portal}
     environment:
       NEXT_PUBLIC_API_BASE_URL: ${PUBLIC_API_BASE_URL:-http://localhost:8080}
-      NEXT_PUBLIC_OIDC_ISSUER: ${PUBLIC_OIDC_ISSUER:-http://localhost:8081/realms/specai}
-      NEXT_PUBLIC_OIDC_CLIENT_ID: ${PUBLIC_OIDC_CLIENT_ID:-specai-portal}
     ports:
       - "127.0.0.1:3000:3000"
     depends_on:

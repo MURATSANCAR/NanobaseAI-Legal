@@ -1,0 +1,17 @@
+[Unit]
+Description=Nanobase SpecAI Legal (Docker Compose)
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/data/nanobaseai/legal
+EnvironmentFile=-/etc/nanobaseai/legal.env
+ExecStart=/usr/bin/docker compose -f compose.yaml -f compose.easymeeting.yaml --env-file /etc/nanobaseai/legal.env up -d --remove-orphans
+ExecStop=/usr/bin/docker compose -f compose.yaml -f compose.easymeeting.yaml --env-file /etc/nanobaseai/legal.env down
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target

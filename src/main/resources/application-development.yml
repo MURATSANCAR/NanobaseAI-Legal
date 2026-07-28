@@ -2,6 +2,12 @@ specai:
   environment: development
   bootstrap:
     enabled: ${SPECAI_BOOTSTRAP_ENABLED:true}
+  security:
+    auth-mode: ${SPECAI_AUTH_MODE:local}
+    jwt:
+      secret: ${SPECAI_JWT_SECRET:local-dev-only-jwt-secret-change-me-32b}
+    local:
+      admin-password: ${SPECAI_LOCAL_ADMIN_PASSWORD:${LOCAL_USER_PASSWORD:changeme-local-admin}}
   file-security:
     fail-closed: ${FILE_SECURITY_FAIL_CLOSED:false}
   backpressure:

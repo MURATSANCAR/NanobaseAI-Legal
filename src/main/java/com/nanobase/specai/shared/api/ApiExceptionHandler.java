@@ -1,6 +1,7 @@
 package com.nanobase.specai.shared.api;
 
 import com.nanobase.specai.document.application.InvalidDocumentException;
+import com.nanobase.specai.identity.application.InvalidCredentialsException;
 import com.nanobase.specai.operations.application.ResourceQuotaExceededException;
 import com.nanobase.specai.operations.application.WorkloadCapacityException;
 import com.nanobase.specai.shared.security.MissingTenantException;
@@ -39,6 +40,13 @@ public class ApiExceptionHandler {
     ProblemDetail unauthorized(MissingTenantException exception, HttpServletRequest request) {
         return problem(HttpStatus.UNAUTHORIZED, "Tenant context unavailable",
             "TENANT_CONTEXT_REQUIRED", exception.getMessage(), request, List.of());
+    }
+
+    @ExceptionHandler(InvalidCredentialsException.class)
+    ProblemDetail invalidCredentials(InvalidCredentialsException exception,
+                                     HttpServletRequest request) {
+        return problem(HttpStatus.UNAUTHORIZED, "Authentication failed",
+            "INVALID_CREDENTIALS", exception.getMessage(), request, List.of());
     }
 
     @ExceptionHandler(ObjectOptimisticLockingFailureException.class)

@@ -2,11 +2,14 @@ package com.nanobase.specai.shared.security;
 
 import static org.springframework.security.config.Customizer.withDefaults;
 
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
-import java.time.Duration;
+import javax.crypto.SecretKey;
+import javax.crypto.spec.SecretKeySpec;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -15,17 +18,19 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
+import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
+import org.springframework.security.oauth2.jose.jws.SignatureAlgorithm;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtClaimValidator;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtIssuerValidator;
 import org.springframework.security.oauth2.jwt.JwtTimestampValidator;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
-import org.springframework.security.oauth2.jose.jws.SignatureAlgorithm;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.util.StringUtils;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -35,20 +40,44 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 public class SecurityConfig {
     @Bean
     JwtDecoder jwtDecoder(
-        @Value("${spring.security.oauth2.resourceserver.jwt.jwk-set-uri}") String jwkSetUri,
-        @Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri}") String issuer,
+        @Value("${specai.security.auth-mode:local}") String authMode,
+        @Value("${spring.security.oauth2.resourceserver.jwt.jwk-set-uri:}") String jwkSetUri,
+        @Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri:}") String issuerUri,
+        @Value("${specai.security.jwt.secret:}") String localSecret,
+        @Value("${specai.security.jwt.issuer:specai-local}") String localIssuer,
         @Value("${specai.security.jwt.audience:specai-api}") String audience,
         @Value("${specai.security.jwt.clock-skew-seconds:60}") long clockSkewSeconds
     ) {
-        NimbusJwtDecoder decoder = NimbusJwtDecoder.withJwkSetUri(jwkSetUri)
-            .jwsAlgorithm(SignatureAlgorithm.RS256)
-            .build();
         JwtTimestampValidator timestamp = new JwtTimestampValidator(
             Duration.ofSeconds(clockSkewSeconds));
         JwtClaimValidator<List<String>> audienceValidator = new JwtClaimValidator<>(
             "aud", values -> values != null && values.contains(audience));
+
+        if ("local".equalsIgnoreCase(authMode)) {
+            if (!StringUtils.hasText(localSecret)
+                || localSecret.getBytes(StandardCharsets.UTF_8).length < 32) {
+                throw new IllegalStateException(
+                    "SPECAI_JWT_SECRET must be set and at least 32 bytes for local auth");
+            }
+            SecretKey key = new SecretKeySpec(
+                localSecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
+            NimbusJwtDecoder decoder = NimbusJwtDecoder.withSecretKey(key)
+                .macAlgorithm(MacAlgorithm.HS256)
+                .build();
+            decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<Jwt>(
+                timestamp, new JwtIssuerValidator(localIssuer), audienceValidator));
+            return decoder;
+        }
+
+        if (!StringUtils.hasText(jwkSetUri) || !StringUtils.hasText(issuerUri)) {
+            throw new IllegalStateException(
+                "OIDC_JWK_SET_URI and OIDC_ISSUER_URI are required when auth-mode is oidc");
+        }
+        NimbusJwtDecoder decoder = NimbusJwtDecoder.withJwkSetUri(jwkSetUri)
+            .jwsAlgorithm(SignatureAlgorithm.RS256)
+            .build();
         decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<Jwt>(
-            timestamp, new JwtIssuerValidator(issuer), audienceValidator));
+            timestamp, new JwtIssuerValidator(issuerUri), audienceValidator));
         return decoder;
     }
 
@@ -63,6 +92,7 @@ public class SecurityConfig {
             .cors(withDefaults())
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/actuator/health/**").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/v1/auth/login").permitAll()
                 .requestMatchers("/v3/api-docs/**", "/swagger-ui/**")
                     .hasAnyRole("SYSTEM_ADMIN", "TENANT_ADMIN")
                 .requestMatchers(HttpMethod.GET, "/api/v1/**").hasAnyRole(

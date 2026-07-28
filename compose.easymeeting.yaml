@@ -1,0 +1,115 @@
+# EasyMeeting / portal.nanobase.ai overlay.
+# Uses Actenora shared Postgres/Redis/RabbitMQ/MinIO + host LLM.
+# Usage on server:
+#   docker compose -f compose.yaml -f compose.easymeeting.yaml \
+#     --env-file /etc/nanobaseai/legal.env up -d --build
+
+name: specai-legal
+
+services:
+  postgres:
+    profiles: [never]
+  minio:
+    profiles: [never]
+  minio-init:
+    profiles: [never]
+  rabbitmq:
+    profiles: [never]
+  redis:
+    profiles: [never]
+
+  clamav:
+    networks:
+      - specai
+
+  document-intelligence:
+    environment:
+      S3_ENDPOINT: http://actenora-prodlike-minio:9000
+      S3_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      S3_SECRET_KEY: ${MINIO_SECRET_KEY}
+      S3_SOURCE_BUCKET: specai-original
+    networks:
+      - specai
+      - actenora-data
+    depends_on: !override {}
+
+  ai-orchestrator:
+    environment:
+      MODEL_DEPLOYMENTS_JSON: ${AI_MODEL_DEPLOYMENTS_JSON}
+      LOG_LEVEL: ${AI_ORCHESTRATOR_LOG_LEVEL:-INFO}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - specai
+
+  backend:
+    environment:
+      DATABASE_URL: jdbc:postgresql://actenora-prodlike-postgres:5432/specai
+      DATABASE_USER: ${DATABASE_USER:-specai}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD}
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-development}
+      SPECAI_AUTH_MODE: local
+      SPECAI_JWT_SECRET: ${SPECAI_JWT_SECRET}
+      SPECAI_LOCAL_ADMIN_EMAIL: ${SPECAI_LOCAL_ADMIN_EMAIL:-admin@nanobase.local}
+      SPECAI_LOCAL_ADMIN_PASSWORD: ${SPECAI_LOCAL_ADMIN_PASSWORD}
+      SPECAI_BOOTSTRAP_ENABLED: "true"
+      SPECAI_BOOTSTRAP_TENANT_ID: ${SPECAI_BOOTSTRAP_TENANT_ID:-11111111-1111-1111-1111-111111111111}
+      SPECAI_BOOTSTRAP_TENANT_NAME: ${SPECAI_BOOTSTRAP_TENANT_NAME:-Nano Teknoloji A.Ş.}
+      MINIO_ENDPOINT: http://actenora-prodlike-minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_CREATE_BUCKETS: "true"
+      RABBITMQ_HOST: actenora-prodlike-rabbitmq
+      RABBITMQ_USER: ${RABBITMQ_USER:-actenora}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      REDIS_HOST: actenora-prodlike-redis
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      CLAMAV_ENABLED: "true"
+      CLAMAV_HOST: clamav
+      FILE_SECURITY_FAIL_CLOSED: "true"
+      DOCUMENT_INTELLIGENCE_ENABLED: "true"
+      DOCLING_ENABLED: "true"
+      DOCLING_BASE_URL: http://document-intelligence:8090
+      AI_ORCHESTRATOR_BASE_URL: http://ai-orchestrator:8090
+      SPECAI_AI_ORCHESTRATOR_BASE_URL: http://ai-orchestrator:8090
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-https://portal.nanobase.ai}
+    ports: !override
+      # 8089 is Apache Superset on the portal host — keep Legal API off that port.
+      - "127.0.0.1:8098:8080"
+    depends_on: !override
+      document-intelligence:
+        condition: service_healthy
+      ai-orchestrator:
+        condition: service_healthy
+      clamav:
+        condition: service_healthy
+    networks:
+      - specai
+      - actenora-data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${PUBLIC_API_BASE_URL:-https://portal.nanobase.ai/legal-api}
+        NEXT_PUBLIC_BASE_PATH: ${PUBLIC_BASE_PATH:-/legal}
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: ${PUBLIC_API_BASE_URL:-https://portal.nanobase.ai/legal-api}
+      NEXT_PUBLIC_BASE_PATH: ${PUBLIC_BASE_PATH:-/legal}
+    ports: !override
+      - "127.0.0.1:3020:3000"
+    networks:
+      - specai
+    # Portal is built with basePath=/legal; nginx proxies /legal/ → container /legal/
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:3000/legal/ | grep -q 'Şartname' || wget -q -O - http://localhost:3000/ | grep -q 'Şartname'"]
+
+networks:
+  specai:
+    name: specai-legal-network
+    driver: bridge
+  actenora-data:
+    external: true
+    name: actenora-prodlike-data-network

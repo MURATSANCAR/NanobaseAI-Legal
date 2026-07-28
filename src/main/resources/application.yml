@@ -23,8 +23,8 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: ${OIDC_ISSUER_URI:http://localhost:8081/realms/specai}
-          jwk-set-uri: ${OIDC_JWK_SET_URI:http://localhost:8081/realms/specai/protocol/openid-connect/certs}
+          issuer-uri: ${OIDC_ISSUER_URI:}
+          jwk-set-uri: ${OIDC_JWK_SET_URI:}
   mvc:
     problemdetails:
       enabled: true
@@ -122,10 +122,17 @@ specai:
     pdf:
       maximum-pages: ${PDF_MAXIMUM_PAGES:1000}
   security:
+    auth-mode: ${SPECAI_AUTH_MODE:local}
     allowed-origins: ${ALLOWED_ORIGINS:http://localhost:3000}
     jwt:
+      secret: ${SPECAI_JWT_SECRET:}
+      issuer: ${SPECAI_JWT_ISSUER:specai-local}
       audience: ${OIDC_AUDIENCE:specai-api}
       clock-skew-seconds: ${JWT_CLOCK_SKEW_SECONDS:60}
+      ttl-seconds: ${SPECAI_JWT_TTL_SECONDS:28800}
+    local:
+      admin-email: ${SPECAI_LOCAL_ADMIN_EMAIL:admin@nanobase.local}
+      admin-password: ${SPECAI_LOCAL_ADMIN_PASSWORD:}
     rate-limit-window-seconds: ${RATE_LIMIT_WINDOW_SECONDS:60}
   rate-limits:
     upload:
@@ -171,3 +178,5 @@ specai:
   messaging:
     maximum-consumer-retries: ${MESSAGE_MAXIMUM_RETRIES:3}
     idempotency-processing-timeout: ${MESSAGE_PROCESSING_TIMEOUT:PT30M}
+  ai-orchestrator:
+    base-url: ${AI_ORCHESTRATOR_BASE_URL:${SPECAI_AI_ORCHESTRATOR_BASE_URL:http://localhost:8090}}

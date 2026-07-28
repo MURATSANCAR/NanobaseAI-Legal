@@ -18,12 +18,10 @@ docker compose ps
 
 - Portal: `http://localhost:3000`
 - API readiness: `http://localhost:8080/actuator/health/readiness`
-- Keycloak: `http://localhost:8081`
-- MinIO console: `http://localhost:9001`
-- RabbitMQ management: `http://localhost:15672`
 
-Yerel seed kullanıcı: `admin@nanobase.local`. Geçici parola `.env` içindeki
-`LOCAL_USER_PASSWORD` değeridir ve ilk girişte değiştirilmelidir.
+Yerel seed kullanıcı: `admin@nanobase.local`. Parola `.env` içindeki
+`SPECAI_LOCAL_ADMIN_PASSWORD` (veya `LOCAL_USER_PASSWORD`) değeridir.
+Geçici auth: local HS256 JWT (`SPECAI_AUTH_MODE=local`); Keycloak yoktur.
 
 ## Geliştirici testleri
 
@@ -45,6 +43,7 @@ PostgreSQL kalıcı metadata ve outbox, MinIO private object storage, RabbitMQ
 at-least-once event teslimi, Redis altyapı bağımlılığı ve Keycloak OIDC/PKCE sağlar.
 
 Organization istemciden alınmaz; doğrulanmış JWT `tenant_id` claim'inden türetilir.
+Kimlik doğrulama varsayılan olarak uygulama içi local JWT login ile sağlanır.
 Gerçek document-intelligence entegrasyonu varsayılan olarak kapalıdır ve kapalıyken
 dokümanlar sahte `READY` yerine `MANUAL_REVIEW_REQUIRED` olur.
 

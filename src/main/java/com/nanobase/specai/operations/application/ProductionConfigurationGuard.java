@@ -12,11 +12,13 @@ import org.springframework.stereotype.Component;
 public class ProductionConfigurationGuard {
     private static final List<String> TLS_ENDPOINTS = List.of(
         "spring.datasource.url",
-        "spring.security.oauth2.resourceserver.jwt.issuer-uri",
-        "spring.security.oauth2.resourceserver.jwt.jwk-set-uri",
         "specai.storage.endpoint",
         "specai.ai-orchestrator.base-url",
         "specai.document-intelligence.docling.base-url"
+    );
+    private static final List<String> OIDC_TLS_ENDPOINTS = List.of(
+        "spring.security.oauth2.resourceserver.jwt.issuer-uri",
+        "spring.security.oauth2.resourceserver.jwt.jwk-set-uri"
     );
     private final Environment environment;
 
@@ -39,6 +41,24 @@ public class ProductionConfigurationGuard {
                 throw new IllegalStateException(property + " is required in production");
             }
             requireTls(property, value);
+        }
+        String authMode = environment.getProperty("specai.security.auth-mode", "local");
+        if ("oidc".equalsIgnoreCase(authMode)) {
+            for (String property : OIDC_TLS_ENDPOINTS) {
+                String value = environment.getProperty(property);
+                if (value == null || value.isBlank()) {
+                    throw new IllegalStateException(property + " is required in production");
+                }
+                requireTls(property, value);
+            }
+        } else if ("local".equalsIgnoreCase(authMode)) {
+            String secret = environment.getProperty("specai.security.jwt.secret");
+            if (secret == null || secret.isBlank() || secret.getBytes().length < 32) {
+                throw new IllegalStateException(
+                    "specai.security.jwt.secret must be at least 32 bytes in production local auth");
+            }
+        } else {
+            throw new IllegalStateException("Unsupported auth mode: " + authMode);
         }
     }
 

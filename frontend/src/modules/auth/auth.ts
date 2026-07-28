@@ -1,60 +1,101 @@
-import {
-  User,
-  UserManager,
-  WebStorageStateStore,
-  type UserManagerSettings,
-} from "oidc-client-ts";
-
-let manager: UserManager | undefined;
-
-function settings(): UserManagerSettings {
-  const authority =
-    process.env.NEXT_PUBLIC_OIDC_ISSUER ??
-    "http://localhost:8081/realms/specai";
-  return {
-    authority,
-    client_id: process.env.NEXT_PUBLIC_OIDC_CLIENT_ID ?? "specai-portal",
-    redirect_uri: `${window.location.origin}/`,
-    post_logout_redirect_uri: `${window.location.origin}/`,
-    response_type: "code",
-    scope: "openid profile email roles tenant",
-    automaticSilentRenew: true,
-    userStore: new WebStorageStateStore({ store: window.localStorage }),
+export type AuthSession = {
+  access_token: string;
+  expires_at: number;
+  profile: {
+    sub: string;
+    email?: string;
+    name?: string;
+    realm_access?: { roles?: string[] };
+    tenant_id?: string;
   };
+};
+
+const STORAGE_KEY = "specai.local.session";
+
+function apiBase(): string {
+  return process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
 }
 
-function userManager(): UserManager {
-  if (!manager) manager = new UserManager(settings());
-  return manager;
-}
-
-export async function restoreSession(): Promise<User | null> {
-  const query = new URLSearchParams(window.location.search);
-  if (query.has("code") && query.has("state")) {
-    const user = await userManager().signinRedirectCallback();
-    window.history.replaceState({}, document.title, window.location.pathname);
-    return user;
+function readStored(): AuthSession | null {
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as AuthSession;
+    if (!parsed?.access_token || !parsed?.expires_at) return null;
+    return parsed;
+  } catch {
+    return null;
   }
-  const user = await userManager().getUser();
-  return user && !user.expired ? user : null;
 }
 
-export function signIn(): Promise<void> {
-  return userManager().signinRedirect();
+function writeStored(session: AuthSession | null): void {
+  if (!session) {
+    window.localStorage.removeItem(STORAGE_KEY);
+    return;
+  }
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
 }
 
-export function signOut(): Promise<void> {
-  return userManager().signoutRedirect();
+export async function restoreSession(): Promise<AuthSession | null> {
+  const session = readStored();
+  if (!session) return null;
+  if (session.expires_at * 1000 <= Date.now()) {
+    writeStored(null);
+    return null;
+  }
+  return session;
 }
 
-export function displayName(user: User): string {
-  const profileName = user.profile.name;
+export async function signIn(email: string, password: string): Promise<AuthSession> {
+  const response = await fetch(`${apiBase()}/api/v1/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  if (!response.ok) {
+    let detail = "Giriş başarısız.";
+    try {
+      const body = (await response.json()) as { detail?: string; title?: string };
+      detail = body.detail ?? body.title ?? detail;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(detail);
+  }
+  const body = (await response.json()) as {
+    accessToken: string;
+    expiresInSeconds: number;
+    email: string;
+    displayName: string;
+    roles: string[];
+    tenantId: string;
+  };
+  const session: AuthSession = {
+    access_token: body.accessToken,
+    expires_at: Math.floor(Date.now() / 1000) + body.expiresInSeconds,
+    profile: {
+      sub: body.email,
+      email: body.email,
+      name: body.displayName,
+      tenant_id: body.tenantId,
+      realm_access: { roles: body.roles },
+    },
+  };
+  writeStored(session);
+  return session;
+}
+
+export async function signOut(): Promise<void> {
+  writeStored(null);
+}
+
+export function displayName(session: AuthSession): string {
+  const profileName = session.profile.name;
   return typeof profileName === "string" && profileName.trim()
     ? profileName
-    : (user.profile.email ?? user.profile.sub);
+    : (session.profile.email ?? session.profile.sub);
 }
 
-export function realmRoles(user: User): string[] {
-  const access = user.profile.realm_access as { roles?: string[] } | undefined;
-  return access?.roles ?? [];
+export function realmRoles(session: AuthSession): string[] {
+  return session.profile.realm_access?.roles ?? [];
 }

@@ -32,8 +32,9 @@ import org.testcontainers.utility.DockerImageName;
     "specai.bootstrap.tenant-id=11111111-1111-1111-1111-111111111111",
     "specai.bootstrap.tenant-name=Integration Test Tenant",
     "specai.document-intelligence.enabled=false",
-    "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://127.0.0.1:1/unavailable",
-    "spring.security.oauth2.resourceserver.jwt.issuer-uri=http://127.0.0.1:1/test"
+    "specai.security.auth-mode=local",
+    "specai.security.jwt.secret=integration-test-jwt-secret-32bytes!!",
+    "specai.security.local.admin-password=integration-test-admin-password"
 })
 @Testcontainers(disabledWithoutDocker = true)
 class PlatformInfrastructureIT {

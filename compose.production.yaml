@@ -34,25 +34,6 @@ services:
     secrets: [REDIS_CONFIG]
     security_opt: [no-new-privileges:true]
 
-  keycloak:
-    command:
-      - start
-      - --import-realm
-      - --health-enabled=true
-      - --http-enabled=false
-      - --hostname-strict=true
-      - --https-certificate-file=/run/secrets/TLS_CERTIFICATE
-      - --https-certificate-key-file=/run/secrets/TLS_PRIVATE_KEY
-    ports: []
-    secrets:
-      - KEYCLOAK_ADMIN_PASSWORD
-      - TLS_CERTIFICATE
-      - TLS_PRIVATE_KEY
-    security_opt: [no-new-privileges:true]
-
-  keycloak-init:
-    profiles: [never]
-
   backend:
     image: ${BACKEND_IMAGE:?Use an immutable backend image tag or digest}
     build: null
@@ -60,11 +41,10 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: production
       SPECAI_BOOTSTRAP_ENABLED: "false"
+      SPECAI_AUTH_MODE: ${SPECAI_AUTH_MODE:-local}
       DATABASE_URL: ${DATABASE_URL:?Use PostgreSQL TLS with sslmode=verify-full}
       DATABASE_USER: ${DATABASE_USER:?Set the non-superuser application role}
       DATABASE_MIGRATION_USER: ${DATABASE_MIGRATION_USER:?Set the migration role}
-      OIDC_ISSUER_URI: ${OIDC_ISSUER_URI:?Set the external HTTPS issuer}
-      OIDC_JWK_SET_URI: ${OIDC_JWK_SET_URI:?Set the internal HTTPS JWK endpoint}
       MINIO_ENDPOINT: ${MINIO_ENDPOINT:?Set the HTTPS MinIO endpoint}
       MINIO_ORIGINAL_BUCKET: ${MINIO_ORIGINAL_BUCKET:?Set the environment-specific bucket}
       DOCLING_BASE_URL: ${DOCLING_BASE_URL:?Set the private HTTPS parser endpoint}
@@ -78,6 +58,8 @@ services:
       MINIO_SECRET_KEY: null
       RABBITMQ_PASSWORD: null
       REDIS_PASSWORD: null
+      SPECAI_JWT_SECRET: null
+      SPECAI_LOCAL_ADMIN_PASSWORD: null
     secrets:
       - DATABASE_PASSWORD
       - DATABASE_MIGRATION_PASSWORD
@@ -85,6 +67,8 @@ services:
       - MINIO_SECRET_KEY
       - RABBITMQ_PASSWORD
       - REDIS_PASSWORD
+      - SPECAI_JWT_SECRET
+      - SPECAI_LOCAL_ADMIN_PASSWORD
       - TLS_CERTIFICATE
       - TLS_PRIVATE_KEY
     depends_on: !override
@@ -92,7 +76,6 @@ services:
       minio: {condition: service_healthy}
       rabbitmq: {condition: service_healthy}
       redis: {condition: service_healthy}
-      keycloak: {condition: service_healthy}
       document-intelligence: {condition: service_healthy}
       ai-orchestrator: {condition: service_healthy}
       clamav: {condition: service_healthy}
@@ -133,9 +116,15 @@ secrets:
     external: true
   RABBITMQ_CONFIG:
     external: true
+  RABBITMQ_PASSWORD:
+    external: true
   REDIS_CONFIG:
     external: true
-  KEYCLOAK_ADMIN_PASSWORD:
+  REDIS_PASSWORD:
+    external: true
+  SPECAI_JWT_SECRET:
+    external: true
+  SPECAI_LOCAL_ADMIN_PASSWORD:
     external: true
   TLS_CERTIFICATE:
     external: true

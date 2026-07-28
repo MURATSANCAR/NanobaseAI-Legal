@@ -14,7 +14,7 @@ import {
   ShieldCheck,
   X,
 } from "lucide-react";
-import type { User } from "oidc-client-ts";
+import type { AuthSession } from "@/src/modules/auth/auth";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/src/components/layout/AppShell";
 import type { SidebarNavItem } from "@/src/components/layout/Sidebar";
@@ -60,7 +60,7 @@ import {
 } from "@/src/screens";
 
 export default function SpecAiPortal() {
-  const [session, setSession] = useState<User | null>();
+  const [session, setSession] = useState<AuthSession | null>();
   const [screen, setScreen] = useState<Screen>("dashboard");
   const [projectTab, setProjectTab] = useState<ProjectTab>("overview");
   const [projects, setProjects] = useState<TenderProject[]>([]);
@@ -80,6 +80,9 @@ export default function SpecAiPortal() {
   const [wizardStep, setWizardStep] = useState(1);
   const [draft, setDraft] = useState<TenderDraft>(emptyDraft);
   const [toast, setToast] = useState("");
+  const [loginEmail, setLoginEmail] = useState("admin@nanobase.local");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginOpen, setLoginOpen] = useState(false);
 
   const directAccess = session === null;
   const token = session?.access_token ?? "";
@@ -349,8 +352,12 @@ export default function SpecAiPortal() {
       profileRole={session ? (roles[0] ?? "Kullanıcı") : "Salt okunur"}
       profileInitials={session ? initials(displayName(session)) : "DA"}
       onProfileClick={() => {
-        if (session) void signOut();
-        else notify("Doğrudan erişim modu · değişiklik işlemleri kapalı");
+        if (session) {
+          void signOut().then(() => {
+            setSession(null);
+            notify("Oturum kapatıldı");
+          });
+        } else notify("Doğrudan erişim modu · değişiklik işlemleri kapalı");
       }}
       searchQuery={query}
       onSearchChange={setQuery}
@@ -366,22 +373,64 @@ export default function SpecAiPortal() {
               gerekir.
             </span>
           </div>
-          <button
-            className="secondary"
-            disabled={busy}
-            onClick={async () => {
-              setBusy(true);
-              try {
-                await signIn();
-              } catch (error) {
-                showProblem(error);
-                setBusy(false);
-              }
-            }}
-          >
-            {busy ? <LoaderCircle className="spin" /> : <LogIn />}
-            Canlı veriye bağlan
-          </button>
+          {!loginOpen ? (
+            <button
+              className="secondary"
+              disabled={busy}
+              onClick={() => setLoginOpen(true)}
+            >
+              <LogIn />
+              Canlı veriye bağlan
+            </button>
+          ) : (
+            <form
+              className="direct-access-login"
+              onSubmit={async (event: FormEvent) => {
+                event.preventDefault();
+                setBusy(true);
+                try {
+                  const next = await signIn(loginEmail, loginPassword);
+                  setSession(next);
+                  setLoginOpen(false);
+                  setLoginPassword("");
+                  await loadProjects(next.access_token);
+                  notify("Oturum açıldı");
+                } catch (error) {
+                  showProblem(error);
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              <input
+                type="email"
+                autoComplete="username"
+                value={loginEmail}
+                onChange={(event) => setLoginEmail(event.target.value)}
+                placeholder="E-posta"
+                required
+              />
+              <input
+                type="password"
+                autoComplete="current-password"
+                value={loginPassword}
+                onChange={(event) => setLoginPassword(event.target.value)}
+                placeholder="Parola"
+                required
+              />
+              <button className="secondary" type="submit" disabled={busy}>
+                {busy ? <LoaderCircle className="spin" /> : <LogIn />}
+                Giriş yap
+              </button>
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => setLoginOpen(false)}
+              >
+                <X />
+              </button>
+            </form>
+          )}
         </section>
       )}
       {problem && (

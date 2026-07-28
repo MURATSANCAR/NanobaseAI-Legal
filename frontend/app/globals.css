@@ -433,6 +433,32 @@ button:disabled { cursor: not-allowed; opacity: .52; }
   color: #5b21b6;
   font-size: 13px;
 }
+.direct-access-login {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.direct-access-login input {
+  min-width: 160px;
+  height: 38px;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(167, 139, 250, 0.55);
+  background: rgba(255, 255, 255, 0.9);
+  padding: 0 12px;
+  font-size: 13px;
+}
+.direct-access-login .ghost {
+  height: 38px;
+  width: 38px;
+  border-radius: 0.75rem;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #6d28d9;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
 .problem-banner {
   display: flex;
   gap: 12px;

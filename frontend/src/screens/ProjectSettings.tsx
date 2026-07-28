@@ -193,7 +193,7 @@ export function ProjectSettings({ project, members, token, canWrite, onMembers, 
         <span>Üyelik ve doküman yetkileri</span></div><Users /></div>
       {canWrite && <form className="member-form" onSubmit={addMember}>
         <label>Kullanıcı kimliği<input name="userId" required maxLength={255}
-          placeholder="Keycloak subject / kullanıcı ID" /></label>
+          placeholder="Kullanıcı ID / e-posta" /></label>
         <label>Proje rolü<select name="projectRole" defaultValue="REVIEWER">
           <option value="MANAGER">Yönetici</option><option value="REVIEWER">İnceleyen</option>
           <option value="VIEWER">Görüntüleyen</option></select></label>
