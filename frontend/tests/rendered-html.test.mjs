@@ -6,6 +6,19 @@ async function source(path) {
   return readFile(new URL(path, import.meta.url), "utf8");
 }
 
+async function portalSource() {
+  const { readdir } = await import("node:fs/promises");
+  const dir = new URL("../src/screens/", import.meta.url);
+  const files = (await readdir(dir)).filter((f) => f.endsWith(".tsx"));
+  const parts = await Promise.all([
+    source("../app/page.tsx"),
+    ...files.map((f) => source(`../src/screens/${f}`)),
+    source("../src/components/layout/AppShell.tsx"),
+    source("../src/components/layout/Sidebar.tsx"),
+  ]);
+  return parts.join("\n");
+}
+
 test("portal uses protected OIDC PKCE session flow", async () => {
   const auth = await source("../src/modules/auth/auth.ts");
   assert.match(auth, /response_type: "code"/);
@@ -14,7 +27,7 @@ test("portal uses protected OIDC PKCE session flow", async () => {
 });
 
 test("portal opens directly while write actions remain session-gated", async () => {
-  const portal = await source("../app/page.tsx");
+  const portal = await portalSource();
   assert.match(portal, /const directAccess = session === null/);
   assert.match(portal, /const canWrite = Boolean\(session\)/);
   assert.match(portal, /Doğrudan erişim açık/);
@@ -46,7 +59,7 @@ test("processing badges cover every backend status", async () => {
 
 test("requirement matrix is configured by the backend and supports explanations", async () => {
   const requirements = await source("../src/modules/requirements/api.ts");
-  const portal = await source("../app/page.tsx");
+  const portal = await portalSource();
   assert.match(requirements, /ui-configurations\/requirement-grid/);
   assert.match(requirements, /requirement-extractions/);
   assert.match(requirements, /requirements\/\$\{requirementId\}\/explanation/);
@@ -64,7 +77,7 @@ test("document center uses real page clause job and cancel APIs", async () => {
 
 test("SSE supports authorization reconnect and polling fallback", async () => {
   const api = await source("../src/modules/documents/api.ts");
-  const portal = await source("../app/page.tsx");
+  const portal = await portalSource();
   assert.match(api, /Authorization: `Bearer \$\{token\}`/);
   assert.match(api, /"Last-Event-ID": lastEventId/);
   assert.match(portal, /setStreamState\("polling"\)/);
@@ -72,7 +85,7 @@ test("SSE supports authorization reconnect and polling fallback", async () => {
 });
 
 test("clause click navigates PDF and normalized bounding boxes render", async () => {
-  const portal = await source("../app/page.tsx");
+  const portal = await portalSource();
   assert.match(portal, /setPage\(clause\.pageStart\)/);
   assert.match(portal, /box\.x \* 100/);
   assert.match(portal, /box\.height \* 100/);
@@ -80,7 +93,7 @@ test("clause click navigates PDF and normalized bounding boxes render", async ()
 });
 
 test("parser errors manual review and tenant authorization errors are visible", async () => {
-  const portal = await source("../app/page.tsx");
+  const portal = await portalSource();
   const shared = await source("../src/shared/api.ts");
   assert.match(portal, /activeJob\?\.warnings/);
   assert.match(portal, /document-error/);
@@ -90,7 +103,7 @@ test("parser errors manual review and tenant authorization errors are visible", 
 
 test("risk center is API-backed and grid columns are dynamic", async () => {
   const risks = await source("../src/modules/risks/api.ts");
-  const portal = await source("../app/page.tsx");
+  const portal = await portalSource();
   assert.match(risks, /ui-configurations\/risk-grid/);
   assert.match(risks, /tenders\/\$\{projectId\}\/risk-analyses/);
   assert.match(portal, /grid\.columns\.filter\(\(column\) => column\.visible\)/);
@@ -99,7 +112,7 @@ test("risk center is API-backed and grid columns are dynamic", async () => {
 
 test("conflict ambiguity and change impact workspaces use real APIs", async () => {
   const risks = await source("../src/modules/risks/api.ts");
-  const portal = await source("../app/page.tsx");
+  const portal = await portalSource();
   assert.match(risks, /\/conflicts/);
   assert.match(risks, /\/ambiguities/);
   assert.match(risks, /\/change-sets/);
@@ -110,14 +123,14 @@ test("conflict ambiguity and change impact workspaces use real APIs", async () =
 });
 
 test("grounded sources can navigate to the relevant PDF page", async () => {
-  const portal = await source("../app/page.tsx");
+  const portal = await portalSource();
   assert.match(portal, /downloadUrl\(token, source\.documentId\)/);
   assert.match(portal, /#page=\$\{source\.pageNumber \?\? 1\}/);
   assert.match(portal, /PDF bölgesini aç/);
 });
 
 test("dynamic knowledge center uses ontology configuration and real evidence APIs", async () => {
-  const portal = await source("../app/page.tsx");
+  const portal = await portalSource();
   const knowledge = await source("../src/modules/knowledge/api.ts");
   assert.match(knowledge, /ui-configurations\/entity-types/);
   assert.match(knowledge, /\/api\/v1\/knowledge\/entities/);
@@ -129,7 +142,7 @@ test("dynamic knowledge center uses ontology configuration and real evidence API
 });
 
 test("compliance workspace is evidence-first and matrix columns come from backend", async () => {
-  const portal = await source("../app/page.tsx");
+  const portal = await portalSource();
   const compliance = await source("../src/modules/compliance/api.ts");
   assert.match(compliance, /tenders\/\$\{projectId\}\/compliance-analyses/);
   assert.match(compliance, /ui-configurations\/compliance-matrix/);
@@ -140,7 +153,7 @@ test("compliance workspace is evidence-first and matrix columns come from backen
 });
 
 test("production control center is admin-gated and API-backed", async () => {
-  const portal = await source("../app/page.tsx");
+  const portal = await portalSource();
   const operations = await source("../src/modules/operations/api.ts");
   assert.match(portal, /\["SYSTEM_ADMIN", "TENANT_ADMIN"\]/);
   assert.match(portal, /function OperationsCenter/);
@@ -151,7 +164,7 @@ test("production control center is admin-gated and API-backed", async () => {
 });
 
 test("Sprint 7 workflow center uses versioned APIs and backend UI configuration", async () => {
-  const portal = await source("../app/page.tsx");
+  const portal = await portalSource();
   const workflow = await source("../src/modules/workflow/api.ts");
   assert.match(portal, /function Sprint7Workspace/);
   assert.match(portal, /workflowApi\.concepts/);
@@ -178,7 +191,7 @@ test("Sprint 7 work, reporting, clarification and decision actions call real API
 });
 
 test("Sprint 9 quality, error analysis, improvement and release workspaces use real APIs", async () => {
-  const portal = await source("../app/page.tsx");
+  const portal = await portalSource();
   const pilot = await source("../src/modules/pilot/api.ts");
   const release = await source("../src/modules/release/api.ts");
   assert.match(portal, /function Sprint9ControlCenter/);
@@ -193,7 +206,7 @@ test("Sprint 9 quality, error analysis, improvement and release workspaces use r
 });
 
 test("Sprint 9 release screen does not hardcode gate definitions", async () => {
-  const portal = await source("../app/page.tsx");
+  const portal = await portalSource();
   const release = await source("../src/modules/release/api.ts");
   assert.match(portal, /releasePackage\.gates\.map\(\(gate\)/);
   assert.match(release, /gates: ReleaseGate\[\]/);
