@@ -133,7 +133,8 @@ controller scoring ve port sınırlarını kapsar.
 
 Vinext production build ve 13 Node source-contract testi başarılıdır.
 
-Repository genelinde 9 Python testi de başarılıdır.
+Repository genelinde 19 Python testi de başarılıdır: AI orchestrator 15,
+document-intelligence 4.
 
 ## 25. Evaluation sonuçları
 

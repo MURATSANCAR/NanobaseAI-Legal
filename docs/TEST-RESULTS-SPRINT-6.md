@@ -9,7 +9,7 @@ Tarih: 2026-07-28
 | `mvn test` (Temurin Java 21.0.11, Maven 3.9.9) | 71 test, 0 failure, 0 error |
 | `mvn verify` | Build başarılı; Docker gerektiren 5 integration testi skip |
 | `pnpm run test` | Production build + 13 Node contract testi başarılı |
-| `pytest -q` (repository Python servisleri) | 9 test başarılı |
+| `pytest -q` (repository Python servisleri) | 19 test başarılı |
 | `python evaluation/evaluate_sprint6.py` | 19 contract-golden case raporlandı |
 
 `mvn test` risk signal, confidence, exposure, ambiguity, staged conflict retrieval,

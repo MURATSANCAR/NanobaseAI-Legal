@@ -113,3 +113,25 @@
   endpoint’i henüz eklenmedi.
 - Frontend production build ve source-contract testleri başarılıdır; imzalı giriş,
   gerçek API ve PDF bbox davranışı browser E2E ile doğrulanmadı.
+
+## Sprint 5 Bilinen Konular
+
+- V11 Flyway ve FORCE RLS şeması Java test derlemesinden geçmiştir; fakat Docker
+  daemon olmayan bu hostta gerçek PostgreSQL 17 migration/RLS entegrasyonu
+  çalıştırılamadı.
+- Candidate retrieval aşamalı metadata, ontology, typed attribute, PostgreSQL
+  full-text, graph, validity, authority, history ve reranking uygular. Üretim
+  pgvector/embedding provider'ı henüz bağlı değildir.
+- `compliance_condition` persistence ve composite evaluator vardır. Requirement
+  metninden condition ağacını ayrı bir governed extraction job'ıyla otomatik
+  materyalize eden işlem henüz yoktur.
+- Orchestrator retry/fallback contract testlidir; canlı lokal model deployment
+  yapılandırılmadığı için gerçek runtime kalite/latency testi yapılmadı.
+- Contract-golden evaluation sentetiktir. Müşteri-onaylı doküman/evidence seti,
+  precision/recall ve calibration baseline'ı değildir.
+- SSE kalıcı event replay + process-local canlı yayın sunar. Multi-replica canlı
+  fan-out için Redis/Rabbit stream adaptörü gerekir.
+- Sensitive attribute renderer metadata zemini hazırdır; KVKK alan bazlı backend
+  masking/redaction enforcement'i tamamlanmamıştır.
+- Frontend source-contract ve production build başarılıdır; signed-in browser,
+  gerçek backend ve PDF bounding-box E2E testi yapılmadı.
