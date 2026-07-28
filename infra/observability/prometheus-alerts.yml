@@ -1,0 +1,54 @@
+groups:
+  - name: specai-platform
+    rules:
+      - alert: SpecAiBackendDown
+        expr: up{job="specai-backend"} == 0
+        for: 2m
+        labels: {severity: critical, owner: sre}
+        annotations:
+          runbook: RUNBOOK-BACKEND-DOWN.md
+          summary: Backend readiness is unavailable
+      - alert: DatabasePoolExhaustion
+        expr: hikaricp_connections_active / hikaricp_connections_max > 0.90
+        for: 5m
+        labels: {severity: critical, owner: platform}
+        annotations: {runbook: RUNBOOK-DATABASE-FAILURE.md}
+      - alert: RabbitMqBacklog
+        expr: rabbitmq_queue_messages{queue="document-processing.request"} > 500
+        for: 10m
+        labels: {severity: high, owner: platform}
+        annotations: {runbook: RUNBOOK-RABBITMQ-BACKLOG.md}
+      - alert: OutboxDeadEvent
+        expr: outbox_dead_total > 0
+        for: 1m
+        labels: {severity: critical, owner: application}
+        annotations: {runbook: RUNBOOK-OUTBOX-DEAD.md}
+      - alert: ConsumerDlqGrowth
+        expr: increase(consumer_dlq_total[15m]) > 5
+        labels: {severity: high, owner: application}
+        annotations: {runbook: RUNBOOK-DLQ-RECOVERY.md}
+      - alert: AuditIntegrityFailure
+        expr: audit_integrity_failure_total > 0
+        for: 1m
+        labels: {severity: critical, owner: security}
+        annotations: {runbook: RUNBOOK-SECURITY-INCIDENT.md}
+      - alert: ParserFailureSpike
+        expr: rate(document_processing_failed_total[10m]) > 0.1
+        for: 10m
+        labels: {severity: high, owner: document-ai}
+        annotations: {runbook: RUNBOOK-PARSER-FAILURE.md}
+      - alert: ModelUnavailable
+        expr: rate(model_timeout_total[5m]) > 0.05
+        for: 5m
+        labels: {severity: high, owner: ai}
+        annotations: {runbook: RUNBOOK-MODEL-UNAVAILABLE.md}
+      - alert: SecurityScanFailure
+        expr: rate(file_security_scan_failed_total[10m]) > 0
+        for: 5m
+        labels: {severity: critical, owner: security}
+        annotations: {runbook: RUNBOOK-SECURITY-INCIDENT.md}
+      - alert: RestoreValidationFailure
+        expr: restore_validation_success == 0
+        for: 1m
+        labels: {severity: critical, owner: sre}
+        annotations: {runbook: RUNBOOK-RESTORE.md}

@@ -140,3 +140,30 @@ test("production control center is admin-gated and API-backed", async () => {
   assert.match(operations, /\/api\/v1\/operations\/readiness/);
   assert.match(operations, /\/api\/v1\/operations\/ai-quality/);
 });
+
+test("Sprint 7 workflow center uses versioned APIs and backend UI configuration", async () => {
+  const portal = await source("../app/page.tsx");
+  const workflow = await source("../src/modules/workflow/api.ts");
+  assert.match(portal, /function Sprint7Workspace/);
+  assert.match(portal, /workflowApi\.concepts/);
+  assert.match(portal, /taskColumns\.filter\(\(column\) => column\.visible\)/);
+  assert.match(workflow, /\/api\/v1\/workflows/);
+  assert.match(workflow, /\/simulate/);
+  assert.match(workflow, /ui-configurations\/dashboard/);
+});
+
+test("Sprint 7 work, reporting, clarification and decision actions call real APIs", async () => {
+  const workflow = await source("../src/modules/workflow/api.ts");
+  for (const path of [
+    "/api/v1/tasks",
+    "/api/v1/approvals",
+    "/api/v1/clarifications",
+    "/api/v1/report-definitions",
+    "/api/v1/decision-support",
+  ]) {
+    assert.match(workflow, new RegExp(path.replaceAll("/", "\\/")));
+  }
+  assert.match(workflow, /\/api\/v1\/tenders\/\$\{projectId\}\/reports/);
+  assert.match(workflow, /\/api\/v1\/tenders\/\$\{projectId\}\/decision-support-cases/);
+  assert.match(workflow, /\/api\/v1\/tenders\/\$\{projectId\}\/finalization-history/);
+});

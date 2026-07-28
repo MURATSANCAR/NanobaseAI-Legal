@@ -1,4 +1,4 @@
-import { apiFetch } from "@/src/shared/api";
+import { apiRequest } from "@/src/shared/api";
 
 export type ServiceStatus = {
   status: string;
@@ -38,7 +38,7 @@ export type AiQualitySnapshot = {
 
 export const operationsApi = {
   readiness: (token: string) =>
-    apiFetch<OperationsSnapshot>("/api/v1/operations/readiness", { token }),
+    apiRequest<OperationsSnapshot>("/api/v1/operations/readiness", token),
   aiQuality: (token: string) =>
-    apiFetch<AiQualitySnapshot>("/api/v1/operations/ai-quality", { token }),
+    apiRequest<AiQualitySnapshot>("/api/v1/operations/ai-quality", token),
 };

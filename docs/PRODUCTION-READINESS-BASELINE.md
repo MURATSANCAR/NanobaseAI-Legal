@@ -1,7 +1,7 @@
 # Production Readiness Baseline
 
 Tarih: 2026-07-28. Bu tablo yalnız bu çalışma sırasında gözlenen kanıtı kullanır. `mvn test`
-79 testi çalıştırdı; frontend build/test 14 testi hedefler. Docker engine bu hostta olmadığı
+89 testi çalıştırdı; frontend build/test 14 testi hedefler. Docker engine bu hostta olmadığı
 için Testcontainers, gerçek bağımlılık smoke, image build, recovery ve E2E kanıtı üretilmedi.
 
 | Bileşen | Kod kanıtı | Test kanıtı | Runtime kanıtı | Durum | Kritik açık |
