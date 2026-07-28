@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.time.Duration;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -15,6 +16,14 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtClaimValidator;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtIssuerValidator;
+import org.springframework.security.oauth2.jwt.JwtTimestampValidator;
+import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
+import org.springframework.security.oauth2.jose.jws.SignatureAlgorithm;
 import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.CorsConfiguration;
@@ -24,6 +33,25 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 @Configuration
 @EnableMethodSecurity
 public class SecurityConfig {
+    @Bean
+    JwtDecoder jwtDecoder(
+        @Value("${spring.security.oauth2.resourceserver.jwt.jwk-set-uri}") String jwkSetUri,
+        @Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri}") String issuer,
+        @Value("${specai.security.jwt.audience:specai-api}") String audience,
+        @Value("${specai.security.jwt.clock-skew-seconds:60}") long clockSkewSeconds
+    ) {
+        NimbusJwtDecoder decoder = NimbusJwtDecoder.withJwkSetUri(jwkSetUri)
+            .jwsAlgorithm(SignatureAlgorithm.RS256)
+            .build();
+        JwtTimestampValidator timestamp = new JwtTimestampValidator(
+            Duration.ofSeconds(clockSkewSeconds));
+        JwtClaimValidator<List<String>> audienceValidator = new JwtClaimValidator<>(
+            "aud", values -> values != null && values.contains(audience));
+        decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<Jwt>(
+            timestamp, new JwtIssuerValidator(issuer), audienceValidator));
+        return decoder;
+    }
+
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http,
                                             SecurityContextMdcFilter mdcFilter,
@@ -91,8 +119,40 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.POST,
                     "/api/v1/terminology-catalogs/*/candidate-terms",
                     "/api/v1/terminology-entries/*/approve",
-                    "/api/v1/terminology-entries/*/reject").hasAnyRole(
+                    "/api/v1/terminology-entries/*/reject",
+                    "/api/v1/workflows",
+                    "/api/v1/workflows/*/versions",
+                    "/api/v1/workflow-versions/*/validate",
+                    "/api/v1/workflow-versions/*/simulate",
+                    "/api/v1/workflow-versions/*/activate",
+                    "/api/v1/report-definitions",
+                    "/api/v1/report-definitions/*/versions",
+                    "/api/v1/report-definition-versions/*/activate").hasAnyRole(
                         "SYSTEM_ADMIN", "TENANT_ADMIN")
+                .requestMatchers(HttpMethod.POST,
+                    "/api/v1/workflow-instances",
+                    "/api/v1/workflow-instances/*/cancel",
+                    "/api/v1/workflow-instances/*/retry",
+                    "/api/v1/tasks/*/claim",
+                    "/api/v1/tasks/*/assign",
+                    "/api/v1/tasks/*/complete",
+                    "/api/v1/tasks/*/block",
+                    "/api/v1/tasks/*/escalate",
+                    "/api/v1/tasks/*/comments",
+                    "/api/v1/approvals/*/decisions",
+                    "/api/v1/clarifications/*/revisions",
+                    "/api/v1/clarifications/*/submit-review",
+                    "/api/v1/clarifications/*/approve",
+                    "/api/v1/clarifications/*/mark-sent",
+                    "/api/v1/clarifications/*/answers",
+                    "/api/v1/report-definition-versions/*/preview",
+                    "/api/v1/tenders/*/reports",
+                    "/api/v1/tenders/*/decision-support-cases",
+                    "/api/v1/decision-support-cases/*/decisions",
+                    "/api/v1/tenders/*/finalize",
+                    "/api/v1/tenders/*/reopen").hasAnyRole(
+                        "SYSTEM_ADMIN", "TENANT_ADMIN", "TENDER_MANAGER",
+                        "TECHNICAL_REVIEWER")
                 .requestMatchers(HttpMethod.POST,
                     "/api/v1/tenders/*/members",
                     "/api/v1/tenders/*/archive").hasAnyRole(

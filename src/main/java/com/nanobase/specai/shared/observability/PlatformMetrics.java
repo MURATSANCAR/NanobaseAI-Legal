@@ -7,11 +7,23 @@ import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import java.time.Duration;
+import java.util.Set;
 import org.springframework.stereotype.Component;
 import java.util.concurrent.atomic.AtomicInteger;
 
 @Component
 public class PlatformMetrics {
+    private static final Set<String> SPRINT_7_METRICS = Set.of(
+        "workflow_instance_total", "workflow_instance_failed_total",
+        "workflow_node_execution_total", "workflow_transition_total",
+        "workflow_dead_end_total", "task_created_total", "task_completed_total",
+        "task_sla_breached_total", "task_escalated_total",
+        "approval_requested_total", "approval_rejected_total",
+        "clarification_created_total", "clarification_sent_total",
+        "report_generated_total", "report_generation_failed_total",
+        "decision_support_total", "project_finalized_total",
+        "project_reopened_total", "notification_sent_total",
+        "notification_failed_total");
     private final MeterRegistry registry;
     private final Counter documentUpload;
     private final Counter documentUploadFailed;
@@ -125,6 +137,7 @@ public class PlatformMetrics {
         registry.timer("risk_analysis_duration_seconds");
         registry.timer("conflict_analysis_duration_seconds");
         registry.timer("impact_analysis_duration_seconds");
+        SPRINT_7_METRICS.forEach(registry::counter);
         Gauge.builder("outbox.pending.total", outbox,
                 repository -> repository.countByStatus(OutboxStatus.PENDING))
             .register(registry);
@@ -226,5 +239,12 @@ public class PlatformMetrics {
         comparisonStrategy.increment();
         registry.counter("comparison_strategy_provider_total", "provider", provider)
             .increment();
+    }
+
+    public void sprint7(String metricName) {
+        if (!SPRINT_7_METRICS.contains(metricName)) {
+            throw new IllegalArgumentException("Unknown Sprint 7 metric");
+        }
+        registry.counter(metricName).increment();
     }
 }

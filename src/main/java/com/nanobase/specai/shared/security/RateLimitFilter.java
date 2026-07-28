@@ -12,6 +12,7 @@ import java.time.Instant;
 import java.util.HexFormat;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import com.nanobase.specai.shared.security.RateLimitPolicyResolver.Limit;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
@@ -29,15 +30,18 @@ public class RateLimitFilter extends OncePerRequestFilter {
         """, Long.class);
     private final StringRedisTemplate redis;
     private final CurrentTenant currentTenant;
+    private final RateLimitPolicyResolver policyResolver;
     private final int windowSeconds;
     private final Map<String, LocalWindow> fallback = new ConcurrentHashMap<>();
 
     public RateLimitFilter(
         StringRedisTemplate redis,
         CurrentTenant currentTenant,
+        RateLimitPolicyResolver policyResolver,
         @Value("${specai.security.rate-limit-window-seconds:60}") int windowSeconds) {
         this.redis = redis;
         this.currentTenant = currentTenant;
+        this.policyResolver = policyResolver;
         this.windowSeconds = windowSeconds;
     }
 
@@ -45,7 +49,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
                                     FilterChain filterChain)
         throws ServletException, IOException {
-        Limit limit = limit(request);
+        Limit limit = policyResolver.resolve(request);
         if (limit == null) {
             filterChain.doFilter(request, response);
             return;
@@ -85,28 +89,6 @@ public class RateLimitFilter extends OncePerRequestFilter {
         }
     }
 
-    private Limit limit(HttpServletRequest request) {
-        String path = request.getRequestURI();
-        String method = request.getMethod();
-        if ("POST".equals(method) && path.matches("/api/v1/tenders/[^/]+/documents")) {
-            return new Limit("upload", 10);
-        }
-        if ("POST".equals(method) && path.matches("/api/v1/documents/[^/]+/versions")) {
-            return new Limit("upload-version", 10);
-        }
-        if ("POST".equals(method) && path.matches("/api/v1/documents/[^/]+/reprocess")) {
-            return new Limit("reprocess", 5);
-        }
-        if ("GET".equals(method) && path.matches("/api/v1/documents/[^/]+/download-url")) {
-            return new Limit("signed-url", 30);
-        }
-        if ("GET".equals(method) && (path.endsWith("/processing-events")
-            || path.matches("/api/v1/processing-jobs/[^/]+/events"))) {
-            return new Limit("sse", 10);
-        }
-        return null;
-    }
-
     private String remoteAddress(HttpServletRequest request) {
         String forwarded = request.getHeader("X-Forwarded-For");
         return forwarded == null || forwarded.isBlank()
@@ -120,9 +102,6 @@ public class RateLimitFilter extends OncePerRequestFilter {
         } catch (NoSuchAlgorithmException exception) {
             throw new IllegalStateException("SHA-256 is unavailable", exception);
         }
-    }
-
-    private record Limit(String name, int maximum) {
     }
 
     private record LocalWindow(long window, long count) {

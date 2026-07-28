@@ -28,6 +28,7 @@ public final class WorkflowModels {
         UUID organizationId,
         UUID workflowInstanceId,
         UUID tokenId,
+        UUID workflowExecutionId,
         UUID nodeId,
         String nodeTypeConceptCode,
         JsonNode configuration,

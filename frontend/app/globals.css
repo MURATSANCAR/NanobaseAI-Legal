@@ -1226,6 +1226,98 @@ button.dynamic-field:hover { border-color: #8fb8bf; }
 .review-form textarea { min-height: 80px; resize: vertical; }
 .compliance-matrix { padding: 0; }
 .compliance-matrix .panel-head { padding: 14px 17px; }
+.operations-tabs button { display: inline-flex; align-items: center; gap: 7px; }
+.operations-tabs svg { width: 15px; }
+.operations-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(300px, .8fr);
+  gap: 14px;
+}
+.operations-grid .full-span { grid-column: 1 / -1; }
+.ops-summary .panel-head strong { color: var(--teal); font: 700 23px Georgia, serif; }
+.service-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 9px; }
+.service-row {
+  min-height: 66px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #f8fbfb;
+}
+.service-row div { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.service-row b { font-size: 11px; text-transform: capitalize; }
+.service-row small { color: var(--muted); font-size: 9px; }
+.health-pill {
+  min-width: 56px;
+  padding: 4px 7px;
+  border-radius: 99px;
+  background: #edf1f2;
+  color: #60727a;
+  font-size: 8px;
+  font-weight: 800;
+  text-align: center;
+}
+.health-pill.up { background: #e2f3eb; color: #24714f; }
+.health-pill.down { background: #fae8ea; color: #9e3340; }
+.ops-kpis { display: grid; grid-template-columns: repeat(2, 1fr); gap: 9px; }
+.ops-kpis .score {
+  min-height: 72px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #f8fbfb;
+}
+.integrity-ok, .integrity-failed {
+  margin: 14px 0 0;
+  padding: 10px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 750;
+}
+.integrity-ok { background: #e5f4ed; color: #246d4d; }
+.integrity-failed { background: #fbeaec; color: #9a3441; }
+.blocker-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.blocker-list span {
+  padding: 7px 10px;
+  border: 1px solid #efc7cc;
+  border-radius: 7px;
+  background: #fff3f4;
+  color: #963441;
+  font-size: 9px;
+  font-weight: 800;
+}
+.governance-list { margin: 0; padding-left: 18px; color: #53666e; font-size: 10px; line-height: 2; }
+.pilot-score { display: flex; align-items: center; gap: 22px; }
+.pilot-score h2 { margin: 0; font: 600 23px Georgia, serif; }
+.pilot-score p:last-child { color: var(--muted); font-size: 10px; }
+.radial-score {
+  width: 112px;
+  height: 112px;
+  flex: none;
+  display: grid;
+  place-content: center;
+  border: 9px solid #dcebec;
+  border-top-color: var(--teal);
+  border-radius: 50%;
+  text-align: center;
+}
+.radial-score strong { font: 700 28px Georgia, serif; }
+.radial-score small { color: var(--muted); font-size: 9px; }
+.acceptance-checklist { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; }
+.acceptance-checklist div {
+  display: grid;
+  grid-template-columns: 18px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.acceptance-checklist svg { width: 16px; color: var(--teal); }
+.acceptance-checklist span { font-size: 10px; }
+.acceptance-checklist b { color: var(--muted); font-size: 8px; }
 
 @media (max-width: 1050px) {
   .metric-grid { grid-template-columns: 1fr 1fr; }
@@ -1239,6 +1331,7 @@ button.dynamic-field:hover { border-color: #8fb8bf; }
   .change-form { grid-template-columns: 1fr 1fr; }
   .knowledge-layout, .compliance-layout { grid-template-columns: 220px minmax(400px, 1fr); }
   .evidence-inspector, .decision-panel { grid-column: 1 / -1; }
+  .operations-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 760px) {
   .sidebar { transform: translateX(-100%); transition: transform .2s ease; }
@@ -1273,6 +1366,7 @@ button.dynamic-field:hover { border-color: #8fb8bf; }
   .change-item { grid-template-columns: 1fr; }
   .knowledge-toolbar { align-items: flex-start; flex-direction: column; }
   .knowledge-layout, .compliance-layout { grid-template-columns: 1fr; }
+  .service-grid, .acceptance-checklist { grid-template-columns: 1fr; }
   .evidence-inspector, .decision-panel { grid-column: auto; }
   .entity-browser { max-height: 320px; }
   .dynamic-field-grid { grid-template-columns: 1fr; }

@@ -129,3 +129,14 @@ test("compliance workspace is evidence-first and matrix columns come from backen
   assert.match(portal, /item\.contradiction_strength > 0/);
   assert.match(portal, /finalDecisionConceptId/);
 });
+
+test("production control center is admin-gated and API-backed", async () => {
+  const portal = await source("../app/page.tsx");
+  const operations = await source("../src/modules/operations/api.ts");
+  assert.match(portal, /\["SYSTEM_ADMIN", "TENANT_ADMIN"\]/);
+  assert.match(portal, /function OperationsCenter/);
+  assert.match(portal, /Audit zinciri/);
+  assert.match(portal, /Pilot readiness/);
+  assert.match(operations, /\/api\/v1\/operations\/readiness/);
+  assert.match(operations, /\/api\/v1\/operations\/ai-quality/);
+});

@@ -13,7 +13,10 @@ import com.nanobase.specai.document.domain.DocumentVersion;
 import com.nanobase.specai.document.domain.DocumentVersionRepository;
 import com.nanobase.specai.document.domain.DocumentProcessingJob;
 import com.nanobase.specai.document.integration.DocumentEvents.DocumentUploaded;
+import com.nanobase.specai.document.security.FileSecurityService;
 import com.nanobase.specai.integration.outbox.OutboxService;
+import com.nanobase.specai.operations.application.BackpressureService;
+import com.nanobase.specai.operations.application.QuotaService;
 import com.nanobase.specai.shared.security.CurrentTenant;
 import com.nanobase.specai.shared.security.TenantPrincipal;
 import com.nanobase.specai.shared.web.RequestContext;
@@ -53,6 +56,9 @@ public class DocumentService {
     private final ObjectStorage storage;
     private final CurrentTenant currentTenant;
     private final FileTypeInspector fileTypeInspector;
+    private final FileSecurityService fileSecurity;
+    private final QuotaService quotas;
+    private final BackpressureService backpressure;
     private final ClauseRepository clauses;
     private final ProcessingJobService processingJobs;
     private final long maximumFileSize;
@@ -62,18 +68,22 @@ public class DocumentService {
                            ProjectAccessService access, AuditService audit, OutboxService outbox,
                            ObjectStorage storage, CurrentTenant currentTenant,
                            FileTypeInspector fileTypeInspector, ClauseRepository clauses,
-                           ProcessingJobService processingJobs,
+                           ProcessingJobService processingJobs, FileSecurityService fileSecurity,
+                           QuotaService quotas, BackpressureService backpressure,
                            @Value("${specai.documents.max-file-size-bytes:104857600}")
                            long maximumFileSize) {
         this(documents, versions, access, audit, outbox, storage, currentTenant,
-            fileTypeInspector, clauses, processingJobs, maximumFileSize, Clock.systemUTC());
+            fileTypeInspector, clauses, processingJobs, fileSecurity, quotas, backpressure,
+            maximumFileSize, Clock.systemUTC());
     }
 
     DocumentService(DocumentRepository documents, DocumentVersionRepository versions,
                     ProjectAccessService access, AuditService audit, OutboxService outbox,
                     ObjectStorage storage, CurrentTenant currentTenant,
                     FileTypeInspector fileTypeInspector, ClauseRepository clauses,
-                    ProcessingJobService processingJobs, long maximumFileSize, Clock clock) {
+                    ProcessingJobService processingJobs, FileSecurityService fileSecurity,
+                    QuotaService quotas, BackpressureService backpressure,
+                    long maximumFileSize, Clock clock) {
         this.documents = documents;
         this.versions = versions;
         this.access = access;
@@ -82,6 +92,9 @@ public class DocumentService {
         this.storage = storage;
         this.currentTenant = currentTenant;
         this.fileTypeInspector = fileTypeInspector;
+        this.fileSecurity = fileSecurity;
+        this.quotas = quotas;
+        this.backpressure = backpressure;
         this.clauses = clauses;
         this.processingJobs = processingJobs;
         this.maximumFileSize = maximumFileSize;
@@ -94,6 +107,8 @@ public class DocumentService {
         TenantPrincipal principal = currentTenant.require();
         access.requireUpload(projectId, principal);
         UploadMetadata upload = inspect(projectId, principal.tenantId(), file);
+        quotas.requireAdditionalStorage(principal.tenantId(), projectId, file.getSize());
+        backpressure.requireDocumentCapacity(principal.tenantId());
         Instant now = clock.instant();
         UUID documentId = UUID.randomUUID();
         UUID versionId = UUID.randomUUID();
@@ -104,6 +119,8 @@ public class DocumentService {
         registerCompensation(temporaryKey, objectKey);
         put(temporaryKey, file, upload.mimeType());
         try {
+            fileSecurity.requireSafe(principal.tenantId(), projectId, upload.sha256(),
+                upload.mimeType(), file, RequestContext.current().correlationId());
             storage.finalizeObject(temporaryKey, objectKey, file.getSize(), upload.sha256());
             String resolvedLogicalName = logicalName == null || logicalName.isBlank()
                 ? withoutExtension(upload.fileName()) : logicalName.trim();
@@ -137,6 +154,9 @@ public class DocumentService {
         Document document = requireDocumentForUpdate(documentId, principal);
         access.requireUpload(document.projectId(), principal);
         UploadMetadata upload = inspect(document.projectId(), principal.tenantId(), file);
+        quotas.requireAdditionalStorage(
+            principal.tenantId(), document.projectId(), file.getSize());
+        backpressure.requireDocumentCapacity(principal.tenantId());
         int versionNumber = document.currentVersionNumber() + 1;
         UUID versionId = UUID.randomUUID();
         Instant now = clock.instant();
@@ -147,6 +167,8 @@ public class DocumentService {
         registerCompensation(temporaryKey, objectKey);
         put(temporaryKey, file, upload.mimeType());
         try {
+            fileSecurity.requireSafe(principal.tenantId(), document.projectId(), upload.sha256(),
+                upload.mimeType(), file, RequestContext.current().correlationId());
             storage.finalizeObject(temporaryKey, objectKey, file.getSize(), upload.sha256());
             DocumentVersion version = new DocumentVersion(versionId, principal.tenantId(),
                 document.id(), versionNumber, objectKey, upload.fileName(), upload.mimeType(),

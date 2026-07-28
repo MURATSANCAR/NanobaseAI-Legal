@@ -1,0 +1,22 @@
+specai:
+  environment: staging
+  bootstrap:
+    enabled: false
+  file-security:
+    fail-closed: true
+  backpressure:
+    fail-closed: true
+
+springdoc:
+  swagger-ui:
+    enabled: false
+
+management:
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLE_PROBABILITY:1.0}
+
+logging:
+  structured:
+    format:
+      console: ecs

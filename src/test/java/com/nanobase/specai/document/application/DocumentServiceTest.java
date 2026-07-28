@@ -13,7 +13,10 @@ import com.nanobase.specai.document.domain.DocumentRepository;
 import com.nanobase.specai.document.domain.DocumentProcessingJob;
 import com.nanobase.specai.document.domain.DocumentType;
 import com.nanobase.specai.document.domain.DocumentVersionRepository;
+import com.nanobase.specai.document.security.FileSecurityService;
 import com.nanobase.specai.integration.outbox.OutboxService;
+import com.nanobase.specai.operations.application.BackpressureService;
+import com.nanobase.specai.operations.application.QuotaService;
 import com.nanobase.specai.shared.security.CurrentTenant;
 import com.nanobase.specai.shared.security.TenantPrincipal;
 import com.nanobase.specai.tender.application.ProjectAccessService;
@@ -46,6 +49,9 @@ class DocumentServiceTest {
     @Mock FileTypeInspector fileTypeInspector;
     @Mock ClauseRepository clauses;
     @Mock ProcessingJobService processingJobs;
+    @Mock FileSecurityService fileSecurity;
+    @Mock QuotaService quotas;
+    @Mock BackpressureService backpressure;
     private DocumentService service;
 
     @BeforeEach
@@ -53,7 +59,8 @@ class DocumentServiceTest {
         when(currentTenant.require()).thenReturn(
             new TenantPrincipal(ORGANIZATION, "manager-1", Set.of("TENDER_MANAGER")));
         service = new DocumentService(documents, versions, access, audit, outbox, storage,
-            currentTenant, fileTypeInspector, clauses, processingJobs, 10_000_000,
+            currentTenant, fileTypeInspector, clauses, processingJobs, fileSecurity, quotas,
+            backpressure, 10_000_000,
             Clock.fixed(Instant.parse("2026-07-27T12:00:00Z"), ZoneOffset.UTC));
     }
 
@@ -77,6 +84,10 @@ class DocumentServiceTest {
         assertThat(result.currentVersionNumber()).isEqualTo(1);
         verify(access).requireUpload(PROJECT, currentTenant.require());
         verify(storage).put(any(), any(InputStream.class), eq(file.getSize()), eq("application/pdf"));
+        verify(quotas).requireAdditionalStorage(ORGANIZATION, PROJECT, file.getSize());
+        verify(backpressure).requireDocumentCapacity(ORGANIZATION);
+        verify(fileSecurity).requireSafe(eq(ORGANIZATION), eq(PROJECT), any(),
+            eq("application/pdf"), eq(file), any());
         verify(storage).finalizeObject(any(), any(), eq(file.getSize()), any());
         verify(documents).save(any());
         verify(versions).save(any());

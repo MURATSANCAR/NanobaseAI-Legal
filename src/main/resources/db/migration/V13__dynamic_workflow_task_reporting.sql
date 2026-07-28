@@ -234,6 +234,17 @@ CREATE TABLE workflow_transition_log (
     occurred_at TIMESTAMPTZ NOT NULL
 );
 
+CREATE TABLE workflow_simulation_run (
+    id UUID PRIMARY KEY,
+    organization_id UUID NOT NULL REFERENCES organization(id),
+    workflow_version_id UUID NOT NULL REFERENCES workflow_version(id) ON DELETE CASCADE,
+    input_snapshot_json JSONB NOT NULL,
+    result_json JSONB NOT NULL,
+    valid BOOLEAN NOT NULL,
+    simulated_by VARCHAR(255) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL
+);
+
 CREATE TABLE business_role (
     id UUID PRIMARY KEY,
     organization_id UUID REFERENCES organization(id),
@@ -815,6 +826,7 @@ CREATE TABLE dashboard_widget (
 CREATE INDEX ix_workflow_instance_project ON workflow_instance (organization_id, project_id, created_at DESC);
 CREATE INDEX ix_workflow_token_instance ON workflow_token (organization_id, workflow_instance_id);
 CREATE INDEX ix_workflow_execution_instance ON workflow_execution (organization_id, workflow_instance_id, created_at);
+CREATE INDEX ix_workflow_simulation_version ON workflow_simulation_run (organization_id, workflow_version_id, created_at DESC);
 CREATE INDEX ix_task_assignee_status ON task_record (organization_id, assigned_user_id, status_concept_id, due_at);
 CREATE INDEX ix_task_project ON task_record (organization_id, project_id, created_at DESC);
 CREATE INDEX ix_approval_project ON approval_request (organization_id, project_id, requested_at DESC);
@@ -848,9 +860,9 @@ INSERT INTO ontology_concept (
     ('70000000-0000-0000-0000-000000000022', NULL, '40000000-0000-0000-0000-000000000002', 'WORKFLOW_CANCELLED', 'Workflow cancelled', 'WORKFLOW_STATUS', '{}', TRUE, 222, now()),
     ('70000000-0000-0000-0000-000000000023', NULL, '40000000-0000-0000-0000-000000000002', 'EXECUTION_PENDING', 'Execution pending', 'EXECUTION_STATUS', '{}', TRUE, 223, now()),
     ('70000000-0000-0000-0000-000000000024', NULL, '40000000-0000-0000-0000-000000000002', 'EXECUTION_COMPLETED', 'Execution completed', 'EXECUTION_STATUS', '{}', TRUE, 224, now()),
-    ('70000000-0000-0000-0000-000000000025', NULL, '40000000-0000-0000-0000-000000000002', 'TASK_OPEN', 'Open', 'TASK_STATUS', '{}', TRUE, 225, now()),
-    ('70000000-0000-0000-0000-000000000026', NULL, '40000000-0000-0000-0000-000000000002', 'TASK_COMPLETED', 'Completed', 'TASK_STATUS', '{}', TRUE, 226, now()),
-    ('70000000-0000-0000-0000-000000000027', NULL, '40000000-0000-0000-0000-000000000002', 'TASK_BLOCKED', 'Blocked', 'TASK_STATUS', '{}', TRUE, 227, now()),
+    ('70000000-0000-0000-0000-000000000025', NULL, '40000000-0000-0000-0000-000000000002', 'TASK_OPEN', 'Open', 'TASK_STATUS', '{"actionEffect":"open"}', TRUE, 225, now()),
+    ('70000000-0000-0000-0000-000000000026', NULL, '40000000-0000-0000-0000-000000000002', 'TASK_COMPLETED', 'Completed', 'TASK_STATUS', '{"actionEffect":"complete"}', TRUE, 226, now()),
+    ('70000000-0000-0000-0000-000000000027', NULL, '40000000-0000-0000-0000-000000000002', 'TASK_BLOCKED', 'Blocked', 'TASK_STATUS', '{"actionEffect":"block"}', TRUE, 227, now()),
     ('70000000-0000-0000-0000-000000000028', NULL, '40000000-0000-0000-0000-000000000002', 'NORMAL_PRIORITY', 'Normal', 'TASK_PRIORITY', '{}', TRUE, 228, now()),
     ('70000000-0000-0000-0000-000000000029', NULL, '40000000-0000-0000-0000-000000000002', 'APPROVAL_PENDING', 'Pending', 'APPROVAL_STATUS', '{}', TRUE, 229, now()),
     ('70000000-0000-0000-0000-000000000030', NULL, '40000000-0000-0000-0000-000000000002', 'APPROVE', 'Approve', 'APPROVAL_DECISION', '{"effect":"positive"}', TRUE, 230, now()),
@@ -872,8 +884,161 @@ INSERT INTO ontology_concept (
     ('70000000-0000-0000-0000-000000000046', NULL, '40000000-0000-0000-0000-000000000002', 'TRANSITION', 'Transition', 'WORKFLOW_TRANSITION', '{}', TRUE, 246, now()),
     ('70000000-0000-0000-0000-000000000047', NULL, '40000000-0000-0000-0000-000000000002', 'INTERNAL', 'Internal', 'COMMENT_VISIBILITY', '{}', TRUE, 247, now()),
     ('70000000-0000-0000-0000-000000000048', NULL, '40000000-0000-0000-0000-000000000002', 'REPORT_SNAPSHOT', 'Report snapshot', 'SNAPSHOT_TYPE', '{}', TRUE, 248, now()),
-    ('70000000-0000-0000-0000-000000000049', NULL, '40000000-0000-0000-0000-000000000002', 'FINALIZED', 'Finalized', 'FINALIZATION_STATUS', '{}', TRUE, 249, now()),
-    ('70000000-0000-0000-0000-000000000050', NULL, '40000000-0000-0000-0000-000000000002', 'REOPENED', 'Reopened', 'FINALIZATION_STATUS', '{}', TRUE, 250, now());
+    ('70000000-0000-0000-0000-000000000049', NULL, '40000000-0000-0000-0000-000000000002', 'FINALIZED', 'Finalized', 'FINALIZATION_STATUS', '{"actionEffect":"finalize"}', TRUE, 249, now()),
+    ('70000000-0000-0000-0000-000000000050', NULL, '40000000-0000-0000-0000-000000000002', 'REOPENED', 'Reopened', 'FINALIZATION_STATUS', '{"actionEffect":"reopen"}', TRUE, 250, now()),
+    ('70000000-0000-0000-0000-000000000051', NULL, '40000000-0000-0000-0000-000000000002', 'APPROVAL_COMPLETED', 'Approval completed', 'APPROVAL_STATUS', '{"terminal":true,"result":"positive"}', TRUE, 251, now()),
+    ('70000000-0000-0000-0000-000000000052', NULL, '40000000-0000-0000-0000-000000000002', 'APPROVAL_REJECTED', 'Approval rejected', 'APPROVAL_STATUS', '{"terminal":true,"result":"negative"}', TRUE, 252, now()),
+    ('70000000-0000-0000-0000-000000000053', NULL, '40000000-0000-0000-0000-000000000002', 'CLARIFICATION_CANDIDATE', 'Candidate', 'CLARIFICATION_STATUS', '{"actionEffect":"candidate"}', TRUE, 253, now()),
+    ('70000000-0000-0000-0000-000000000054', NULL, '40000000-0000-0000-0000-000000000002', 'CLARIFICATION_UNDER_REVIEW', 'Under review', 'CLARIFICATION_STATUS', '{"actionEffect":"review"}', TRUE, 254, now()),
+    ('70000000-0000-0000-0000-000000000055', NULL, '40000000-0000-0000-0000-000000000002', 'CLARIFICATION_APPROVED', 'Approved', 'CLARIFICATION_STATUS', '{"actionEffect":"approve"}', TRUE, 255, now()),
+    ('70000000-0000-0000-0000-000000000056', NULL, '40000000-0000-0000-0000-000000000002', 'CLARIFICATION_SENT', 'Sent', 'CLARIFICATION_STATUS', '{"actionEffect":"send"}', TRUE, 256, now()),
+    ('70000000-0000-0000-0000-000000000057', NULL, '40000000-0000-0000-0000-000000000002', 'CLARIFICATION_ANSWER_RECEIVED', 'Answer received', 'CLARIFICATION_STATUS', '{"actionEffect":"answer"}', TRUE, 257, now()),
+    ('70000000-0000-0000-0000-000000000058', NULL, '40000000-0000-0000-0000-000000000002', 'REPORT_JOB_RUNNING', 'Report running', 'REPORT_JOB_STATUS', '{"terminal":false}', TRUE, 258, now()),
+    ('70000000-0000-0000-0000-000000000059', NULL, '40000000-0000-0000-0000-000000000002', 'REPORT_JOB_COMPLETED', 'Report completed', 'REPORT_JOB_STATUS', '{"terminal":true,"result":"success"}', TRUE, 259, now()),
+    ('70000000-0000-0000-0000-000000000060', NULL, '40000000-0000-0000-0000-000000000002', 'REPORT_JOB_FAILED', 'Report failed', 'REPORT_JOB_STATUS', '{"terminal":true,"result":"failure"}', TRUE, 260, now()),
+    ('70000000-0000-0000-0000-000000000061', NULL, '40000000-0000-0000-0000-000000000002', 'DECISION_SUPPORT_READY', 'Decision support ready', 'DECISION_SUPPORT_STATUS', '{"humanDecisionRequired":true}', TRUE, 261, now()),
+    ('70000000-0000-0000-0000-000000000062', NULL, '40000000-0000-0000-0000-000000000002', 'VERIFIED_READINESS', 'Verified readiness', 'DECISION_SUPPORT_FACTOR', '{}', TRUE, 262, now()),
+    ('70000000-0000-0000-0000-000000000063', NULL, '40000000-0000-0000-0000-000000000002', 'OPEN_CONTROL_ITEMS', 'Open control items', 'DECISION_SUPPORT_FACTOR', '{}', TRUE, 263, now()),
+    ('70000000-0000-0000-0000-000000000064', NULL, '40000000-0000-0000-0000-000000000002', 'NOTIFICATION_PENDING', 'Notification pending', 'NOTIFICATION_STATUS', '{"terminal":false}', TRUE, 264, now()),
+    ('70000000-0000-0000-0000-000000000065', NULL, '40000000-0000-0000-0000-000000000002', 'NOTIFICATION_SENT', 'Notification sent', 'NOTIFICATION_STATUS', '{"terminal":true,"result":"success"}', TRUE, 265, now()),
+    ('70000000-0000-0000-0000-000000000066', NULL, '40000000-0000-0000-0000-000000000002', 'NOTIFICATION_FAILED', 'Notification failed', 'NOTIFICATION_STATUS', '{"terminal":true,"result":"failure"}', TRUE, 266, now());
+
+INSERT INTO report_data_policy (
+    id, organization_id, policy_code, scope, created_at, updated_at
+) VALUES (
+    '70000000-0000-0000-0000-000000000100', NULL,
+    'GLOBAL_WARN_ON_STALE', 'GLOBAL', now(), now()
+);
+INSERT INTO report_data_policy_version (
+    id, organization_id, report_data_policy_id, version_number,
+    configuration_json, status, approved_by, approved_at, created_at
+) VALUES (
+    '70000000-0000-0000-0000-000000000101', NULL,
+    '70000000-0000-0000-0000-000000000100', 1,
+    '{"staleBehavior":"WARN","includeStalenessSummary":true}'::jsonb,
+    'ACTIVE', 'platform', now(), now()
+);
+UPDATE report_data_policy
+SET active_version_id = '70000000-0000-0000-0000-000000000101'
+WHERE id = '70000000-0000-0000-0000-000000000100';
+
+INSERT INTO report_template (
+    id, organization_id, template_code, format_concept_id, language,
+    branding_configuration_json, created_at, updated_at
+) VALUES (
+    '70000000-0000-0000-0000-000000000110', NULL,
+    'GLOBAL_SAFE_STRUCTURED', '70000000-0000-0000-0000-000000000038', 'tr',
+    '{"title":"NANObaseAI Legal","executableTemplates":false}'::jsonb, now(), now()
+);
+INSERT INTO report_template_version (
+    id, organization_id, report_template_id, version_number,
+    template_object_key, configuration_json, status, approved_by, approved_at, created_at
+) VALUES (
+    '70000000-0000-0000-0000-000000000111', NULL,
+    '70000000-0000-0000-0000-000000000110', 1,
+    'platform/report-templates/safe-structured-v1.json',
+    '{"renderer":"SAFE_STRUCTURED","allowExecutableContent":false}'::jsonb,
+    'ACTIVE', 'platform', now(), now()
+);
+UPDATE report_template
+SET active_version_id = '70000000-0000-0000-0000-000000000111'
+WHERE id = '70000000-0000-0000-0000-000000000110';
+
+INSERT INTO decision_policy_version (
+    id, organization_id, policy_code, version_number, configuration_json,
+    status, approved_by, approved_at, created_at
+) VALUES (
+    '70000000-0000-0000-0000-000000000120', NULL,
+    'GLOBAL_EXPLAINABLE_DECISION_SUPPORT', 1,
+    '{"defaultConfidence":0.0,"maximumExplanationFactors":10,
+      "factorRules":[
+        {"factorConceptCode":"VERIFIED_READINESS","effectScore":0.6,"weight":1.0,
+         "description":"Verified snapshot contains no open task or approval.",
+         "condition":{"all":[
+           {"field":"counts.openTasks","operator":"EQUAL","value":0},
+           {"field":"counts.pendingApprovals","operator":"EQUAL","value":0}
+         ]}},
+        {"factorConceptCode":"OPEN_CONTROL_ITEMS","effectScore":-0.8,"weight":1.0,
+         "description":"Verified snapshot contains open control items.",
+         "condition":{"any":[
+           {"field":"counts.openTasks","operator":"GREATER_THAN","value":0},
+           {"field":"counts.pendingApprovals","operator":"GREATER_THAN","value":0},
+           {"field":"staleness.count","operator":"GREATER_THAN","value":0}
+         ]}}
+      ],
+      "decisionBands":[
+        {"minimumScore":-1.0,"maximumScore":-0.000001,
+         "decisionConceptCode":"MANUAL_EXECUTIVE_REVIEW","requiresExecutiveReview":true},
+        {"minimumScore":0.0,"maximumScore":1.0,
+         "decisionConceptCode":"PROCEED_WITH_CONDITIONS","requiresExecutiveReview":true}
+      ]}'::jsonb,
+    'ACTIVE', 'platform', now(), now()
+);
+
+INSERT INTO finalization_policy_version (
+    id, organization_id, policy_code, version_number, configuration_json,
+    status, approved_by, approved_at, created_at
+) VALUES (
+    '70000000-0000-0000-0000-000000000130', NULL,
+    'GLOBAL_HUMAN_CONTROLLED_FINALIZATION', 1,
+    '{"rules":[
+      {"code":"EXECUTIVE_DECISION_REQUIRED","severity":"BLOCKING",
+       "condition":{"field":"project.executiveDecisionRecorded","operator":"EQUAL","value":true}},
+      {"code":"FINAL_REPORT_REQUIRED","severity":"BLOCKING",
+       "condition":{"field":"project.finalReportPresent","operator":"EQUAL","value":true}},
+      {"code":"NO_PENDING_MANDATORY_APPROVAL","severity":"BLOCKING",
+       "condition":{"field":"project.pendingMandatoryApprovalCount","operator":"EQUAL","value":0}},
+      {"code":"STALE_RESULTS_HANDLED","severity":"BLOCKING",
+       "condition":{"field":"project.unhandledStaleCount","operator":"EQUAL","value":0}}
+    ]}'::jsonb,
+    'ACTIVE', 'platform', now(), now()
+);
+
+INSERT INTO dashboard_definition (
+    id, organization_id, dashboard_code, name, scope, created_at, updated_at
+) VALUES (
+    '70000000-0000-0000-0000-000000000140', NULL,
+    'SPRINT_7_OPERATIONS', 'Workflow operations', 'GLOBAL', now(), now()
+);
+INSERT INTO dashboard_version (
+    id, organization_id, dashboard_definition_id, version_number,
+    layout_configuration_json, status, approved_by, approved_at, created_at
+) VALUES (
+    '70000000-0000-0000-0000-000000000141', NULL,
+    '70000000-0000-0000-0000-000000000140', 1,
+    '{"columns":12,"rowHeight":72,"responsive":true}'::jsonb,
+    'ACTIVE', 'platform', now(), now()
+);
+UPDATE dashboard_definition
+SET active_version_id = '70000000-0000-0000-0000-000000000141'
+WHERE id = '70000000-0000-0000-0000-000000000140';
+INSERT INTO dashboard_widget (
+    id, organization_id, dashboard_version_id, widget_code,
+    widget_type_concept_id, data_source_configuration_json,
+    display_configuration_json, visibility_condition_json, position_json, created_at
+) VALUES
+    ('70000000-0000-0000-0000-000000000142', NULL,
+     '70000000-0000-0000-0000-000000000141', 'OPEN_TASK_COUNT',
+     '70000000-0000-0000-0000-000000000044',
+     '{"provider":"SAFE_AGGREGATE","entity":"TASK","metric":"OPEN_COUNT"}'::jsonb,
+     '{"title":"Açık görevler","format":"INTEGER"}'::jsonb, '{}'::jsonb,
+     '{"x":0,"y":0,"w":3,"h":2}'::jsonb, now()),
+    ('70000000-0000-0000-0000-000000000143', NULL,
+     '70000000-0000-0000-0000-000000000141', 'PENDING_APPROVAL_COUNT',
+     '70000000-0000-0000-0000-000000000044',
+     '{"provider":"SAFE_AGGREGATE","entity":"APPROVAL","metric":"PENDING_COUNT"}'::jsonb,
+     '{"title":"Bekleyen onaylar","format":"INTEGER"}'::jsonb, '{}'::jsonb,
+     '{"x":3,"y":0,"w":3,"h":2}'::jsonb, now()),
+    ('70000000-0000-0000-0000-000000000144', NULL,
+     '70000000-0000-0000-0000-000000000141', 'TASK_CENTER',
+     '70000000-0000-0000-0000-000000000045',
+     '{"provider":"SAFE_TASK_LIST","columns":[
+       "taskCode","title","taskTypeConceptCode","projectId","assignedUserId",
+       "assignedGroupId","priorityConceptCode","dueAt","statusConceptCode",
+       "workflowInstanceId"
+     ]}'::jsonb,
+     '{"title":"Görev merkezi","pageSize":20}'::jsonb, '{}'::jsonb,
+     '{"x":0,"y":2,"w":12,"h":6}'::jsonb, now());
 
 -- RLS is forced on every Sprint 7 table, including global configuration.
 -- Global rows are readable, but tenant writes must always carry the current tenant.
@@ -884,6 +1049,7 @@ BEGIN
     FOREACH table_name IN ARRAY ARRAY[
         'workflow_definition', 'workflow_version', 'workflow_node', 'workflow_transition',
         'workflow_instance', 'workflow_token', 'workflow_execution', 'workflow_transition_log',
+        'workflow_simulation_run',
         'assignment_policy', 'assignment_policy_version', 'business_role', 'user_business_role',
         'task_record', 'task_dependency', 'task_comment', 'task_attachment',
         'approval_policy', 'approval_policy_version', 'approval_request', 'approval_step',

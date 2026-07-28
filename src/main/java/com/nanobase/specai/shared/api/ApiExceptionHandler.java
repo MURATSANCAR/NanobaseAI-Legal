@@ -1,6 +1,8 @@
 package com.nanobase.specai.shared.api;
 
 import com.nanobase.specai.document.application.InvalidDocumentException;
+import com.nanobase.specai.operations.application.ResourceQuotaExceededException;
+import com.nanobase.specai.operations.application.WorkloadCapacityException;
 import com.nanobase.specai.shared.security.MissingTenantException;
 import com.nanobase.specai.shared.web.RequestContext;
 import com.nanobase.specai.tender.application.ProjectAccessDeniedException;
@@ -10,6 +12,7 @@ import java.net.URI;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.http.ResponseEntity;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -70,11 +73,39 @@ public class ApiExceptionHandler {
             exception.getMessage(), request, List.of());
     }
 
+    @ExceptionHandler(IllegalStateException.class)
+    ProblemDetail invalidState(IllegalStateException exception, HttpServletRequest request) {
+        return problem(HttpStatus.CONFLICT, "Resource state conflict",
+            "STATE_TRANSITION_REJECTED", exception.getMessage(), request, List.of());
+    }
+
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     ProblemDetail tooLarge(MaxUploadSizeExceededException exception, HttpServletRequest request) {
         return problem(HttpStatus.PAYLOAD_TOO_LARGE, "File is too large",
             "DOCUMENT_SIZE_LIMIT_EXCEEDED", "File exceeds the configured size limit",
             request, List.of());
+    }
+
+    @ExceptionHandler(ResourceQuotaExceededException.class)
+    ProblemDetail quota(ResourceQuotaExceededException exception, HttpServletRequest request) {
+        ProblemDetail detail = problem(HttpStatus.UNPROCESSABLE_ENTITY, "Resource quota exceeded",
+            "RESOURCE_QUOTA_EXCEEDED", exception.getMessage(), request, List.of());
+        detail.setProperty("quotaCode", exception.quotaCode());
+        detail.setProperty("limit", exception.limit());
+        detail.setProperty("requestedUsage", exception.currentUsage());
+        return detail;
+    }
+
+    @ExceptionHandler(WorkloadCapacityException.class)
+    ResponseEntity<ProblemDetail> capacity(WorkloadCapacityException exception,
+                                           HttpServletRequest request) {
+        ProblemDetail detail = problem(HttpStatus.SERVICE_UNAVAILABLE,
+            "Workload capacity unavailable", "WORKLOAD_CAPACITY_UNAVAILABLE",
+            exception.getMessage(), request, List.of());
+        detail.setProperty("decision", exception.decision().name());
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+            .header("Retry-After", "30")
+            .body(detail);
     }
 
     private ProblemDetail problem(HttpStatus status, String title, String code, String message,

@@ -8,6 +8,8 @@ spring:
     hikari:
       maximum-pool-size: ${DATABASE_POOL_SIZE:20}
       connection-timeout: 5000
+      validation-timeout: 3000
+      leak-detection-threshold: ${DATABASE_LEAK_DETECTION_MS:0}
   jpa:
     open-in-view: false
     hibernate:
@@ -53,6 +55,12 @@ server:
     include-message: never
 
 management:
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLE_PROBABILITY:0.10}
+  otlp:
+    tracing:
+      endpoint: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:http://localhost:4318/v1/traces}
   endpoints:
     web:
       exposure:
@@ -81,6 +89,9 @@ logging:
     console: "%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} level=%-5level service=${spring.application.name} correlationId=%X{correlationId:-} organizationId=%X{organizationId:-} userId=%X{userId:-} event=%X{event:-} message=\"%msg\"%n"
 
 specai:
+  environment: ${SPECAI_ENVIRONMENT:development}
+  release:
+    version: ${SPECAI_RELEASE_VERSION:development}
   bootstrap:
     enabled: ${SPECAI_BOOTSTRAP_ENABLED:false}
     tenant-id: ${SPECAI_BOOTSTRAP_TENANT_ID:00000000-0000-0000-0000-000000000000}
@@ -93,8 +104,44 @@ specai:
     create-buckets: ${MINIO_CREATE_BUCKETS:false}
   documents:
     max-file-size-bytes: ${MAX_FILE_SIZE_BYTES:104857600}
+  file-security:
+    fail-closed: ${FILE_SECURITY_FAIL_CLOSED:true}
+    clamav:
+      enabled: ${CLAMAV_ENABLED:true}
+      host: ${CLAMAV_HOST:localhost}
+      port: ${CLAMAV_PORT:3310}
+      connect-timeout-ms: ${CLAMAV_CONNECT_TIMEOUT_MS:2000}
+      read-timeout-ms: ${CLAMAV_READ_TIMEOUT_MS:120000}
+    archive:
+      maximum-entries: ${ARCHIVE_MAXIMUM_ENTRIES:10000}
+      maximum-uncompressed-bytes: ${ARCHIVE_MAXIMUM_UNCOMPRESSED_BYTES:536870912}
+      maximum-compression-ratio: ${ARCHIVE_MAXIMUM_COMPRESSION_RATIO:100}
+    pdf:
+      maximum-pages: ${PDF_MAXIMUM_PAGES:1000}
   security:
     allowed-origins: ${ALLOWED_ORIGINS:http://localhost:3000}
+    jwt:
+      audience: ${OIDC_AUDIENCE:specai-api}
+      clock-skew-seconds: ${JWT_CLOCK_SKEW_SECONDS:60}
+    rate-limit-window-seconds: ${RATE_LIMIT_WINDOW_SECONDS:60}
+  rate-limits:
+    upload:
+      maximum: ${RATE_LIMIT_UPLOAD:10}
+    signed-url:
+      maximum: ${RATE_LIMIT_SIGNED_URL:30}
+    processing:
+      maximum: ${RATE_LIMIT_PROCESSING:20}
+    sse:
+      maximum: ${RATE_LIMIT_SSE:10}
+    search:
+      maximum: ${RATE_LIMIT_SEARCH:120}
+    admin:
+      maximum: ${RATE_LIMIT_ADMIN:30}
+  backpressure:
+    fail-closed: ${BACKPRESSURE_FAIL_CLOSED:true}
+    document:
+      delay-queue-depth: ${DOCUMENT_QUEUE_DELAY_DEPTH:100}
+      reject-queue-depth: ${DOCUMENT_QUEUE_REJECT_DEPTH:500}
   document-intelligence:
     enabled: ${DOCUMENT_INTELLIGENCE_ENABLED:true}
     minimum-quality-score: ${DOCUMENT_MINIMUM_QUALITY_SCORE:0.50}

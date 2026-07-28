@@ -1,0 +1,17 @@
+specai:
+  environment: development
+  bootstrap:
+    enabled: ${SPECAI_BOOTSTRAP_ENABLED:true}
+  file-security:
+    fail-closed: ${FILE_SECURITY_FAIL_CLOSED:false}
+  backpressure:
+    fail-closed: ${BACKPRESSURE_FAIL_CLOSED:false}
+
+management:
+  tracing:
+    sampling:
+      probability: 1.0
+
+logging:
+  level:
+    com.nanobase.specai: DEBUG

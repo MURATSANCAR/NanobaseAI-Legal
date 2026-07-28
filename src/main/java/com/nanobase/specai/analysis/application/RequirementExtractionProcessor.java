@@ -67,6 +67,7 @@ public class RequirementExtractionProcessor {
     private final DuplicateDetectionEngine duplicateDetection;
     private final AnalysisCatalogPort catalog;
     private final AiGateway aiGateway;
+    private final PromptSecurityService promptSecurity;
     private final RequirementRepository requirements;
     private final RequirementRevisionRepository revisions;
     private final AnalysisPersistenceStore store;
@@ -90,6 +91,7 @@ public class RequirementExtractionProcessor {
         DuplicateDetectionEngine duplicateDetection,
         AnalysisCatalogPort catalog,
         AiGateway aiGateway,
+        PromptSecurityService promptSecurity,
         RequirementRepository requirements,
         RequirementRevisionRepository revisions,
         AnalysisPersistenceStore store,
@@ -110,6 +112,7 @@ public class RequirementExtractionProcessor {
         this.duplicateDetection = duplicateDetection;
         this.catalog = catalog;
         this.aiGateway = aiGateway;
+        this.promptSecurity = promptSecurity;
         this.requirements = requirements;
         this.revisions = revisions;
         this.store = store;
@@ -227,6 +230,18 @@ public class RequirementExtractionProcessor {
         JsonNode schema = catalog.outputSchema(profile.organizationId(),
             profile.outputSchemaVersionId());
         List<String> assembledPrompt = assemblePrompt(profile, clause, prompt);
+        PromptSecurityService.Assessment promptAssessment = promptSecurity.assess(
+            profile.organizationId(), job.documentVersionId(), clause.id(), profile.id(),
+            job.correlationId(), Map.of(
+                "contentClassification", "UNTRUSTED_DOCUMENT",
+                "clauseText", clause.rawText(),
+                "selectedContext", context.selectedContext()));
+        if ("PENDING".equals(promptAssessment.reviewStatus())) {
+            store.event(profile.organizationId(), job.id(), "PROMPT_SECURITY_REVIEW_REQUIRED", 0,
+                "Instruction-like document content requires human review",
+                Map.of("clauseId", clause.id(), "signalScore", promptAssessment.signalScore(),
+                    "signals", promptAssessment.signals()), clock.instant());
+        }
         Instant modelStarted = clock.instant();
         ExtractionResponse response = aiGateway.extract(new ExtractionRequest(
             job.id(), profile.organizationId(), clause.id(), AiGateway.LOGICAL_MODEL,

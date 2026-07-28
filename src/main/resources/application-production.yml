@@ -1,0 +1,69 @@
+spring:
+  config:
+    import: optional:configtree:/run/secrets/
+  datasource:
+    url: ${DATABASE_URL}
+    username: ${DATABASE_USER}
+    password: ${DATABASE_PASSWORD}
+    hikari:
+      maximum-pool-size: ${DATABASE_POOL_SIZE:30}
+      minimum-idle: ${DATABASE_POOL_MIN_IDLE:5}
+      connection-timeout: ${DATABASE_CONNECTION_TIMEOUT_MS:5000}
+  flyway:
+    user: ${DATABASE_MIGRATION_USER}
+    password: ${DATABASE_MIGRATION_PASSWORD}
+  rabbitmq:
+    port: ${RABBITMQ_PORT:5671}
+    ssl:
+      enabled: true
+      validate-server-certificate: true
+      verify-hostname: true
+  data:
+    redis:
+      ssl:
+        enabled: true
+
+server:
+  ssl:
+    enabled: true
+    certificate: ${TLS_CERTIFICATE}
+    certificate-private-key: ${TLS_PRIVATE_KEY}
+
+springdoc:
+  swagger-ui:
+    enabled: false
+
+management:
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLE_PROBABILITY:0.10}
+
+logging:
+  structured:
+    format:
+      console: ecs
+
+specai:
+  environment: production
+  bootstrap:
+    enabled: false
+  storage:
+    endpoint: ${MINIO_ENDPOINT}
+    access-key: ${MINIO_ACCESS_KEY}
+    secret-key: ${MINIO_SECRET_KEY}
+    original-bucket: ${MINIO_ORIGINAL_BUCKET}
+    create-buckets: false
+  file-security:
+    fail-closed: true
+    clamav:
+      enabled: true
+      host: ${CLAMAV_HOST}
+  security:
+    allowed-origins: ${ALLOWED_ORIGINS}
+  backpressure:
+    fail-closed: true
+  document-intelligence:
+    docling:
+      base-url: ${DOCLING_BASE_URL}
+  ai-orchestrator:
+    base-url: ${AI_ORCHESTRATOR_BASE_URL}
