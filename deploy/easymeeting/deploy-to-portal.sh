@@ -26,14 +26,41 @@ cd "$DIR"
 # Run install (env, db, minio, compose up)
 sudo bash deploy/easymeeting/install.sh
 
-# Wire nginx /legal/ + /legal-api/ (idempotent)
-CONF=/etc/nginx/sites-available/portal.nanobase.ai
+# Wire nginx /legal/ + /legal-api/ + /contracts → /legal/ (idempotent).
+# NOTE: portal.nanobase.ai is a file under sites-enabled (not always a symlink).
+CONF=/etc/nginx/sites-enabled/portal.nanobase.ai
+CONF_AVAIL=/etc/nginx/sites-available/portal.nanobase.ai
 SNIPPET="$DIR/deploy/easymeeting/nginx-legal.conf"
 sudo python3 - <<PY
 from pathlib import Path
+import re
 conf = Path("$CONF")
+avail = Path("$CONF_AVAIL")
 snippet = Path("$SNIPPET").read_text()
 text = conf.read_text()
+# Ensure old /contracts UI always lands on SpecAI Legal
+redirects = """
+    # Old Contract Intelligence UI → SpecAI Legal
+    location = /contracts {
+        return 301 /legal/;
+    }
+    location = /contracts/ {
+        return 301 /legal/;
+    }
+    location ^~ /contracts/ {
+        return 301 /legal/;
+    }
+
+"""
+if "location = /contracts {" not in text or "return 301 /legal/" not in text:
+    if "    # SpecAI Legal" in text:
+        text = text.replace("    # SpecAI Legal", redirects + "    # SpecAI Legal", 1)
+    elif "    location /legal-api/" in text:
+        text = text.replace("    location /legal-api/", redirects + "    location /legal-api/", 1)
+    print("nginx /contracts → /legal redirects inserted")
+else:
+    print("nginx /contracts redirects already present")
+
 if "location /legal/" in text and "upstream legal_api" in text:
     print("nginx /legal already configured")
 else:
@@ -105,8 +132,12 @@ upstream legal_portal {
         raise SystemExit("Could not find location insertion point")
     if "location /legal/" not in text:
         text = text.replace(needle, locations + needle, 1)
-    conf.write_text(text)
     print("nginx /legal locations inserted")
+
+conf.write_text(text)
+if avail.exists() and avail.resolve() != conf.resolve():
+    avail.write_text(text)
+    print("synced sites-available from sites-enabled")
 PY
 sudo nginx -t
 sudo systemctl reload nginx
@@ -142,6 +173,7 @@ for old, new in candidates:
 if not changed:
     print("WARNING: landing Legal card pattern not found; skip patch")
 PY
+  sudo python3 "$DIR/deploy/easymeeting/patch-hub-contracts-redirect.py" "$INDEX_JS"
 else
   echo "WARNING: portal hub index-*.js not found"
 fi
@@ -150,7 +182,9 @@ echo "==> Smoke"
 curl -sS -o /dev/null -w "local portal %{http_code}\n" http://127.0.0.1:3020/legal/ || true
 curl -sS -o /dev/null -w "local api %{http_code}\n" http://127.0.0.1:8098/actuator/health || true
 curl -sS -o /dev/null -w "public legal %{http_code}\n" https://portal.nanobase.ai/legal/ || true
+curl -sS -o /dev/null -w "public contracts -> %{redirect_url} (%{http_code})\n" https://portal.nanobase.ai/contracts || true
 REMOTE
 
 echo "==> Done. Open https://portal.nanobase.ai/ and click NanobaseAI - Legal"
 echo "    Direct: https://portal.nanobase.ai/legal/"
+echo "    Old /contracts redirects to /legal/"

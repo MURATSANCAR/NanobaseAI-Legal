@@ -64,22 +64,31 @@ public class LocalTokenService {
         if (!adminEmail.equals(normalized) || !adminPassword.equals(password)) {
             throw new InvalidCredentialsException("Invalid email or password");
         }
+        return issueAdmin(normalized);
+    }
+
+    /** Issues a bootstrap admin token without credentials (portal auto-login). */
+    public IssuedToken issueBootstrapAdmin() {
+        return issueAdmin(adminEmail);
+    }
+
+    private IssuedToken issueAdmin(String email) {
         Instant now = Instant.now();
         Instant expires = now.plusSeconds(ttlSeconds);
         JwtClaimsSet claims = JwtClaimsSet.builder()
             .issuer(issuer)
-            .subject(normalized)
+            .subject(email)
             .audience(List.of(audience))
             .issuedAt(now)
             .expiresAt(expires)
-            .claim("email", normalized)
+            .claim("email", email)
             .claim("name", "Local Admin")
             .claim("tenant_id", tenantId.toString())
             .claim("realm_access", Map.of("roles", adminRoles))
             .build();
         JwsHeader header = JwsHeader.with(MacAlgorithm.HS256).build();
         String token = encoder.encode(JwtEncoderParameters.from(header, claims)).getTokenValue();
-        return new IssuedToken(token, ttlSeconds, normalized, "Local Admin", adminRoles,
+        return new IssuedToken(token, ttlSeconds, email, "Local Admin", adminRoles,
             tenantId.toString());
     }
 

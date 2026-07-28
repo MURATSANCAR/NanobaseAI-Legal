@@ -123,6 +123,7 @@ specai:
       maximum-pages: ${PDF_MAXIMUM_PAGES:1000}
   security:
     auth-mode: ${SPECAI_AUTH_MODE:local}
+    auto-login: ${SPECAI_AUTO_LOGIN:false}
     allowed-origins: ${ALLOWED_ORIGINS:http://localhost:3000}
     jwt:
       secret: ${SPECAI_JWT_SECRET:}

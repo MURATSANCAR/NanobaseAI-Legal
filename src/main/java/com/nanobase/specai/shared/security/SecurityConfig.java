@@ -90,6 +90,7 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/actuator/health/**").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/v1/auth/login").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/v1/auth/auto-login").permitAll()
                 .requestMatchers("/v3/api-docs/**", "/swagger-ui/**")
                     .hasAnyRole("SYSTEM_ADMIN", "TENANT_ADMIN")
                 .requestMatchers(HttpMethod.GET, "/api/v1/**").hasAnyRole(
