@@ -13,5 +13,8 @@ public interface ProcessingEventRepository
     List<ProcessingEventRecord>
         findAllByDocumentVersionIdAndOrganizationIdAndOccurredAtAfterOrderByOccurredAt(
             UUID documentVersionId, UUID organizationId, Instant occurredAfter);
+    List<ProcessingEventRecord>
+        findAllByDocumentVersionIdAndOrganizationIdOrderByOccurredAt(
+            UUID documentVersionId, UUID organizationId);
     Optional<ProcessingEventRecord> findByIdAndOrganizationId(UUID id, UUID organizationId);
 }

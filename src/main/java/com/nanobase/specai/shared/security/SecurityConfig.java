@@ -27,6 +27,7 @@ public class SecurityConfig {
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http,
                                             SecurityContextMdcFilter mdcFilter,
+                                            RateLimitFilter rateLimitFilter,
                                             TenantTransactionFilter tenantTransactionFilter)
         throws Exception {
         return http
@@ -44,14 +45,34 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.POST,
                     "/api/v1/tenders/*/documents",
                     "/api/v1/documents/*/versions",
-                    "/api/v1/documents/*/reprocess").hasAnyRole(
-                        "SYSTEM_ADMIN", "TENANT_ADMIN", "TENDER_MANAGER")
+                    "/api/v1/documents/*/reprocess",
+                    "/api/v1/processing-jobs/*/cancel",
+                    "/api/v1/documents/*/requirement-extractions",
+                    "/api/v1/requirement-extractions/*/cancel",
+                    "/api/v1/requirement-extractions/*/reprocess",
+                    "/api/v1/analysis-profiles/preview").hasAnyRole(
+                        "SYSTEM_ADMIN", "TENANT_ADMIN", "TENDER_MANAGER",
+                        "TECHNICAL_REVIEWER")
+                .requestMatchers(HttpMethod.POST,
+                    "/api/v1/requirements/*/review",
+                    "/api/v1/requirements/*/split",
+                    "/api/v1/requirements/*/merge").hasAnyRole(
+                        "SYSTEM_ADMIN", "TENANT_ADMIN", "TENDER_MANAGER",
+                        "TECHNICAL_REVIEWER")
+                .requestMatchers(HttpMethod.POST,
+                    "/api/v1/terminology-catalogs/*/candidate-terms",
+                    "/api/v1/terminology-entries/*/approve",
+                    "/api/v1/terminology-entries/*/reject").hasAnyRole(
+                        "SYSTEM_ADMIN", "TENANT_ADMIN")
                 .requestMatchers(HttpMethod.POST,
                     "/api/v1/tenders/*/members",
                     "/api/v1/tenders/*/archive").hasAnyRole(
                         "SYSTEM_ADMIN", "TENANT_ADMIN", "TENDER_MANAGER")
                 .requestMatchers(HttpMethod.PUT, "/api/v1/tenders/**").hasAnyRole(
                     "SYSTEM_ADMIN", "TENANT_ADMIN", "TENDER_MANAGER")
+                .requestMatchers(HttpMethod.PUT, "/api/v1/requirements/*").hasAnyRole(
+                    "SYSTEM_ADMIN", "TENANT_ADMIN", "TENDER_MANAGER",
+                    "TECHNICAL_REVIEWER")
                 .requestMatchers(HttpMethod.DELETE, "/api/v1/tenders/*/members/*").hasAnyRole(
                     "SYSTEM_ADMIN", "TENANT_ADMIN", "TENDER_MANAGER")
                 .requestMatchers("/api/v1/**").denyAll()
@@ -61,7 +82,8 @@ public class SecurityConfig {
             .sessionManagement(session -> session.sessionCreationPolicy(
                 org.springframework.security.config.http.SessionCreationPolicy.STATELESS))
             .addFilterAfter(mdcFilter, BearerTokenAuthenticationFilter.class)
-            .addFilterAfter(tenantTransactionFilter, SecurityContextMdcFilter.class)
+            .addFilterAfter(rateLimitFilter, SecurityContextMdcFilter.class)
+            .addFilterAfter(tenantTransactionFilter, RateLimitFilter.class)
             .build();
     }
 

@@ -157,9 +157,13 @@ services:
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}
       REDIS_HOST: redis
       REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
-      DOCUMENT_INTELLIGENCE_ENABLED: ${DOCUMENT_INTELLIGENCE_ENABLED:-false}
-      DOCUMENT_INTELLIGENCE_BASE_URL: ${DOCUMENT_INTELLIGENCE_BASE_URL:-http://opencontracts:8090}
-      DOCUMENT_INTELLIGENCE_API_TOKEN: ${DOCUMENT_INTELLIGENCE_API_TOKEN:-}
+      DOCUMENT_INTELLIGENCE_ENABLED: "true"
+      DOCLING_ENABLED: "true"
+      DOCLING_BASE_URL: http://document-intelligence:8090
+      OPENCONTRACTS_ENABLED: ${OPENCONTRACTS_ENABLED:-false}
+      OPENCONTRACTS_BASE_URL: ${OPENCONTRACTS_BASE_URL:-http://opencontracts:8091}
+      OPENCONTRACTS_API_TOKEN: ${OPENCONTRACTS_API_TOKEN:-}
+      SPECAI_AI_ORCHESTRATOR_BASE_URL: http://ai-orchestrator:8090
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
     ports:
       - "127.0.0.1:8080:8080"
@@ -174,12 +178,71 @@ services:
         condition: service_healthy
       keycloak-init:
         condition: service_completed_successfully
+      document-intelligence:
+        condition: service_healthy
+      ai-orchestrator:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://localhost:8080/actuator/health/readiness | grep '\"status\":\"UP\"'"]
       interval: 10s
       timeout: 5s
       retries: 24
       start_period: 20s
+    networks: [specai]
+    restart: unless-stopped
+
+  document-intelligence:
+    build:
+      context: ./services/document-intelligence
+    environment:
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: ${MINIO_ACCESS_KEY:-specai}
+      S3_SECRET_KEY: ${MINIO_SECRET_KEY:?Set MINIO_SECRET_KEY in .env}
+      S3_SOURCE_BUCKET: specai-original
+      JOB_DATABASE_PATH: /var/lib/specai/jobs.sqlite3
+      TEMPORARY_DIRECTORY: /tmp/specai-docling
+      MAX_FILE_SIZE_BYTES: ${MAX_FILE_SIZE_BYTES:-104857600}
+      MAX_PAGE_COUNT: ${MAX_PAGE_COUNT:-500}
+      PROCESSING_TIMEOUT_SECONDS: ${PROCESSING_TIMEOUT_SECONDS:-900}
+      DOCLING_TELEMETRY_ENABLED: "false"
+    volumes:
+      - document-intelligence-data:/var/lib/specai
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:8090:8090"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8090/health/ready', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 4G
+        reservations:
+          memory: 512M
+    networks: [specai]
+    restart: unless-stopped
+
+  ai-orchestrator:
+    build:
+      context: ./services/ai-orchestrator
+    environment:
+      MODEL_DEPLOYMENTS_JSON: ${AI_MODEL_DEPLOYMENTS_JSON:-[]}
+      LOG_LEVEL: ${AI_ORCHESTRATOR_LOG_LEVEL:-INFO}
+    ports:
+      - "127.0.0.1:8092:8090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8090/health/ready', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
     networks: [specai]
     restart: unless-stopped
 
@@ -212,6 +275,7 @@ volumes:
   minio-data:
   rabbitmq-data:
   redis-data:
+  document-intelligence-data:
 
 networks:
   specai:

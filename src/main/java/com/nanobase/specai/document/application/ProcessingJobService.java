@@ -13,6 +13,7 @@ import com.nanobase.specai.document.domain.ProcessingEventRepository;
 import com.nanobase.specai.shared.observability.PlatformMetrics;
 import com.nanobase.specai.shared.security.TenantDatabaseContext;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
@@ -58,6 +59,7 @@ public class ProcessingJobService {
         DocumentProcessingJob job = DocumentProcessingJob.queued(UUID.randomUUID(),
             organizationId, projectId, documentId, documentVersionId, correlationId, now);
         jobs.save(job);
+        metrics.processingJobCreated();
         ProcessingEventRecord event = persistEvent(job, "JOB_CREATED",
             "Doküman işleme işi oluşturuldu", now);
         publishAfterCommit(documentId, event);
@@ -76,8 +78,17 @@ public class ProcessingJobService {
         }
         Instant now = clock.instant();
         DocumentStatus before = job.status();
+        Instant stageStartedAt = job.updatedAt();
         int progress = progress(next);
         job.transition(next, progress, message, errorCode, errorMessage, now);
+        metrics.processingStageDuration(before.name(),
+            nonNegativeDuration(stageStartedAt, now));
+        if (next == DocumentStatus.FAILED) {
+            metrics.processingJobFailed();
+        }
+        if (next.terminal() && job.startedAt() != null) {
+            metrics.processingDuration(nonNegativeDuration(job.startedAt(), now));
+        }
         DocumentVersion version = versions.findForUpdate(
             job.documentVersionId(), organizationId)
             .orElseThrow(() -> new InvalidDocumentException(
@@ -123,10 +134,24 @@ public class ProcessingJobService {
                 "Processing job was not found"));
     }
 
+    @Transactional(readOnly = true)
+    public DocumentProcessingJob latest(UUID organizationId, UUID documentId) {
+        tenantContext.apply(organizationId);
+        return jobs.findAllByDocumentIdAndOrganizationIdOrderByCreatedAtDesc(
+            documentId, organizationId).stream().findFirst().orElse(null);
+    }
+
     private DocumentProcessingJob require(UUID jobId, UUID organizationId) {
         return jobs.findForUpdate(jobId, organizationId)
             .orElseThrow(() -> new InvalidDocumentException(
                 "Processing job was not found"));
+    }
+
+    private Duration nonNegativeDuration(Instant start, Instant end) {
+        if (start == null || end.isBefore(start)) {
+            return Duration.ZERO;
+        }
+        return Duration.between(start, end);
     }
 
     private ProcessingEventRecord persistEvent(

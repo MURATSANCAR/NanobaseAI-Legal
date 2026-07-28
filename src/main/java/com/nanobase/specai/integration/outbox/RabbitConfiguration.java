@@ -27,6 +27,25 @@ public class RabbitConfiguration {
     public static final String RETRY_30 = "document.retry.30s";
     public static final String RETRY_120 = "document.retry.120s";
     public static final String RETRY_600 = "document.retry.600s";
+    public static final String REQUIREMENT_QUEUE = "requirement-extraction.request";
+    public static final String ANALYSIS_PROFILE_CREATED =
+        "analysis.profile.created.v1";
+    public static final String REQUIREMENT_REQUESTED =
+        "requirement.extraction.requested.v1";
+    public static final String REQUIREMENT_STARTED =
+        "requirement.extraction.started.v1";
+    public static final String REQUIREMENT_PROGRESS =
+        "requirement.extraction.progress.v1";
+    public static final String REQUIREMENT_COMPLETED =
+        "requirement.extraction.completed.v1";
+    public static final String REQUIREMENT_FAILED =
+        "requirement.extraction.failed.v1";
+    public static final String REQUIREMENT_REVIEW =
+        "requirement.review.required.v1";
+    public static final String EXPERT_FEEDBACK =
+        "expert.feedback.recorded.v1";
+    public static final String TERMINOLOGY_CANDIDATE =
+        "terminology.candidate.discovered.v1";
 
     @Bean
     DirectExchange specAiExchange() {
@@ -82,6 +101,17 @@ public class RabbitConfiguration {
     @Bean
     Binding documentBinding(Queue documentQueue, DirectExchange specAiExchange) {
         return BindingBuilder.bind(documentQueue).to(specAiExchange).with(DOCUMENT_ROUTING_KEY);
+    }
+
+    @Bean
+    Queue requirementQueue() {
+        return QueueBuilder.durable(REQUIREMENT_QUEUE).build();
+    }
+
+    @Bean
+    Binding requirementBinding(Queue requirementQueue, DirectExchange specAiExchange) {
+        return BindingBuilder.bind(requirementQueue).to(specAiExchange)
+            .with(REQUIREMENT_REQUESTED);
     }
 
     @Bean

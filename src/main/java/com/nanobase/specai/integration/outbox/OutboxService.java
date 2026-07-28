@@ -34,6 +34,22 @@ public class OutboxService {
         return eventId;
     }
 
+    public UUID publish(UUID organizationId, String aggregateType, UUID aggregateId,
+                        String eventType, String routingKey, Object payload,
+                        UUID correlationId) {
+        Instant now = clock.instant();
+        UUID eventId = UUID.randomUUID();
+        UUID effectiveCorrelationId = correlationId == null
+            ? RequestContext.current().correlationId() : correlationId;
+        EventEnvelope<Object> envelope = new EventEnvelope<>(
+            eventId, eventType, 1, organizationId, effectiveCorrelationId,
+            effectiveCorrelationId, now, payload);
+        events.save(new OutboxEvent(eventId, aggregateType, aggregateId,
+            eventType, 1, routingKey, json(envelope), organizationId,
+            effectiveCorrelationId, now));
+        return eventId;
+    }
+
     private String json(Object value) {
         try {
             return objectMapper.writeValueAsString(value);

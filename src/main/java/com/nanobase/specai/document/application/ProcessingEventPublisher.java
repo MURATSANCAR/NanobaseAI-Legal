@@ -6,9 +6,12 @@ import com.nanobase.specai.document.domain.DocumentStatus;
 import java.io.IOException;
 import java.time.Clock;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import com.nanobase.specai.shared.observability.PlatformMetrics;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -18,16 +21,32 @@ public class ProcessingEventPublisher {
     private final ConcurrentHashMap<UUID, CopyOnWriteArrayList<SseEmitter>> subscribers =
         new ConcurrentHashMap<>();
     private final Clock clock = Clock.systemUTC();
+    private final PlatformMetrics metrics;
+
+    public ProcessingEventPublisher(PlatformMetrics metrics) {
+        this.metrics = metrics;
+    }
 
     public SseEmitter subscribe(UUID documentId, UUID versionId, DocumentStatus status) {
+        return subscribe(documentId, versionId, status, List.of());
+    }
+
+    public SseEmitter subscribe(UUID documentId, UUID versionId, DocumentStatus status,
+                                List<ProcessingEvent> history) {
         SseEmitter emitter = new SseEmitter(TIMEOUT_MILLISECONDS);
         subscribers.computeIfAbsent(documentId, ignored -> new CopyOnWriteArrayList<>()).add(emitter);
+        metrics.sseOpened();
         Runnable cleanup = () -> remove(documentId, emitter);
         emitter.onCompletion(cleanup);
         emitter.onTimeout(cleanup);
         emitter.onError(ignored -> cleanup.run());
-        send(emitter, new ProcessingEvent(UUID.randomUUID(), null, documentId, versionId, status,
-            progress(status), message(status), clock.instant()));
+        if (history.isEmpty()) {
+            send(emitter, new ProcessingEvent(UUID.randomUUID(), null,
+                documentId, versionId, status,
+                progress(status), message(status), clock.instant()));
+        } else {
+            history.forEach(event -> send(emitter, event));
+        }
         return emitter;
     }
 
@@ -63,7 +82,8 @@ public class ProcessingEventPublisher {
 
     private boolean send(SseEmitter emitter, ProcessingEvent event) {
         try {
-            emitter.send(SseEmitter.event().name("processing").data(event));
+            emitter.send(SseEmitter.event().id(event.eventId().toString())
+                .name("processing").data(event));
             return true;
         } catch (IOException | IllegalStateException exception) {
             return false;
@@ -73,9 +93,26 @@ public class ProcessingEventPublisher {
     private void remove(UUID documentId, SseEmitter emitter) {
         CopyOnWriteArrayList<SseEmitter> values = subscribers.get(documentId);
         if (values != null) {
-            values.remove(emitter);
+            boolean removed = values.remove(emitter);
+            if (removed) {
+                metrics.sseClosed();
+            }
             if (values.isEmpty()) {
                 subscribers.remove(documentId, values);
+            }
+        }
+    }
+
+    @Scheduled(fixedDelayString = "${specai.sse.heartbeat-interval-ms:15000}")
+    public void heartbeat() {
+        for (var entry : subscribers.entrySet()) {
+            for (SseEmitter emitter : List.copyOf(entry.getValue())) {
+                try {
+                    emitter.send(SseEmitter.event().name("heartbeat")
+                        .data(Map.of("occurredAt", clock.instant())));
+                } catch (IOException | IllegalStateException exception) {
+                    remove(entry.getKey(), emitter);
+                }
             }
         }
     }

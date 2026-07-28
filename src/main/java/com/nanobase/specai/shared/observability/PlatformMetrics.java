@@ -6,15 +6,18 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
+import java.time.Duration;
 import org.springframework.stereotype.Component;
+import java.util.concurrent.atomic.AtomicInteger;
 
 @Component
 public class PlatformMetrics {
     private final MeterRegistry registry;
     private final Counter documentUpload;
     private final Counter documentUploadFailed;
-    private final Counter documentProcessing;
-    private final Counter documentProcessingFailed;
+    private final Counter documentProcessingJob;
+    private final Counter documentProcessingJobFailed;
+    private final Counter documentProcessingAttempt;
     private final Counter outboxPublishFailed;
     private final Counter outboxClaim;
     private final Counter outboxReclaimed;
@@ -26,6 +29,7 @@ public class PlatformMetrics {
     private final Counter clauseExtracted;
     private final Counter manualReview;
     private final Counter sseConnection;
+    private final AtomicInteger sseActive = new AtomicInteger();
     private final Counter rabbitConsumerRetry;
     private final Timer documentProcessingDuration;
 
@@ -33,8 +37,9 @@ public class PlatformMetrics {
         this.registry = registry;
         documentUpload = registry.counter("document.upload.total");
         documentUploadFailed = registry.counter("document.upload.failed.total");
-        documentProcessing = registry.counter("document.processing.total");
-        documentProcessingFailed = registry.counter("document.processing.failed.total");
+        documentProcessingJob = registry.counter("document.processing.job");
+        documentProcessingJobFailed = registry.counter("document.processing.job.failed");
+        documentProcessingAttempt = registry.counter("document.processing.attempt");
         outboxPublishFailed = registry.counter("outbox.publish.failed.total");
         outboxClaim = registry.counter("outbox.claim.total");
         outboxReclaimed = registry.counter("outbox.reclaimed.total");
@@ -46,6 +51,8 @@ public class PlatformMetrics {
         clauseExtracted = registry.counter("document.clause.extracted.total");
         manualReview = registry.counter("document.processing.manual.review.total");
         sseConnection = registry.counter("sse.connection.total");
+        Gauge.builder("sse.connection.active", sseActive, AtomicInteger::get)
+            .register(registry);
         rabbitConsumerRetry = registry.counter("rabbitmq.consumer.retry.total");
         documentProcessingDuration = registry.timer("document.processing.duration");
         Gauge.builder("outbox.pending.total", outbox,
@@ -55,16 +62,28 @@ public class PlatformMetrics {
 
     public void uploadSucceeded() { documentUpload.increment(); }
     public void uploadFailed() { documentUploadFailed.increment(); }
+    public void processingJobCreated() { documentProcessingJob.increment(); }
+    public void processingJobFailed() { documentProcessingJobFailed.increment(); }
     public Timer.Sample processingStarted() {
-        documentProcessing.increment();
+        documentProcessingAttempt.increment();
         return Timer.start(registry);
     }
     public void processingCompleted(Timer.Sample sample) {
         sample.stop(documentProcessingDuration);
     }
     public void processingFailed(Timer.Sample sample) {
-        documentProcessingFailed.increment();
         sample.stop(documentProcessingDuration);
+    }
+    public void processingDuration(Duration duration) {
+        registry.timer("document.processing.duration").record(duration);
+    }
+    public void processingStageDuration(String stage, Duration duration) {
+        registry.timer("document.processing.stage.duration", "stage", stage)
+            .record(duration);
+    }
+    public void parserRouted(String provider, String decision, String ocrMode) {
+        registry.counter("document.parser.route", "provider", provider,
+            "decision", decision, "ocr", ocrMode).increment();
     }
     public void outboxPublishFailed() { outboxPublishFailed.increment(); }
     public void outboxClaimed(int claimed, int reclaimed) {
@@ -79,5 +98,12 @@ public class PlatformMetrics {
     public void clausesExtracted(int count) { clauseExtracted.increment(count); }
     public void manualReview() { manualReview.increment(); }
     public void sseConnected() { sseConnection.increment(); }
+    public void sseOpened() {
+        sseConnected();
+        sseActive.incrementAndGet();
+    }
+    public void sseClosed() {
+        sseActive.updateAndGet(value -> Math.max(0, value - 1));
+    }
     public void consumerRetried() { rabbitConsumerRetry.increment(); }
 }

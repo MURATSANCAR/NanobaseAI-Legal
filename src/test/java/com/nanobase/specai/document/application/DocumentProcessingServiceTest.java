@@ -11,7 +11,7 @@ import com.nanobase.specai.document.domain.DocumentStatus;
 import com.nanobase.specai.document.domain.DocumentType;
 import com.nanobase.specai.document.domain.DocumentVersion;
 import com.nanobase.specai.document.domain.DocumentVersionRepository;
-import com.nanobase.specai.document.integration.DocumentIntelligencePort.DocumentProcessingResult;
+import com.nanobase.specai.document.integration.DocumentIntelligencePort.ProcessingStatusResult;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
@@ -46,7 +46,8 @@ class DocumentProcessingServiceTest {
         DocumentProcessingService service =
             new DocumentProcessingService(documents, versions, audit, events);
         service.complete(organizationId, versionId,
-            new DocumentProcessingResult(DocumentStatus.READY, null, "ready"));
+            new ProcessingStatusResult(DocumentStatus.READY, "READY", 100,
+                "ready", null));
 
         assertThat(document.status()).isEqualTo(DocumentStatus.READY);
         assertThat(version.processingStatus()).isEqualTo(DocumentStatus.READY);

@@ -96,6 +96,28 @@ specai:
   security:
     allowed-origins: ${ALLOWED_ORIGINS:http://localhost:3000}
   document-intelligence:
-    enabled: ${DOCUMENT_INTELLIGENCE_ENABLED:false}
-    base-url: ${DOCUMENT_INTELLIGENCE_BASE_URL:http://localhost:8090}
-    api-token: ${DOCUMENT_INTELLIGENCE_API_TOKEN:}
+    enabled: ${DOCUMENT_INTELLIGENCE_ENABLED:true}
+    minimum-quality-score: ${DOCUMENT_MINIMUM_QUALITY_SCORE:0.50}
+    docling:
+      enabled: ${DOCLING_ENABLED:true}
+      base-url: ${DOCLING_BASE_URL:http://localhost:8090}
+    opencontracts:
+      enabled: ${OPENCONTRACTS_ENABLED:false}
+      base-url: ${OPENCONTRACTS_BASE_URL:http://localhost:8091}
+      api-token: ${OPENCONTRACTS_API_TOKEN:}
+    circuit-breaker:
+      failure-threshold: ${DOCUMENT_PROVIDER_FAILURE_THRESHOLD:5}
+      open-duration: ${DOCUMENT_PROVIDER_OPEN_DURATION:PT30S}
+    http:
+      connect-timeout: ${DOCUMENT_PROVIDER_CONNECT_TIMEOUT:PT3S}
+      read-timeout: ${DOCUMENT_PROVIDER_READ_TIMEOUT:PT30S}
+  outbox:
+    interval-ms: ${OUTBOX_INTERVAL_MS:1000}
+    batch-size: ${OUTBOX_BATCH_SIZE:50}
+    maximum-retries: ${OUTBOX_MAXIMUM_RETRIES:10}
+    claim-timeout: ${OUTBOX_CLAIM_TIMEOUT:PT2M}
+    base-backoff: ${OUTBOX_BASE_BACKOFF:PT1S}
+    maximum-backoff: ${OUTBOX_MAX_BACKOFF:PT5M}
+  messaging:
+    maximum-consumer-retries: ${MESSAGE_MAXIMUM_RETRIES:3}
+    idempotency-processing-timeout: ${MESSAGE_PROCESSING_TIMEOUT:PT30M}

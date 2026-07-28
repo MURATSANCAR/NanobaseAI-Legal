@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 import com.nanobase.specai.audit.application.AuditService;
 import com.nanobase.specai.document.domain.ClauseRepository;
 import com.nanobase.specai.document.domain.DocumentRepository;
+import com.nanobase.specai.document.domain.DocumentProcessingJob;
 import com.nanobase.specai.document.domain.DocumentType;
 import com.nanobase.specai.document.domain.DocumentVersionRepository;
 import com.nanobase.specai.integration.outbox.OutboxService;
@@ -44,6 +45,7 @@ class DocumentServiceTest {
     @Mock CurrentTenant currentTenant;
     @Mock FileTypeInspector fileTypeInspector;
     @Mock ClauseRepository clauses;
+    @Mock ProcessingJobService processingJobs;
     private DocumentService service;
 
     @BeforeEach
@@ -51,7 +53,7 @@ class DocumentServiceTest {
         when(currentTenant.require()).thenReturn(
             new TenantPrincipal(ORGANIZATION, "manager-1", Set.of("TENDER_MANAGER")));
         service = new DocumentService(documents, versions, access, audit, outbox, storage,
-            currentTenant, fileTypeInspector, clauses, 10_000_000,
+            currentTenant, fileTypeInspector, clauses, processingJobs, 10_000_000,
             Clock.fixed(Instant.parse("2026-07-27T12:00:00Z"), ZoneOffset.UTC));
     }
 
@@ -60,6 +62,11 @@ class DocumentServiceTest {
         when(fileTypeInspector.inspect(any(InputStream.class), eq("sartname.pdf")))
             .thenReturn("application/pdf");
         when(versions.existsDuplicate(eq(PROJECT), eq(ORGANIZATION), any())).thenReturn(false);
+        when(processingJobs.create(eq(ORGANIZATION), eq(PROJECT), any(), any(), any(), any()))
+            .thenAnswer(invocation -> DocumentProcessingJob.queued(
+                UUID.randomUUID(), ORGANIZATION, PROJECT, invocation.getArgument(2),
+                invocation.getArgument(3), invocation.getArgument(4),
+                invocation.getArgument(5)));
         MockMultipartFile file = new MockMultipartFile("file", "sartname.pdf",
             "application/octet-stream", "%PDF-1.7 sample".getBytes());
 
@@ -70,6 +77,7 @@ class DocumentServiceTest {
         assertThat(result.currentVersionNumber()).isEqualTo(1);
         verify(access).requireUpload(PROJECT, currentTenant.require());
         verify(storage).put(any(), any(InputStream.class), eq(file.getSize()), eq("application/pdf"));
+        verify(storage).finalizeObject(any(), any(), eq(file.getSize()), any());
         verify(documents).save(any());
         verify(versions).save(any());
         verify(outbox).documentUploaded(eq(ORGANIZATION), any());

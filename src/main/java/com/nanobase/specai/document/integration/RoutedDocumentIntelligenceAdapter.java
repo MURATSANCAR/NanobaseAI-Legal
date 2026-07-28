@@ -3,6 +3,7 @@ package com.nanobase.specai.document.integration;
 import com.nanobase.specai.document.domain.DocumentStatus;
 import com.nanobase.specai.document.integration.ParserRoute.Decision;
 import com.nanobase.specai.document.integration.ParserRoute.Provider;
+import com.nanobase.specai.shared.observability.PlatformMetrics;
 import java.util.Locale;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
@@ -15,6 +16,7 @@ public class RoutedDocumentIntelligenceAdapter implements DocumentIntelligencePo
     private final DocumentParserRouter router;
     private final DocumentIntelligencePort docling;
     private final DocumentIntelligencePort openContracts;
+    private final PlatformMetrics metrics;
     private final DisabledDocumentIntelligenceAdapter disabled =
         new DisabledDocumentIntelligenceAdapter();
     private final boolean doclingAvailable;
@@ -24,6 +26,7 @@ public class RoutedDocumentIntelligenceAdapter implements DocumentIntelligencePo
         DocumentParserRouter router,
         @Qualifier("doclingAdapter") DocumentIntelligencePort docling,
         @Qualifier("openContractsAdapter") DocumentIntelligencePort openContracts,
+        PlatformMetrics metrics,
         @Value("${specai.document-intelligence.docling.enabled:true}")
         boolean doclingAvailable,
         @Value("${specai.document-intelligence.opencontracts.enabled:false}")
@@ -31,6 +34,7 @@ public class RoutedDocumentIntelligenceAdapter implements DocumentIntelligencePo
         this.router = router;
         this.docling = docling;
         this.openContracts = openContracts;
+        this.metrics = metrics;
         this.doclingAvailable = doclingAvailable;
         this.openContractsAvailable = openContractsAvailable;
     }
@@ -42,6 +46,8 @@ public class RoutedDocumentIntelligenceAdapter implements DocumentIntelligencePo
             command.fileSize(), null, null, command.ocrRequired(), null,
             command.languageHint(), doclingAvailable, openContractsAvailable,
             command.annotationSynchronizationRequested(), null));
+        metrics.parserRouted(route.provider().name(), route.decision().name(),
+            route.ocrMode().name());
         if (route.decision() == Decision.RETRY) {
             throw new ProviderUnavailableException(route.reason());
         }

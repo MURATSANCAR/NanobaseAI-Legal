@@ -1,8 +1,7 @@
 package com.nanobase.specai.audit.api;
 
 import com.nanobase.specai.audit.domain.AuditEvent;
-import com.nanobase.specai.audit.domain.AuditEventRepository;
-import com.nanobase.specai.shared.security.CurrentTenant;
+import com.nanobase.specai.audit.application.AuditQueryService;
 import java.time.Instant;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
@@ -15,17 +14,15 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/v1/audit-events")
 public class AuditController {
-    private final AuditEventRepository events;
-    private final CurrentTenant currentTenant;
+    private final AuditQueryService queries;
 
-    public AuditController(AuditEventRepository events, CurrentTenant currentTenant) {
-        this.events = events;
-        this.currentTenant = currentTenant;
+    public AuditController(AuditQueryService queries) {
+        this.queries = queries;
     }
 
     @GetMapping
     Page<AuditResponse> list(@PageableDefault(size = 50, sort = "createdAt") Pageable pageable) {
-        return events.findAllByOrganizationId(currentTenant.require().tenantId(), pageable)
+        return queries.list(pageable)
             .map(AuditResponse::from);
     }
 

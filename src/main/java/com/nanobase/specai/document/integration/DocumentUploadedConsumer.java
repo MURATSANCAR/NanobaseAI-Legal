@@ -186,14 +186,18 @@ public class DocumentUploadedConsumer {
         int retryCount = retryCount(original);
         metrics.consumerRetried();
         if (retryCount >= maximumRetries) {
-            if (event != null && event.payload() != null) {
-                DocumentProcessingJob job = processing.get(
-                    event.organizationId(), event.payload().processingJobId());
-                if (!job.status().terminal()) {
-                    processing.transition(event.organizationId(), job.id(),
-                        DocumentStatus.FAILED, "Doküman işleme başarısız oldu",
-                        safeCode(exception), "Document processing exhausted its retries");
+            try {
+                if (event != null && event.payload() != null) {
+                    DocumentProcessingJob job = processing.get(
+                        event.organizationId(), event.payload().processingJobId());
+                    if (!job.status().terminal()) {
+                        processing.transition(event.organizationId(), job.id(),
+                            DocumentStatus.FAILED, "Doküman işleme başarısız oldu",
+                            safeCode(exception), "Document processing exhausted its retries");
+                    }
                 }
+            } catch (RuntimeException ignored) {
+                // A malformed poison message is still routed to the DLQ.
             }
             rabbit.send(RabbitConfiguration.DEAD_LETTER_EXCHANGE,
                 RabbitConfiguration.DEAD_ROUTING_KEY, copy(original, retryCount + 1));

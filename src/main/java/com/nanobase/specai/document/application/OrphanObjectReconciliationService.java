@@ -60,7 +60,7 @@ public class OrphanObjectReconciliationService {
     public void reconcile() {
         Instant cutoff = clock.instant().minus(gracePeriod);
         storage.list(TEMPORARY_PREFIX).stream()
-            .filter(object -> object.lastModified().isBefore(cutoff))
+            .filter(object -> eligible(object, cutoff))
             .forEach(this::reconcileObject);
     }
 
@@ -102,5 +102,10 @@ public class OrphanObjectReconciliationService {
         } catch (IllegalArgumentException exception) {
             return Optional.empty();
         }
+    }
+
+    static boolean eligible(StoredObject object, Instant cutoff) {
+        return object != null && object.objectKey().startsWith(TEMPORARY_PREFIX)
+            && object.lastModified().isBefore(cutoff);
     }
 }

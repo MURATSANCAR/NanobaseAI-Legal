@@ -123,7 +123,7 @@ public class DocumentService {
             outbox.documentUploaded(principal.tenantId(), event(document, version, job));
             audit.record("DOCUMENT_UPLOADED", "Document", documentId, null,
                 Map.of("documentVersionId", versionId, "sha256", upload.sha256()));
-            return DocumentResponse.from(document, version);
+            return DocumentResponse.from(document, version, job);
         } catch (RuntimeException exception) {
             safeDelete(temporaryKey, exception);
             safeDelete(objectKey, exception);
@@ -160,7 +160,7 @@ public class DocumentService {
             audit.record("DOCUMENT_VERSION_UPLOADED", "Document", documentId, null,
                 Map.of("documentVersionId", versionId, "versionNumber", versionNumber,
                     "sha256", upload.sha256()));
-            return DocumentResponse.from(document, version);
+            return DocumentResponse.from(document, version, job);
         } catch (RuntimeException exception) {
             safeDelete(temporaryKey, exception);
             safeDelete(objectKey, exception);
@@ -174,7 +174,8 @@ public class DocumentService {
         access.requireDocumentView(projectId, principal);
         return documents.findAllByProjectIdAndOrganizationIdOrderByCreatedAtDesc(
             projectId, principal.tenantId()).stream().map(document ->
-                DocumentResponse.from(document, currentVersion(document, principal.tenantId())))
+                DocumentResponse.from(document, currentVersion(document, principal.tenantId()),
+                    processingJobs.latest(principal.tenantId(), document.id())))
             .toList();
     }
 
@@ -186,7 +187,8 @@ public class DocumentService {
         DocumentVersion version = currentVersion(document, principal.tenantId());
         audit.record("DOCUMENT_VIEWED", "Document", documentId, null,
             Map.of("documentVersionId", version.id()));
-        return DocumentResponse.from(document, version);
+        return DocumentResponse.from(document, version,
+            processingJobs.latest(principal.tenantId(), document.id()));
     }
 
     @Transactional(readOnly = true)
@@ -212,7 +214,7 @@ public class DocumentService {
         outbox.documentUploaded(principal.tenantId(), event(document, version, job));
         audit.record("DOCUMENT_REPROCESS_REQUESTED", "Document", documentId, null,
             Map.of("documentVersionId", version.id()));
-        return DocumentResponse.from(document, version);
+        return DocumentResponse.from(document, version, job);
     }
 
     @Transactional
@@ -236,8 +238,10 @@ public class DocumentService {
         return clauses.findAllByDocumentVersionIdAndOrganizationIdOrderBySortOrder(
             version.id(), principal.tenantId()).stream()
             .map(clause -> new ClauseResponse(clause.id(), clause.parentId(),
-                clause.clauseNumber(), clause.title(), clause.sourceText(),
-                clause.pageNumber(), clause.sortOrder())).toList();
+                clause.clauseNumber(), clause.title(), clause.rawText(),
+                clause.normalizedText(), clause.clauseType(), clause.pageStart(),
+                clause.pageEnd(), List.of(), clause.contentHash(),
+                clause.sortOrder())).toList();
     }
 
     Document requireDocument(UUID documentId, TenantPrincipal principal) {

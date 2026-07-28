@@ -5,12 +5,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.minio.BucketExistsArgs;
 import io.minio.MinioClient;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.rabbit.core.RabbitAdmin;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import com.nanobase.specai.tender.infrastructure.ProjectCodeGenerator;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -82,6 +86,7 @@ class PlatformInfrastructureIT {
     @Autowired RabbitAdmin rabbitAdmin;
     @Autowired RedisConnectionFactory redis;
     @Autowired ProjectCodeGenerator projectCodes;
+    @Autowired PlatformTransactionManager transactionManager;
 
     @Test
     void migrationsBucketsQueuesAndRedisAreReady() throws Exception {
@@ -90,13 +95,155 @@ class PlatformInfrastructureIT {
             String.class);
         assertThat(tables).contains(
             "tender_project", "project_member", "document", "document_version",
-            "external_document_mapping", "outbox_event", "audit_event", "processed_event");
+            "external_document_mapping", "outbox_event", "audit_event", "processed_message",
+            "document_processing_job", "processing_event", "document_page", "clause",
+            "document_table", "parser_warning", "ontology", "ontology_version",
+            "ontology_concept", "terminology_catalog", "terminology_entry",
+            "policy_definition", "policy_version", "analysis_profile",
+            "requirement_extraction_job", "requirement", "requirement_revision",
+            "expert_feedback", "evaluation_dataset", "evaluation_case");
         assertThat(minio.bucketExists(
             BucketExistsArgs.builder().bucket("specai-original").build())).isTrue();
-        assertThat(rabbitAdmin.getQueueInfo("document-processing")).isNotNull();
+        assertThat(rabbitAdmin.getQueueInfo("document-processing.request")).isNotNull();
+        assertThat(rabbitAdmin.getQueueInfo("document-processing.result")).isNotNull();
         assertThat(rabbitAdmin.getQueueInfo("document-processing.dlq")).isNotNull();
+        assertThat(rabbitAdmin.getQueueInfo("requirement-extraction.request")).isNotNull();
         try (var connection = redis.getConnection()) {
             assertThat(connection.ping()).isEqualTo("PONG");
+        }
+    }
+
+    @Test
+    void ontologyAndTerminologyAreTenantIsolatedWhileGlobalBaselineIsVisible() {
+        UUID organizationA = UUID.randomUUID();
+        UUID organizationB = UUID.randomUUID();
+        UUID ontologyId = UUID.randomUUID();
+        UUID catalogId = UUID.randomUUID();
+        jdbc.update("insert into organization (id, name) values (?, ?)",
+            organizationA, "Analysis Tenant A");
+        jdbc.update("insert into organization (id, name) values (?, ?)",
+            organizationB, "Analysis Tenant B");
+        TransactionTemplate transactions = new TransactionTemplate(transactionManager);
+        transactions.executeWithoutResult(ignored -> {
+            jdbc.queryForObject(
+                "select set_config('app.current_organization_id', ?, true)",
+                String.class, organizationA.toString());
+            jdbc.update("""
+                insert into ontology (
+                    id, organization_id, code, name, scope, status, created_at, updated_at
+                ) values (?, ?, 'TENANT_ONLY', 'Tenant only', 'ORGANIZATION',
+                          'ACTIVE', now(), now())
+                """, ontologyId, organizationA);
+            jdbc.update("""
+                insert into terminology_catalog (
+                    id, organization_id, name, scope, status, created_at, updated_at
+                ) values (?, ?, 'Tenant terminology', 'ORGANIZATION',
+                          'ACTIVE', now(), now())
+                """, catalogId, organizationA);
+        });
+        Map<String, Integer> counts = transactions.execute(ignored -> {
+            jdbc.queryForObject(
+                "select set_config('app.current_organization_id', ?, true)",
+                String.class, organizationB.toString());
+            return Map.of(
+                "tenantOntology", jdbc.queryForObject(
+                    "select count(*) from ontology where id = ?",
+                    Integer.class, ontologyId),
+                "tenantTerminology", jdbc.queryForObject(
+                    "select count(*) from terminology_catalog where id = ?",
+                    Integer.class, catalogId),
+                "globalOntology", jdbc.queryForObject(
+                    "select count(*) from ontology where code = 'BASE_REQUIREMENT'",
+                    Integer.class));
+        });
+        assertThat(counts).containsEntry("tenantOntology", 0)
+            .containsEntry("tenantTerminology", 0)
+            .containsEntry("globalOntology", 1);
+    }
+
+    @Test
+    void rlsBlocksCrossTenantSqlAccess() {
+        UUID organizationA = UUID.randomUUID();
+        UUID organizationB = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        jdbc.update("insert into organization (id, name) values (?, ?)",
+            organizationA, "Tenant A");
+        jdbc.update("insert into organization (id, name) values (?, ?)",
+            organizationB, "Tenant B");
+        TransactionTemplate transactions = new TransactionTemplate(transactionManager);
+        transactions.executeWithoutResult(ignored -> {
+            jdbc.queryForObject(
+                "select set_config('app.current_organization_id', ?, true)",
+                String.class, organizationA.toString());
+            jdbc.update("""
+                insert into tender_project (
+                    id, organization_id, project_code, name, institution_name,
+                    priority, status, created_by, owner_user_id,
+                    created_at, updated_at, version
+                ) values (?, ?, ?, ?, ?, 'NORMAL', 'DRAFT', 'owner', 'owner',
+                          now(), now(), 0)
+                """, projectId, organizationA, "RLS-" + UUID.randomUUID(),
+                "RLS project", "Institution");
+        });
+        Integer visible = transactions.execute(ignored -> {
+            jdbc.queryForObject(
+                "select set_config('app.current_organization_id', ?, true)",
+                String.class, organizationB.toString());
+            return jdbc.queryForObject(
+                "select count(*) from tender_project where id = ?",
+                Integer.class, projectId);
+        });
+        assertThat(visible).isZero();
+    }
+
+    @Test
+    void skipLockedPreventsTwoPublishersFromClaimingSameOutboxRow() throws Exception {
+        UUID organizationId = UUID.randomUUID();
+        UUID eventId = UUID.randomUUID();
+        jdbc.update("insert into organization (id, name) values (?, ?)",
+            organizationId, "Outbox Tenant");
+        jdbc.update("""
+            insert into outbox_event (
+                id, event_id, aggregate_type, aggregate_id, event_type, event_version,
+                routing_key, payload_json, organization_id, correlation_id, status,
+                retry_count, next_attempt_at, created_at, updated_at, version
+            ) values (?, ?, 'Document', ?, 'Requested', 1, ?, '{}'::jsonb, ?, ?,
+                      'PENDING', 0, now(), now(), now(), 0)
+            """, eventId, eventId, UUID.randomUUID(),
+            "document.processing.requested.v1", organizationId, UUID.randomUUID());
+        TransactionTemplate transactions = new TransactionTemplate(transactionManager);
+        java.util.concurrent.CountDownLatch firstLocked =
+            new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch secondRead =
+            new java.util.concurrent.CountDownLatch(1);
+        try (var executor = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+            var first = executor.submit(() -> transactions.execute(ignored -> {
+                List<UUID> claimed = jdbc.queryForList("""
+                    select id from outbox_event
+                    where status = 'PENDING' and next_attempt_at <= now()
+                    order by created_at for update skip locked limit 1
+                    """, UUID.class);
+                firstLocked.countDown();
+                try {
+                    secondRead.await();
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException(exception);
+                }
+                return claimed;
+            }));
+            var second = executor.submit(() -> {
+                firstLocked.await();
+                List<UUID> claimed = transactions.execute(ignored -> jdbc.queryForList("""
+                    select id from outbox_event
+                    where status = 'PENDING' and next_attempt_at <= now()
+                    order by created_at for update skip locked limit 1
+                    """, UUID.class));
+                secondRead.countDown();
+                return claimed;
+            });
+            assertThat(first.get()).containsExactly(eventId);
+            assertThat(second.get()).isEmpty();
         }
     }
 

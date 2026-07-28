@@ -4,9 +4,16 @@ import com.nanobase.specai.document.api.DocumentContracts.ClauseResponse;
 import com.nanobase.specai.document.api.DocumentContracts.DocumentResponse;
 import com.nanobase.specai.document.api.DocumentContracts.DocumentVersionResponse;
 import com.nanobase.specai.document.api.DocumentContracts.DownloadUrlResponse;
+import com.nanobase.specai.document.api.DocumentContracts.DocumentPageResponse;
+import com.nanobase.specai.document.api.DocumentContracts.DocumentTableResponse;
+import com.nanobase.specai.document.api.DocumentContracts.PageResponse;
+import com.nanobase.specai.document.api.DocumentContracts.ProcessingJobResponse;
+import com.nanobase.specai.document.application.DocumentQueryService;
 import com.nanobase.specai.document.application.DocumentService;
-import com.nanobase.specai.document.application.ProcessingEventPublisher;
+import com.nanobase.specai.document.application.ProcessingEventStreamService;
 import com.nanobase.specai.document.domain.DocumentType;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import java.net.URI;
 import java.util.List;
 import java.util.UUID;
@@ -16,20 +23,26 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import org.springframework.validation.annotation.Validated;
 
 @RestController
 @RequestMapping("/api/v1")
+@Validated
 public class DocumentController {
     private final DocumentService service;
-    private final ProcessingEventPublisher processingEvents;
+    private final DocumentQueryService queries;
+    private final ProcessingEventStreamService processingEvents;
 
-    public DocumentController(DocumentService service, ProcessingEventPublisher processingEvents) {
+    public DocumentController(DocumentService service, DocumentQueryService queries,
+                              ProcessingEventStreamService processingEvents) {
         this.service = service;
+        this.queries = queries;
         this.processingEvents = processingEvents;
     }
 
@@ -78,15 +91,72 @@ public class DocumentController {
         return new DownloadUrlResponse(url.toString(), 300);
     }
 
+    @GetMapping("/documents/{documentId}/pages")
+    PageResponse<DocumentPageResponse> pages(
+        @PathVariable UUID documentId,
+        @RequestParam(defaultValue = "0") @Min(0) int page,
+        @RequestParam(defaultValue = "50") @Min(1) @Max(100) int size) {
+        return queries.pages(documentId, page, size);
+    }
+
+    @GetMapping("/documents/{documentId}/pages/{pageNumber}")
+    DocumentPageResponse page(@PathVariable UUID documentId,
+                              @PathVariable @Min(1) int pageNumber) {
+        return queries.page(documentId, pageNumber);
+    }
+
     @GetMapping("/documents/{documentId}/clauses")
-    List<ClauseResponse> clauses(@PathVariable UUID documentId) {
-        return service.clauses(documentId);
+    PageResponse<ClauseResponse> clauses(
+        @PathVariable UUID documentId,
+        @RequestParam(required = false) UUID parentClauseId,
+        @RequestParam(required = false) String clauseType,
+        @RequestParam(required = false) @Min(1) Integer pageNumber,
+        @RequestParam(required = false) String search,
+        @RequestParam(defaultValue = "0") @Min(0) int page,
+        @RequestParam(defaultValue = "100") @Min(1) @Max(200) int size) {
+        return queries.clauses(documentId, parentClauseId, clauseType, pageNumber,
+            search, page, size);
+    }
+
+    @GetMapping("/documents/{documentId}/clauses/{clauseId}")
+    ClauseResponse clause(@PathVariable UUID documentId, @PathVariable UUID clauseId) {
+        return queries.clause(documentId, clauseId);
+    }
+
+    @GetMapping("/documents/{documentId}/tables")
+    PageResponse<DocumentTableResponse> tables(
+        @PathVariable UUID documentId,
+        @RequestParam(defaultValue = "0") @Min(0) int page,
+        @RequestParam(defaultValue = "50") @Min(1) @Max(100) int size) {
+        return queries.tables(documentId, page, size);
+    }
+
+    @GetMapping("/documents/{documentId}/processing-jobs")
+    PageResponse<ProcessingJobResponse> jobs(
+        @PathVariable UUID documentId,
+        @RequestParam(defaultValue = "0") @Min(0) int page,
+        @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
+        return queries.jobs(documentId, page, size);
+    }
+
+    @PostMapping("/processing-jobs/{jobId}/cancel")
+    ProcessingJobResponse cancel(@PathVariable UUID jobId) {
+        return queries.cancel(jobId);
     }
 
     @GetMapping(value = "/documents/{documentId}/processing-events",
         produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    SseEmitter processingEvents(@PathVariable UUID documentId) {
-        DocumentResponse document = service.get(documentId);
-        return processingEvents.subscribe(documentId, document.currentVersionId(), document.status());
+    SseEmitter processingEvents(
+        @PathVariable UUID documentId,
+        @RequestHeader(name = "Last-Event-ID", required = false) String lastEventId) {
+        return processingEvents.document(documentId, lastEventId);
+    }
+
+    @GetMapping(value = "/processing-jobs/{jobId}/events",
+        produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    SseEmitter processingJobEvents(
+        @PathVariable UUID jobId,
+        @RequestHeader(name = "Last-Event-ID", required = false) String lastEventId) {
+        return processingEvents.job(jobId, lastEventId);
     }
 }

@@ -8,8 +8,10 @@ import {
   Building2,
   CalendarDays,
   CheckCircle2,
+  ChevronLeft,
   ChevronRight,
   Download,
+  Eye,
   FileClock,
   FileText,
   FolderKanban,
@@ -26,9 +28,12 @@ import {
   UserPlus,
   Users,
   X,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import type { User } from "oidc-client-ts";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import type { PDFDocumentProxy } from "pdfjs-dist";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { auditApi, type AuditEvent } from "@/src/modules/audit/api";
 import {
   displayName,
@@ -42,7 +47,12 @@ import {
   documentApi,
   documentTypeLabels,
   statusLabels,
+  subscribeToProcessingEvents,
+  type BoundingBox,
+  type Clause,
   type DocumentType,
+  type ProcessingEvent,
+  type ProcessingJob,
   type ProjectDocument,
 } from "@/src/modules/documents/api";
 import {
@@ -51,10 +61,16 @@ import {
   type TenderDraft,
   type TenderProject,
 } from "@/src/modules/tenders/api";
+import {
+  requirementApi,
+  type ExtractionJob,
+  type Requirement,
+  type RequirementColumn,
+} from "@/src/modules/requirements/api";
 import { isApiError, type ApiProblem } from "@/src/shared/api";
 
 type Screen = "dashboard" | "projects" | "project";
-type ProjectTab = "overview" | "documents" | "activity" | "settings";
+type ProjectTab = "overview" | "documents" | "requirements" | "activity" | "settings";
 
 const emptyDraft: TenderDraft = {
   name: "",
@@ -74,6 +90,7 @@ const processingStatuses = new Set([
   "UPLOADED",
   "VIRUS_SCANNING",
   "CLASSIFYING",
+  "QUEUED",
   "PARSING",
   "OCR_PROCESSING",
   "STRUCTURE_DETECTION",
@@ -107,6 +124,7 @@ export default function SpecAiPortal() {
   const canWrite = roles.some((role) =>
     ["SYSTEM_ADMIN", "TENANT_ADMIN", "TENDER_MANAGER"].includes(role),
   );
+  const canAnalyze = canWrite || roles.includes("TECHNICAL_REVIEWER");
 
   const showProblem = useCallback((error: unknown) => {
     if (isApiError(error)) setProblem(error.problem);
@@ -346,6 +364,7 @@ export default function SpecAiPortal() {
             <ProjectDetail project={selectedProject} tab={projectTab}
               onTab={setProjectTab} documents={documents} members={members}
               auditEvents={auditEvents} token={token} canWrite={canWrite}
+              canAnalyze={canAnalyze}
               loading={loading} onBack={() => setScreen("projects")}
               onDocuments={setDocuments} onMembers={setMembers}
               onProblem={showProblem} onNotify={notify}
@@ -507,7 +526,7 @@ function ProjectList({ projects, statusFilter, institutionFilter, canWrite, onSt
 }
 
 function ProjectDetail({ project, tab, onTab, documents, members, auditEvents, token,
-  canWrite, loading, onBack, onDocuments, onMembers, onProblem, onNotify,
+  canWrite, canAnalyze, loading, onBack, onDocuments, onMembers, onProblem, onNotify,
   onArchive, busy }: {
   project: TenderProject;
   tab: ProjectTab;
@@ -517,6 +536,7 @@ function ProjectDetail({ project, tab, onTab, documents, members, auditEvents, t
   auditEvents: AuditEvent[];
   token: string;
   canWrite: boolean;
+  canAnalyze: boolean;
   loading: boolean;
   onBack: () => void;
   onDocuments: (documents: ProjectDocument[]) => void;
@@ -536,6 +556,7 @@ function ProjectDetail({ project, tab, onTab, documents, members, auditEvents, t
     </div>
     <nav className="tabs" aria-label="Proje detay sekmeleri">
       {([["overview", "Genel bakış"], ["documents", "Dokümanlar"],
+        ["requirements", "Gereksinim matrisi"],
         ["activity", "Aktivite geçmişi"], ["settings", "Ayarlar"]] as const)
         .map(([id, label]) => <button key={id} className={tab === id ? "active" : ""}
           onClick={() => onTab(id)}>{label}</button>)}
@@ -544,6 +565,9 @@ function ProjectDetail({ project, tab, onTab, documents, members, auditEvents, t
       {tab === "overview" && <Overview project={project} documents={documents} members={members} />}
       {tab === "documents" && <DocumentCenter project={project} documents={documents}
         token={token} canWrite={canWrite} onDocuments={onDocuments}
+        onProblem={onProblem} onNotify={onNotify} />}
+      {tab === "requirements" && <RequirementsMatrix project={project}
+        documents={documents} token={token} canWrite={canAnalyze}
         onProblem={onProblem} onNotify={onNotify} />}
       {tab === "activity" && <ActivityHistory events={auditEvents} />}
       {tab === "settings" && <ProjectSettings project={project} members={members}
@@ -582,6 +606,145 @@ function Overview({ project, documents, members }: {
   </section>;
 }
 
+function RequirementsMatrix({ project, documents, token, canWrite, onProblem, onNotify }: {
+  project: TenderProject;
+  documents: ProjectDocument[];
+  token: string;
+  canWrite: boolean;
+  onProblem: (error: unknown) => void;
+  onNotify: (message: string) => void;
+}) {
+  const [requirements, setRequirements] = useState<Requirement[]>([]);
+  const [columns, setColumns] = useState<RequirementColumn[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [job, setJob] = useState<ExtractionJob>();
+  const [documentId, setDocumentId] = useState(
+    documents.find((document) => document.status === "READY" && document.includedInAnalysis)?.id ?? "",
+  );
+  const [explanation, setExplanation] = useState<Record<string, unknown>>();
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [page, grid] = await Promise.all([
+        requirementApi.list(token, project.id),
+        requirementApi.grid(token),
+      ]);
+      setRequirements(page.content);
+      setColumns(grid.columns.filter((column) => column.visible));
+    } catch (error) {
+      onProblem(error);
+    } finally {
+      setLoading(false);
+    }
+  }, [onProblem, project.id, token]);
+
+  useEffect(() => {
+    const initialLoad = window.setTimeout(() => { void load(); }, 0);
+    return () => window.clearTimeout(initialLoad);
+  }, [load]);
+
+  useEffect(() => {
+    if (!job || ["COMPLETED", "FAILED", "CANCELLED"].includes(job.status)) return;
+    const timer = window.setInterval(async () => {
+      try {
+        const current = await requirementApi.job(token, job.id);
+        setJob(current);
+        if (current.status === "COMPLETED") {
+          window.clearInterval(timer);
+          await load();
+          onNotify(`${current.extractedRequirementCount} gereksinim çıkarıldı`);
+        }
+      } catch (error) {
+        window.clearInterval(timer);
+        onProblem(error);
+      }
+    }, 2000);
+    return () => window.clearInterval(timer);
+  }, [job, load, onNotify, onProblem, token]);
+
+  async function startExtraction() {
+    if (!documentId) return;
+    try {
+      const created = await requirementApi.start(token, documentId);
+      setJob(created);
+      onNotify("Dinamik analiz profili oluşturuldu ve iş kuyruğa alındı");
+    } catch (error) {
+      onProblem(error);
+    }
+  }
+
+  async function showExplanation(requirement: Requirement) {
+    try {
+      setExplanation(await requirementApi.explanation(token, requirement.id));
+    } catch (error) {
+      onProblem(error);
+    }
+  }
+
+  return <section className="panel requirement-matrix">
+    <div className="panel-head"><div><b>Dinamik gereksinim matrisi</b>
+      <span>Kolonlar aktif ontology ve attributes şemasından yüklenir</span></div>
+      {canWrite && <div className="requirement-actions">
+        <select value={documentId} onChange={(event) => setDocumentId(event.target.value)}>
+          <option value="">Hazır doküman seçin</option>
+          {documents.filter((document) => document.status === "READY" &&
+            document.includedInAnalysis).map((document) =>
+            <option key={document.id} value={document.id}>{document.logicalName}</option>)}
+        </select>
+        <button className="primary" disabled={!documentId ||
+          (job && !["COMPLETED", "FAILED", "CANCELLED"].includes(job.status))}
+          onClick={startExtraction}><Activity />Analizi başlat</button>
+      </div>}
+    </div>
+    {job && <div className="extraction-progress">
+      <div><b>{job.status.replaceAll("_", " ")}</b>
+        <span>{job.processedClauseCount}/{job.totalClauseCount} madde ·
+          {" "}{job.extractedRequirementCount} gereksinim ·
+          {" "}{job.manualReviewCount} inceleme</span></div>
+      <progress max={Math.max(job.totalClauseCount, 1)} value={job.processedClauseCount} />
+    </div>}
+    {loading ? <div className="processing"><LoaderCircle className="spin" />Yükleniyor…</div>
+      : <div className="requirement-table-wrap"><table className="requirement-table">
+        <thead><tr>{columns.map((column) =>
+          <th key={column.key}>{column.label}</th>)}<th>Açıklama</th></tr></thead>
+        <tbody>{requirements.map((requirement) => <tr key={requirement.id}>
+          {columns.map((column) => <td key={column.key}>
+            {formatRequirementValue(requirement, column)}</td>)}
+          <td><button className="icon-button" aria-label="Açıklamayı göster"
+            onClick={() => showExplanation(requirement)}><Eye /></button></td>
+        </tr>)}</tbody>
+      </table>{!requirements.length &&
+        <Empty text="Henüz çıkarılmış gereksinim bulunmuyor." />}</div>}
+    {explanation && <div className="explanation-drawer">
+      <div><b>Açıklanabilirlik</b><button onClick={() => setExplanation(undefined)}
+        aria-label="Açıklamayı kapat"><X /></button></div>
+      <pre>{JSON.stringify(explanation, null, 2)}</pre>
+    </div>}
+  </section>;
+}
+
+function formatRequirementValue(requirement: Requirement, column: RequirementColumn) {
+  const aliases: Record<string, unknown> = {
+    sourceClause: requirement.sourceClauseId,
+    primaryConcept: requirement.primaryConceptId,
+  };
+  const value = column.key in aliases ? aliases[column.key] : valueAt(requirement, column.key);
+  if (value === undefined || value === null || value === "") return "—";
+  if (column.type === "PERCENT" && typeof value === "number") {
+    return `%${Math.round(value * 100)}`;
+  }
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value).replaceAll("_", " ");
+}
+
+function valueAt(value: unknown, path: string): unknown {
+  return path.split(".").reduce<unknown>((current, part) => {
+    if (!current || typeof current !== "object") return undefined;
+    return (current as Record<string, unknown>)[part];
+  }, value);
+}
+
 function DocumentCenter({ project, documents, token, canWrite, onDocuments,
   onProblem, onNotify }: {
   project: TenderProject;
@@ -595,6 +758,8 @@ function DocumentCenter({ project, documents, token, canWrite, onDocuments,
   const [uploadOpen, setUploadOpen] = useState(false);
   const [busyId, setBusyId] = useState("");
   const [versions, setVersions] = useState<Record<string, boolean>>({});
+  const [reviewDocumentId, setReviewDocumentId] = useState("");
+  const reviewDocument = documents.find((item) => item.id === reviewDocumentId);
 
   async function upload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -673,13 +838,28 @@ function DocumentCenter({ project, documents, token, canWrite, onDocuments,
         <span className="file-icon"><FileText /></span>
         <div className="document-name"><b>{document.logicalName}</b>
           <small>{documentTypeLabels[document.documentType]} · v{document.currentVersionNumber}
-            {document.currentVersion && ` · ${formatBytes(document.currentVersion.fileSize)}`}</small></div>
+            {document.currentVersion && ` · ${formatBytes(document.currentVersion.fileSize)}`}
+            {document.currentVersion?.pageCount
+              ? ` · ${document.currentVersion.pageCount} sayfa` : ""}</small>
+          <small>{document.currentJob?.provider || "Parser bekleniyor"}
+            {document.currentVersion?.ocrRequired ? " · OCR" : " · Dijital metin"}
+            {` · ${document.createdBy} · ${new Date(document.createdAt)
+              .toLocaleString("tr-TR")}`}</small></div>
         <span className={`processing-badge ${document.status.toLowerCase()}`}>
           {processingStatuses.has(document.status) && <LoaderCircle className="spin" />}
-          {statusLabels[document.status]}</span>
-        {document.currentVersion?.errorMessage &&
-          <p className="document-error">{document.currentVersion.errorMessage}</p>}
+          {statusLabels[document.status]}
+          {document.currentJob && processingStatuses.has(document.status)
+            ? ` · %${document.currentJob.progress}` : ""}</span>
+        {(document.currentJob?.errorMessage || document.currentVersion?.errorMessage) &&
+          <p className="document-error">{document.currentJob?.errorMessage
+            || document.currentVersion?.errorMessage}</p>}
+        {!!document.currentJob?.warnings.length &&
+          <p className="document-warning">{document.currentJob.warnings.length}
+            {" "}parser uyarısı</p>}
         <div className="document-actions">
+          <button title="Dokümanı incele" onClick={() => setReviewDocumentId(document.id)}>
+            <Eye />
+          </button>
           <button title="Versiyonları göster" onClick={() =>
             setVersions((current) => ({ ...current, [document.id]: !current[document.id] }))}>
             <FileClock />
@@ -699,6 +879,9 @@ function DocumentCenter({ project, documents, token, canWrite, onDocuments,
       </article>)}
       {!documents.length && <Empty text="Bu projeye henüz doküman yüklenmedi." />}
     </div>
+    {reviewDocument && <DocumentReview document={reviewDocument} token={token}
+      canWrite={canWrite} onClose={() => setReviewDocumentId("")}
+      onProblem={onProblem} />}
   </section>;
 }
 
@@ -717,6 +900,255 @@ function VersionList({ token, document, onProblem }: {
         <span>{version.originalFileName}</span><small>{statusLabels[version.processingStatus]}
           · {new Date(version.uploadedAt).toLocaleString("tr-TR")}</small></div>)}
   </div>;
+}
+
+function DocumentReview({ document, token, canWrite, onClose, onProblem }: {
+  document: ProjectDocument;
+  token: string;
+  canWrite: boolean;
+  onClose: () => void;
+  onProblem: (error: unknown) => void;
+}) {
+  const [clauses, setClauses] = useState<Clause[]>([]);
+  const [selected, setSelected] = useState<Clause>();
+  const [jobs, setJobs] = useState<ProcessingJob[]>([]);
+  const [pdfUrl, setPdfUrl] = useState("");
+  const [page, setPage] = useState(1);
+  const [zoom, setZoom] = useState(1.15);
+  const [query, setQuery] = useState("");
+  const [liveEvent, setLiveEvent] = useState<ProcessingEvent>();
+  const [streamState, setStreamState] = useState<"connecting" | "live" | "polling">(
+    "connecting",
+  );
+
+  const load = useCallback(async () => {
+    const [clausePage, jobPage] = await Promise.all([
+      documentApi.clauses(token, document.id, query),
+      documentApi.jobs(token, document.id),
+    ]);
+    setClauses(clausePage.content);
+    setJobs(jobPage.content);
+    if (!selected && clausePage.content[0]) setSelected(clausePage.content[0]);
+  }, [document.id, query, selected, token]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => load().catch(onProblem), 200);
+    return () => window.clearTimeout(timer);
+  }, [load, onProblem]);
+
+  useEffect(() => {
+    if (document.currentVersion?.mimeType !== "application/pdf") return;
+    documentApi.downloadUrl(token, document.id)
+      .then((response) => setPdfUrl(response.url))
+      .catch(onProblem);
+  }, [document.currentVersion?.mimeType, document.id, onProblem, token]);
+
+  useEffect(() => {
+    if (!processingStatuses.has(document.status)) {
+      return;
+    }
+    const controller = new AbortController();
+    let lastEventId: string | undefined;
+    async function connect() {
+      while (!controller.signal.aborted) {
+        try {
+          await subscribeToProcessingEvents(token, document.id, (event) => {
+            lastEventId = event.eventId;
+            setLiveEvent(event);
+            setStreamState("live");
+            setJobs((current) => current.map((job) => job.id === event.jobId
+              ? { ...job, status: event.stage, currentStage: event.stage,
+                progress: event.progress, updatedAt: event.occurredAt }
+              : job));
+          }, controller.signal, lastEventId);
+        } catch {
+          if (!controller.signal.aborted) setStreamState("polling");
+        }
+        if (!controller.signal.aborted) {
+          await new Promise((resolve) => window.setTimeout(resolve, 2000));
+        }
+      }
+    }
+    connect();
+    return () => controller.abort();
+  }, [document.id, document.status, token]);
+
+  useEffect(() => {
+    if (!processingStatuses.has(document.status) && streamState !== "polling") return;
+    const timer = window.setInterval(() => load().catch(() => undefined), 5000);
+    return () => window.clearInterval(timer);
+  }, [document.status, load, streamState]);
+
+  const activeJob = jobs[0] ?? document.currentJob;
+  const selectedBoxes = (selected?.boundingBoxes ?? [])
+    .filter((box) => box.page === page);
+
+  async function cancel() {
+    if (!activeJob) return;
+    try {
+      const cancelled = await documentApi.cancel(token, activeJob.id);
+      setJobs((current) => current.map((job) =>
+        job.id === cancelled.id ? cancelled : job));
+    } catch (error) {
+      onProblem(error);
+    }
+  }
+
+  return <div className="review-backdrop">
+    <section className="document-review" aria-label="Doküman inceleme">
+      <header className="review-head">
+        <div><p className="eyebrow">DOKÜMAN İNCELEME</p><h2>{document.logicalName}</h2>
+          <span>{activeJob?.provider || "Parser bekleniyor"} ·
+            {" "}{activeJob ? statusLabels[activeJob.status] : statusLabels[document.status]}
+            {" "}· %{liveEvent?.progress ?? activeJob?.progress ?? 0} ·
+            {" "}{!processingStatuses.has(document.status) ? "Tamamlandı"
+              : streamState === "live" ? "Canlı" : streamState === "polling"
+              ? "Polling fallback" : "Bağlanıyor"}</span></div>
+        <div className="review-head-actions">
+          {canWrite && activeJob && processingStatuses.has(activeJob.status) &&
+            <button className="secondary" onClick={cancel}>İptal</button>}
+          <button className="icon-button" onClick={onClose} aria-label="İncelemeyi kapat">
+            <X />
+          </button>
+        </div>
+      </header>
+      <div className="review-grid">
+        <aside className="clause-panel">
+          <label><Search /><input value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Maddelerde ara" /></label>
+          <div className="clause-tree">
+            <ClauseTree clauses={clauses} parentId={undefined} selectedId={selected?.id}
+              onSelect={(clause) => { setSelected(clause); setPage(clause.pageStart); }} />
+          </div>
+        </aside>
+        <main className="pdf-panel">
+          <div className="pdf-toolbar">
+            <button onClick={() => setPage((value) => Math.max(1, value - 1))}
+              aria-label="Önceki sayfa"><ChevronLeft /></button>
+            <span>Sayfa {page}</span>
+            <button onClick={() => setPage((value) => value + 1)}
+              aria-label="Sonraki sayfa"><ChevronRight /></button>
+            <button onClick={() => setZoom((value) => Math.max(.6, value - .15))}
+              aria-label="Uzaklaştır"><ZoomOut /></button>
+            <button onClick={() => setZoom((value) => Math.min(2.5, value + .15))}
+              aria-label="Yakınlaştır"><ZoomIn /></button>
+          </div>
+          {pdfUrl
+            ? <PdfCanvas url={pdfUrl} pageNumber={page} zoom={zoom}
+                highlights={selectedBoxes} />
+            : <div className="pdf-placeholder"><FileText />
+                <p>PDF önizlemesi yalnız PDF dokümanlarında gösterilir.</p></div>}
+        </main>
+        <aside className="clause-detail">
+          {selected ? <>
+            <p className="eyebrow">SEÇİLİ MADDE</p>
+            <h3>{selected.number || "—"} {selected.title}</h3>
+            <dl>
+              <div><dt>Sayfa</dt><dd>{selected.pageStart}–{selected.pageEnd}</dd></div>
+              <div><dt>Tür</dt><dd>{selected.clauseType || "Belirtilmedi"}</dd></div>
+              <div><dt>Parser</dt><dd>{activeJob?.provider || "—"}</dd></div>
+              <div><dt>Hash</dt><dd className="hash">{selected.contentHash}</dd></div>
+            </dl>
+            <h4>Ham metin</h4><p>{selected.rawText}</p>
+            <h4>Normalize metin</h4><p>{selected.normalizedText}</p>
+            <h4>Kaynak koordinatları</h4>
+            <pre>{JSON.stringify(selected.boundingBoxes, null, 2)}</pre>
+            {!!activeJob?.warnings.length && <>
+              <h4>Parser uyarıları</h4>
+              {activeJob.warnings.map((warning) =>
+                <p className="warning-box" key={warning.id}>
+                  <AlertTriangle />{warning.warningCode}: {warning.message}</p>)}
+            </>}
+          </> : <Empty text="İncelemek için bir madde seçin." />}
+          <details className="job-history"><summary>Processing geçmişi</summary>
+            {jobs.map((job) => <div key={job.id}><b>{statusLabels[job.status]}</b>
+              <small>{job.provider || "—"} · %{job.progress} ·
+                {" "}{new Date(job.createdAt).toLocaleString("tr-TR")}</small></div>)}
+          </details>
+        </aside>
+      </div>
+    </section>
+  </div>;
+}
+
+function ClauseTree({ clauses, parentId, selectedId, onSelect }: {
+  clauses: Clause[];
+  parentId?: string;
+  selectedId?: string;
+  onSelect: (clause: Clause) => void;
+}) {
+  const children = clauses.filter((clause) => clause.parentId === parentId
+    || (!clause.parentId && !parentId));
+  if (!children.length) return parentId ? null : <Empty text="Henüz madde çıkarılmadı." />;
+  return <ul>{children.map((clause) => <li key={clause.id}>
+    <button className={selectedId === clause.id ? "active" : ""}
+      onClick={() => onSelect(clause)}>
+      <b>{clause.number || "•"}</b><span>{clause.title || clause.normalizedText.slice(0, 80)}</span>
+      <small>s. {clause.pageStart}</small>
+    </button>
+    <ClauseTree clauses={clauses} parentId={clause.id}
+      selectedId={selectedId} onSelect={onSelect} />
+  </li>)}</ul>;
+}
+
+function PdfCanvas({ url, pageNumber, zoom, highlights }: {
+  url: string;
+  pageNumber: number;
+  zoom: number;
+  highlights: BoundingBox[];
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [pdf, setPdf] = useState<PDFDocumentProxy>();
+  const [renderError, setRenderError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    let loaded: PDFDocumentProxy | undefined;
+    import("pdfjs-dist").then((pdfjs) => {
+      pdfjs.GlobalWorkerOptions.workerSrc =
+        new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
+      return pdfjs.getDocument({ url }).promise;
+    }).then((document) => {
+      loaded = document;
+      if (active) {
+        setPdf(document);
+      }
+    }).catch(() => active && setRenderError("PDF güvenli biçimde görüntülenemedi"));
+    return () => {
+      active = false;
+      loaded?.destroy();
+    };
+  }, [url]);
+
+  useEffect(() => {
+    if (!pdf || !canvasRef.current) return;
+    let cancelled = false;
+    pdf.getPage(Math.min(pageNumber, pdf.numPages)).then(async (pdfPage) => {
+      if (cancelled || !canvasRef.current) return;
+      const viewport = pdfPage.getViewport({ scale: zoom });
+      const canvas = canvasRef.current;
+      const context = canvas.getContext("2d");
+      if (!context) return;
+      canvas.width = Math.floor(viewport.width);
+      canvas.height = Math.floor(viewport.height);
+      await pdfPage.render({ canvas, canvasContext: context, viewport }).promise;
+    }).catch(() => !cancelled && setRenderError("PDF sayfası görüntülenemedi"));
+    return () => { cancelled = true; };
+  }, [pageNumber, pdf, zoom]);
+
+  if (renderError) return <div className="pdf-placeholder"><AlertTriangle />
+    <p>{renderError}</p></div>;
+  return <div className="pdf-scroll"><div className="pdf-page">
+    <canvas ref={canvasRef} />
+    <div className="source-highlights">{highlights.map((box, index) =>
+      <span key={`${box.page}-${index}`} style={{
+        left: `${box.x * 100}%`,
+        top: `${box.y * 100}%`,
+        width: `${box.width * 100}%`,
+        height: `${box.height * 100}%`,
+      }} />)}</div>
+  </div></div>;
 }
 
 function ActivityHistory({ events }: { events: AuditEvent[] }) {
