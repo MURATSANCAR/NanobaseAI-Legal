@@ -6,7 +6,7 @@
 | Privilege/JWT tamper/expired/revoked | RS256 issuer/aud config; gerçek IdP yok | NOT_RUN |
 | Unsafe file/ZIP bomb/encrypted PDF | 5 unit test geçti | UNIT_VERIFIED |
 | Malicious PDF/EICAR | Gerçek ClamAV daemon yok | NOT_RUN |
-| Prompt injection | Python test eklendi, syntax geçti; pytest yok | NOT_RUN |
+| Prompt injection | İzole AI ortamında dedicated test 2/2; gerçek model adversarial run yok | UNIT_VERIFIED |
 | Unsafe workflow expression | Safe JSON engine derlendi; fuzz yok | NOT_RUN |
 | Signed URL replay | 5 dk single-object code; runtime yok | NOT_RUN |
 | Rate bypass/quota/backpressure | Policy code ve tests derlendi; Redis/Rabbit yok | NOT_RUN |

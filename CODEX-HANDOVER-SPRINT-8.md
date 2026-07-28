@@ -45,7 +45,7 @@ credential yok ve host port yok. Egress/prefix credential runtime testi yok.
 
 Instruction signals, untrusted classification/delimiter, context isolation, tool disable, strict
 schema, grounding/output validation ve manual review persistence eklendi. Python testleri
-dependency eksikliği nedeniyle koşulmadı; syntax geçti.
+izole servis ortamlarında çalıştırıldı; prompt security testleri 2/2 geçti.
 
 ## 9. Identity hardening
 
@@ -199,18 +199,28 @@ UAT, offline/rollback, pentest, exact license/SBOM/signature ve customer sign-of
 
 ## 42. Çalıştırılan komutlar
 
-- `JAVA_HOME=... mvn -B test` → 89/89 başarılı.
-- `pnpm install --lockfile-only`, `pnpm test` → final tekrar doğrulaması teslim öncesi.
+- `JAVA_HOME=... mvn -B verify` → 97/97 unit başarılı; Docker olmadığı için 6/6
+  Testcontainers integration testi atlandı; build başarılı.
+- `pnpm install --lockfile-only`, `pnpm test` → production build ve 16/16 rendered HTML testi
+  başarılı.
+- `pnpm lint` → başarılı.
+- `pnpm exec playwright test --list` → 4 real-stack E2E senaryosu keşfedildi; runtime
+  çalıştırılmadı.
+- İzole venv içinde iki servis ayrı çalıştırıldı: document intelligence 4/4, AI orchestrator
+  17/17 başarılı.
 - `python3 -m py_compile ...` → başarılı.
 - `bash -n scripts/*.sh` → başarılı.
 - `bash scripts/architecture-test.sh` → 5/5 başarılı.
-- Docker/Testcontainers/k6/Playwright runtime çalıştırılmadı.
+- Docker/k6/Playwright real-stack runtime çalıştırılmadı.
 
 ## 43. Başarısız testler
 
 İlk frontend ara build’i yanlış shared API import’u nedeniyle başarısız oldu; import
-`apiRequest` ile düzeltildi ve final build tekrar çalıştırılır. İlk tool komutlarında sistem
-PATH’inde Java/npm/pytest bulunmadı; bundled runtime kullanıldı. Bunlar gizlenmemiştir.
+`apiRequest` ile düzeltildi ve final build/test geçti. Frontend lint ilk koşumda mevcut Sprint 7
+hook/helper sorunlarını buldu; küçük lifecycle/helper düzeltmeleri sonrası geçti. İki Python
+servisini tek pytest sürecinde koşmak aynı adlı `app.py` modüllerini çakıştırdı; servisler ayrı
+çalışma dizinlerinde yeniden koşuldu ve 21/21 test geçti. İlk tool komutlarında sistem PATH’inde
+Java/npm/pytest bulunmadı; bundled runtime kullanıldı. Bunlar gizlenmemiştir.
 
 ## 44. Tamamlanamayan alanlar
 

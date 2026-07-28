@@ -2,11 +2,15 @@ package com.nanobase.specai.integration.outbox;
 
 import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.BindingBuilder;
+import org.springframework.amqp.core.Declarable;
+import org.springframework.amqp.core.Declarables;
 import org.springframework.amqp.core.DirectExchange;
 import org.springframework.amqp.core.Queue;
 import org.springframework.amqp.core.QueueBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import java.util.ArrayList;
+import java.util.List;
 
 @Configuration
 public class RabbitConfiguration {
@@ -64,6 +68,37 @@ public class RabbitConfiguration {
         "analysis.stale.detected.v1";
     public static final String KNOWLEDGE_QUEUE = "knowledge-extraction.request";
     public static final String COMPLIANCE_QUEUE = "compliance-analysis.request";
+    public static final String SPRINT7_NOTIFICATION_QUEUE = "workflow-notification.request";
+
+    private static final List<String> SPRINT7_NOTIFICATION_EVENTS = List.of(
+        "workflow.instance.started.v1",
+        "workflow.node.entered.v1",
+        "workflow.node.completed.v1",
+        "workflow.transition.executed.v1",
+        "workflow.instance.completed.v1",
+        "workflow.instance.failed.v1",
+        "task.created.v1",
+        "task.assigned.v1",
+        "task.completed.v1",
+        "task.blocked.v1",
+        "task.sla.warning.v1",
+        "task.sla.breached.v1",
+        "task.escalated.v1",
+        "approval.requested.v1",
+        "approval.decision.recorded.v1",
+        "approval.completed.v1",
+        "clarification.review.requested.v1",
+        "clarification.approved.v1",
+        "clarification.sent.v1",
+        "clarification.answer.received.v1",
+        "report.generation.requested.v1",
+        "report.generation.completed.v1",
+        "report.generation.failed.v1",
+        "decision.support.requested.v1",
+        "decision.support.completed.v1",
+        "executive.decision.recorded.v1",
+        "project.finalized.v1",
+        "project.reopened.v1");
 
     @Bean
     DirectExchange specAiExchange() {
@@ -163,6 +198,23 @@ public class RabbitConfiguration {
     Binding complianceBinding(Queue complianceQueue, DirectExchange specAiExchange) {
         return BindingBuilder.bind(complianceQueue).to(specAiExchange)
             .with("compliance.analysis.requested.v1");
+    }
+
+    @Bean
+    Queue sprint7NotificationQueue() {
+        return QueueBuilder.durable(SPRINT7_NOTIFICATION_QUEUE).build();
+    }
+
+    @Bean
+    Declarables sprint7NotificationBindings(
+        Queue sprint7NotificationQueue,
+        DirectExchange specAiExchange) {
+        List<Declarable> bindings = new ArrayList<>();
+        for (String event : SPRINT7_NOTIFICATION_EVENTS) {
+            bindings.add(BindingBuilder.bind(sprint7NotificationQueue)
+                .to(specAiExchange).with(event));
+        }
+        return new Declarables(bindings);
     }
 
     @Bean

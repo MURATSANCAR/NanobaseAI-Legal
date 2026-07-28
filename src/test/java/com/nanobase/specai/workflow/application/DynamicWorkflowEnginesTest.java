@@ -145,6 +145,25 @@ class DynamicWorkflowEnginesTest {
     }
 
     @Test
+    void slaSchedulerUsesPolicyStatusesAndPrefersBreachOverWarning() throws Exception {
+        UUID open = UUID.randomUUID();
+        UUID warned = UUID.randomUUID();
+        UUID breached = UUID.randomUUID();
+        JsonNode policy = mapper.readTree("""
+            {"warningStatusConceptId":"%s","breachedStatusConceptId":"%s"}
+            """.formatted(warned, breached));
+        Instant now = Instant.parse("2026-08-01T12:00:00Z");
+        var warning = Sprint7SlaScheduler.resolveAction(now,
+            now.minusSeconds(1), now.plusSeconds(60), open, policy);
+        assertThat(warning.statusConceptId()).isEqualTo(warned);
+        assertThat(warning.eventType()).isEqualTo("task.sla.warning.v1");
+        var breach = Sprint7SlaScheduler.resolveAction(now,
+            now.minusSeconds(60), now.minusSeconds(1), warned, policy);
+        assertThat(breach.statusConceptId()).isEqualTo(breached);
+        assertThat(breach.eventType()).isEqualTo("task.sla.breached.v1");
+    }
+
+    @Test
     void policyGateAndDecisionSupportRemainExplainableAndHumanControlled()
         throws Exception {
         JsonNode finalization = mapper.readTree("""

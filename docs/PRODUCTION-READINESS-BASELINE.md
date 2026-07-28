@@ -1,8 +1,10 @@
 # Production Readiness Baseline
 
-Tarih: 2026-07-28. Bu tablo yalnız bu çalışma sırasında gözlenen kanıtı kullanır. `mvn test`
-89 testi çalıştırdı; frontend build/test 14 testi hedefler. Docker engine bu hostta olmadığı
-için Testcontainers, gerçek bağımlılık smoke, image build, recovery ve E2E kanıtı üretilmedi.
+Tarih: 2026-07-28. Bu tablo yalnız bu çalışma sırasında gözlenen kanıtı kullanır. `mvn verify`
+97 unit testi başarıyla çalıştırdı; 6 Testcontainers testi Docker yokluğu nedeniyle atlandı.
+Frontend production build, lint ve 16 rendered HTML testi geçti. Python servisleri izole çalışma
+dizinlerinde toplam 21 testi geçti. Docker engine bu hostta olmadığı için gerçek bağımlılık
+smoke, image build, recovery ve E2E kanıtı üretilmedi.
 
 | Bileşen | Kod kanıtı | Test kanıtı | Runtime kanıtı | Durum | Kritik açık |
 |---|---|---|---|---|---|
@@ -13,7 +15,7 @@ için Testcontainers, gerçek bağımlılık smoke, image build, recovery ve E2E
 | Transactional outbox | `OutboxStore`, publisher, retry/backoff | `OutboxReliabilityTest` geçti | Yok | PARTIALLY_VERIFIED | Broker restart/crash recovery |
 | RabbitMQ idempotency | `ConsumerIdempotencyService`, processed message | Birim testi geçti | Yok | PARTIALLY_VERIFIED | Duplicate delivery gerçek broker testi |
 | Document processing | State machine, job service, result persistence | İlgili 13 Java testi geçti | Yok | PARTIALLY_VERIFIED | Gerçek 10–1000 sayfa corpus |
-| Docling integration | Gerçek FastAPI/Docling servisi ve adapter | Java contract testleri geçti; Python testleri kurulmadı | Yok | PARTIALLY_VERIFIED | Model ağırlıklarıyla container smoke |
+| Docling integration | Gerçek FastAPI/Docling servisi ve adapter | Java contract testleri ve document intelligence 4/4 Python testi geçti | Yok | PARTIALLY_VERIFIED | Model ağırlıklarıyla container smoke |
 | OpenContracts adapter | Adapter/router ve feature flag tanımı | Router/contract birim testleri geçti | Yok | PARTIALLY_VERIFIED | Gerçek OpenContracts deployment yok |
 | Clause extraction | Docling provider-neutral result ve persistence | Persistence/contract testleri geçti | Yok | PARTIALLY_VERIFIED | Golden clause ölçümü |
 | Requirement extraction | Dinamik processor/schema/grounding | `DynamicAnalysisEnginesTest` geçti | Yok | PARTIALLY_VERIFIED | Lokal model + golden recall/precision |
@@ -30,7 +32,7 @@ için Testcontainers, gerçek bağımlılık smoke, image build, recovery ve E2E
 | AI evaluation/quality gate | V14 result/gate/shadow/canary modeli, evaluator | Quality gate testleri geçti | Yok | PARTIALLY_VERIFIED | Golden dataset ve gerçek evaluation run |
 | Backup/restore/offline | Fail-safe script ve dokümanlar | Shell syntax/architecture kontrolü geçti | Yok | NOT_VERIFIED | Gerçek encrypted backup, restore ve offline install |
 | Observability/alerting | Actuator, Prometheus, OTel bağımlılıkları | Derleme kanıtı | Yok | PARTIALLY_VERIFIED | Collector/dashboard/alert delivery runtime |
-| Operasyon/pilot/AI kalite UI | Admin API ve üç panelli portal | Frontend build/test hedefi | Build çıktısı | PARTIALLY_VERIFIED | Gerçek backend verisiyle browser E2E |
+| Operasyon/pilot/AI kalite UI | Admin API ve üç panelli portal | Frontend build/lint ve rendered HTML testi geçti | Build çıktısı | PARTIALLY_VERIFIED | Gerçek backend verisiyle browser E2E |
 
 ## Servis readiness seviyeleri
 

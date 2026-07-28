@@ -21,7 +21,7 @@ reject "repository does not contain private keys" 'BEGIN (RSA |EC |OPENSSH )?PRI
 reject "model runtime is not host-published" '8092:8090' compose*.yaml
 secret_findings="$(rg -n '(PASSWORD|SECRET|TOKEN):' \
   src/main/resources/application-production.yml compose.production.yaml \
-  | rg -v ':\s*(null|\$\{)' || true)"
+  | rg -v ':[0-9]+:\s*[A-Z0-9_]*(PASSWORD|SECRET|TOKEN):\s*(null|\$\{|$)' || true)"
 if [[ -n "$secret_findings" ]]; then
   printf 'FAIL production config has no default secret\n%s\n' "$secret_findings"
   failures=$((failures + 1))

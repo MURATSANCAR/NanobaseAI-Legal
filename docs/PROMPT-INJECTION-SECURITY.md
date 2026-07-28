@@ -10,5 +10,6 @@ oluşturur, belgeyi otomatik zararlı ilan etmez.
 Invariant: belge sistem prompt’unu, tool yetkisini, tenant scope’u veya çıktı şemasını
 değiştiremez. Log yalnız signal code/score/correlation taşır; belge/prompt içeriğini taşımaz.
 
-Kanıt: `services/ai-orchestrator/test_prompt_security.py` eklendi; bu hostta pytest dependency
-kurulu olmadığı için çalıştırılmadı. Python syntax kontrolü geçti.
+Kanıt: `services/ai-orchestrator/test_prompt_security.py` izole AI orchestrator ortamında
+çalıştırıldı; 2/2 test geçti. AI orchestrator paketinin tamamı 17/17, document intelligence
+paketi 4/4 geçti. Bu birim kanıtı gerçek model adversarial/pentest çalışmasının yerine geçmez.
