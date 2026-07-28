@@ -142,7 +142,7 @@ import {
 } from "@/src/modules/release/api";
 
 
-import { Empty, LoadingPanel, formatComplianceValue, conceptMetadata } from "./_shared";
+import { Empty, LoadingPanel, formatComplianceValue, conceptMetadata, EvidenceDocumentPane } from "./_shared";
 
 export function ComplianceWorkspace({ project, token, canWrite, onProblem, onNotify }: {
   project: TenderProject;
@@ -248,7 +248,7 @@ export function ComplianceWorkspace({ project, token, canWrite, onProblem, onNot
     }
   }
 
-  return <section className="compliance-center">
+  return <section className="compliance-center card-static">
     <div className="panel knowledge-toolbar">
       <div><p className="eyebrow">EVIDENCE-FIRST</p><h2>Uygunluk çalışma alanı</h2>
         <span>Requirement, kanıt ve uzman kararı aynı bağlamda.</span></div>

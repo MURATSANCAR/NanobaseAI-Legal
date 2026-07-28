@@ -232,7 +232,7 @@ export function RiskCenter({ project, token, canWrite, onProblem, onNotify }: {
   }
 
   return <section className="intelligence-layout">
-    <article className="panel intelligence-main">
+    <article className="panel card-static intelligence-main">
       <div className="panel-head"><div><b>Dinamik risk merkezi</b>
         <span>Kolonlar aktif UI configuration ve ontology’den yüklenir</span></div>
         {canWrite && <button className="primary" onClick={start}
@@ -241,7 +241,7 @@ export function RiskCenter({ project, token, canWrite, onProblem, onNotify }: {
       </div>
       {job && <AnalysisProgress job={job} />}
       {loading ? <div className="processing"><LoaderCircle className="spin" />Yükleniyor…</div>
-        : <div className="risk-table-wrap"><table className="risk-table">
+        : <div className="risk-table-wrap mobile-table-scroll"><table className="risk-table">
           <thead><tr>{columns.map((column) =>
             <th key={column.key}>{column.label}</th>)}<th /></tr></thead>
           <tbody>{risks.map((risk) => <tr key={risk.id}

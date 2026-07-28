@@ -190,7 +190,7 @@ export function ConflictWorkspace({ project, token, canWrite, onProblem, onNotif
 
   if (loading) return <div className="processing"><LoaderCircle className="spin" />Yükleniyor…</div>;
   return <section className="workspace-stack">
-    <article className="panel finding-list">
+    <article className="panel card-static finding-list">
       <div className="panel-head"><div><b>Çelişki adayları</b>
         <span>Aşamalı retrieval ve provider registry sonuçları</span></div></div>
       {conflicts.map((conflict) => <button key={conflict.id}
@@ -208,7 +208,7 @@ export function ConflictWorkspace({ project, token, canWrite, onProblem, onNotif
         token={token} onProblem={onProblem} />
       <SourcePanel title="Kaynak B" source={selected.sources?.[1]}
         token={token} onProblem={onProblem} />
-      <section className="panel conflict-decision">
+      <section className="panel card-static conflict-decision">
         <p className="eyebrow">ÇELİŞKİ ANALİZİ</p><h2>{selected.concept}</h2>
         <p>{selected.description}</p>
         <dl><div><dt>Strateji</dt><dd>{selected.comparisonStrategyCode}</dd></div>

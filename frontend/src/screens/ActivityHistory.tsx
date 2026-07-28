@@ -145,7 +145,7 @@ import {
 import { Empty } from "./_shared";
 
 export function ActivityHistory({ events }: { events: AuditEvent[] }) {
-  return <section className="panel activity-history">
+  return <section className="panel activity-history card-static">
     <div className="panel-head"><div><b>Aktivite geçmişi</b>
       <span>Değiştirilemeyen tenant kapsamlı audit kayıtları</span></div><Activity /></div>
     {events.map((event) => <div className="audit-row" key={event.id}>

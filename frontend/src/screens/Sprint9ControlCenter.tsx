@@ -142,7 +142,7 @@ import {
 } from "@/src/modules/release/api";
 
 
-import { MetricCard, Empty, EmptyState, formatRatio, prettyJson, readUnknown, type Sprint9Tab } from "./_shared";
+import { MetricCard, Empty, EmptyState, LoadingPanel, formatRatio, prettyJson, readUnknown, type Sprint9Tab } from "./_shared";
 
 export function Sprint9ControlCenter({ token, canOperate, onProblem, onNotify }: {
   token: string;
@@ -313,7 +313,7 @@ export function Sprint9ControlCenter({ token, canOperate, onProblem, onNotify }:
     }
   }
 
-  if (loadingSprint9 && !dashboard) return <LoadingScreen />;
+  if (loadingSprint9 && !dashboard) return <LoadingPanel />;
   const maximumCause = Math.max(
     1,
     ...(dashboard?.rootCauseDistribution ?? []).map((item) => Number(item.count)),

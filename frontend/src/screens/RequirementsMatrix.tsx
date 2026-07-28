@@ -220,17 +220,17 @@ export function RequirementsMatrix({ project, documents, token, canWrite, onProb
     }
   }
 
-  return <section className="panel requirement-matrix">
-    <div className="panel-head"><div><b>Dinamik gereksinim matrisi</b>
+  return <section className="panel requirement-matrix card-static">
+    <div className="panel-head mobile-toolbar"><div><b>Dinamik gereksinim matrisi</b>
       <span>Kolonlar aktif ontology ve attributes şemasından yüklenir</span></div>
-      {canWrite && <div className="requirement-actions">
+      {canWrite && <div className="requirement-actions mobile-toolbar">
         <select value={documentId} onChange={(event) => setDocumentId(event.target.value)}>
           <option value="">Hazır doküman seçin</option>
           {documents.filter((document) => document.status === "READY" &&
             document.includedInAnalysis).map((document) =>
             <option key={document.id} value={document.id}>{document.logicalName}</option>)}
         </select>
-        <button className="primary" disabled={!documentId ||
+        <button className="btn-primary" disabled={!documentId ||
           (job && !["COMPLETED", "FAILED", "CANCELLED"].includes(job.status))}
           onClick={startExtraction}><Activity />Analizi başlat</button>
       </div>}
@@ -243,7 +243,7 @@ export function RequirementsMatrix({ project, documents, token, canWrite, onProb
       <progress max={Math.max(job.totalClauseCount, 1)} value={job.processedClauseCount} />
     </div>}
     {loading ? <div className="processing"><LoaderCircle className="spin" />Yükleniyor…</div>
-      : <div className="requirement-table-wrap"><table className="requirement-table">
+      : <ScrollTable className="requirement-table-wrap"><table className="requirement-table">
         <thead><tr>{columns.map((column) =>
           <th key={column.key}>{column.label}</th>)}<th>Açıklama</th></tr></thead>
         <tbody>{requirements.map((requirement) => <tr key={requirement.id}>
@@ -253,7 +253,7 @@ export function RequirementsMatrix({ project, documents, token, canWrite, onProb
             onClick={() => showExplanation(requirement)}><Eye /></button></td>
         </tr>)}</tbody>
       </table>{!requirements.length &&
-        <Empty text="Henüz çıkarılmış gereksinim bulunmuyor." />}</div>}
+        <Empty text="Henüz çıkarılmış gereksinim bulunmuyor." />}</ScrollTable>}
     {explanation && <div className="explanation-drawer">
       <div><b>Açıklanabilirlik</b><button onClick={() => setExplanation(undefined)}
         aria-label="Açıklamayı kapat"><X /></button></div>

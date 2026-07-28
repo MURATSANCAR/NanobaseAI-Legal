@@ -203,7 +203,7 @@ export function ProjectWizard({ step, draft, busy, onDraft, onStep, onClose, onS
       <div className="wizard-actions">
         {step > 1 && <button type="button" className="secondary"
           onClick={() => onStep(step - 1)}>Geri</button>}
-        <button className="primary" disabled={busy}>
+        <button className="btn-primary" disabled={busy}>
           {busy ? <LoaderCircle className="spin" /> : step === 4 ? <Plus /> : <ChevronRight />}
           {step === 4 ? "Projeyi oluştur" : "Devam"}
         </button>

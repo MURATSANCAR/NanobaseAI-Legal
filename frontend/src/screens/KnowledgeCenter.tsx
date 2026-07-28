@@ -266,7 +266,7 @@ export function KnowledgeCenter({ documents, token, canWrite, onProblem, onNotif
     }
   }
 
-  return <section className="knowledge-center">
+  return <section className="knowledge-center card-static">
     <div className="panel knowledge-toolbar">
       <div><p className="eyebrow">DİNAMİK BİLGİ GRAFI</p>
         <h2>Firma ve ürün bilgi merkezi</h2>

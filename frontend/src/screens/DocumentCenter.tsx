@@ -211,10 +211,10 @@ export function DocumentCenter({ project, documents, token, canWrite, onDocument
     }
   }
 
-  return <section className="panel document-center">
+  return <section className="panel document-center card-static">
     <div className="panel-head"><div><b>Doküman merkezi</b>
       <span>PDF ve DOCX · durumlar backend enumlarıyla birebir</span></div>
-      {canWrite && <button className="primary" onClick={() => setUploadOpen(true)}>
+      {canWrite && <button className="btn-primary" onClick={() => setUploadOpen(true)}>
         <Upload />Doküman yükle</button>}
     </div>
     {uploadOpen && <form className="inline-upload" onSubmit={upload}>

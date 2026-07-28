@@ -142,7 +142,7 @@ import {
 } from "@/src/modules/release/api";
 
 
-import { Empty, SourceCard, JsonList } from "./_shared";
+import { Empty, SourceCard, JsonList, Score } from "./_shared";
 
 export function AmbiguityWorkspace({ project, token, canWrite, onProblem, onNotify }: {
   project: TenderProject;
@@ -189,7 +189,7 @@ export function AmbiguityWorkspace({ project, token, canWrite, onProblem, onNoti
   }
 
   return <section className="intelligence-layout">
-    <article className="panel finding-list intelligence-main">
+    <article className="panel card-static finding-list intelligence-main">
       <div className="panel-head"><div><b>Belirsizlik çalışma alanı</b>
         <span>Yapısal eksikler, semantic sinyaller ve muhtemel yorumlar</span></div></div>
       {loading ? <div className="processing"><LoaderCircle className="spin" />Yükleniyor…</div>
@@ -202,7 +202,7 @@ export function AmbiguityWorkspace({ project, token, canWrite, onProblem, onNoti
         </button>)}
       {!loading && !findings.length && <Empty text="Belirsizlik adayı bulunmuyor." />}
     </article>
-    {selected && <aside className="panel intelligence-detail">
+    {selected && <aside className="panel card-static intelligence-detail">
       <div className="detail-title"><div><p className="eyebrow">BELİRSİZLİK</p>
         <h2>{selected.concept}</h2></div>
         <button onClick={() => setSelected(undefined)} aria-label="Detayı kapat"><X /></button></div>

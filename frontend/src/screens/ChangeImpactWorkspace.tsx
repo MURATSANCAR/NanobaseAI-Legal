@@ -211,7 +211,7 @@ export function ChangeImpactWorkspace({ documents, token, canWrite, onProblem, o
   }
 
   return <section className="workspace-stack">
-    <article className="panel change-controls">
+    <article className="panel card-static change-controls">
       <div className="panel-head"><div><b>Doküman değişikliği ve etki</b>
         <span>Yapısal diff → requirement graph → seçici re-analysis</span></div></div>
       <div className="change-form">
@@ -237,7 +237,7 @@ export function ChangeImpactWorkspace({ documents, token, canWrite, onProblem, o
       </div>
     </article>
     {changeSet && <div className="change-grid">
-      <article className="panel change-items">
+      <article className="panel card-static change-items">
         <div className="panel-head"><div><b>Change set</b>
           <span>{changeSet.items.length} madde · {changeSet.status}</span></div>
           {canWrite && <button className="primary" onClick={analyze}>
@@ -256,7 +256,7 @@ export function ChangeImpactWorkspace({ documents, token, canWrite, onProblem, o
             {" "}{item.reviewStatus}</small>
         </button>)}
       </article>
-      <article className="panel impact-results">
+      <article className="panel card-static impact-results">
         <div className="panel-head"><div><b>Etkilenen sonuçlar</b>
           <span>Eski sonuçlar silinmez; stale işaretlenir</span></div></div>
         {impact?.affectedEntities.map((entity) => <div className="impact-row" key={entity.id}>

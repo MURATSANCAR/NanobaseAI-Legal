@@ -142,7 +142,7 @@ import {
 } from "@/src/modules/release/api";
 
 
-import { Score } from "./_shared";
+import { Score, LoadingPanel } from "./_shared";
 
 export function OperationsCenter({ token, projects, documents, onProblem }: {
   token: string;
@@ -176,7 +176,7 @@ export function OperationsCenter({ token, projects, documents, onProblem }: {
     return () => window.clearTimeout(timer);
   }, [load]);
 
-  if (operationsLoading && !snapshot) return <LoadingScreen />;
+  if (operationsLoading && !snapshot) return <LoadingPanel />;
   const readyServices = Object.values(snapshot?.services ?? {})
     .filter((service) => service.status === "UP").length;
   const totalServices = Object.keys(snapshot?.services ?? {}).length;
