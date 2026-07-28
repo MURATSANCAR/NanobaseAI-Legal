@@ -33,6 +33,7 @@ import {
   X,
   ZoomIn,
   ZoomOut,
+  type LucideIcon,
 } from "lucide-react";
 import type { User } from "oidc-client-ts";
 import type { PDFDocumentProxy } from "pdfjs-dist";
@@ -505,7 +506,7 @@ function Sprint7Workspace({ token, project, canConfigure, canWrite, onProblem, o
     key: string; label: string; visible: boolean;
   }>>([]);
   const [taskStatuses, setTaskStatuses] = useState<WorkflowConcept[]>([]);
-  const [commentVisibility, setCommentVisibility] = useState<WorkflowConcept[]>([]);
+  const [, setCommentVisibility] = useState<WorkflowConcept[]>([]);
   const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
   const [clarifications, setClarifications] = useState<ClarificationCenter>({
     requests: [],
@@ -627,7 +628,8 @@ function Sprint7Workspace({ token, project, canConfigure, canWrite, onProblem, o
   }, [onProblem, project, token]);
 
   useEffect(() => {
-    void load();
+    const timer = window.setTimeout(() => void load(), 0);
+    return () => window.clearTimeout(timer);
   }, [load]);
 
   const statusFor = useCallback((effect: string) =>
@@ -1167,7 +1169,8 @@ function OperationsCenter({ token, projects, documents, onProblem }: {
   }, [onProblem, token]);
 
   useEffect(() => {
-    void load();
+    const timer = window.setTimeout(() => void load(), 0);
+    return () => window.clearTimeout(timer);
   }, [load]);
 
   if (operationsLoading && !snapshot) return <LoadingScreen />;
@@ -1446,7 +1449,7 @@ function Overview({ project, documents, members }: {
   </section>;
 }
 
-function KnowledgeCenter({ project, documents, token, canWrite, onProblem, onNotify }: {
+function KnowledgeCenter({ documents, token, canWrite, onProblem, onNotify }: {
   project: TenderProject;
   documents: ProjectDocument[];
   token: string;
@@ -1909,8 +1912,13 @@ function EvidenceDocumentPane({ evidence, token }: {
 
   useEffect(() => {
     let active = true;
-    setUrl("");
-    if (!evidence?.document_id) return;
+    if (!evidence?.document_id) {
+      const timer = window.setTimeout(() => setUrl(""), 0);
+      return () => {
+        active = false;
+        window.clearTimeout(timer);
+      };
+    }
     documentApi.downloadUrl(token, evidence.document_id)
       .then((response) => active && setUrl(response.url))
       .catch(() => active && setUrl(""));
@@ -2419,7 +2427,7 @@ function AmbiguityWorkspace({ project, token, canWrite, onProblem, onNotify }: {
   </section>;
 }
 
-function ChangeImpactWorkspace({ project, documents, token, canWrite, onProblem, onNotify }: {
+function ChangeImpactWorkspace({ documents, token, canWrite, onProblem, onNotify }: {
   project: TenderProject;
   documents: ProjectDocument[];
   token: string;
@@ -2439,8 +2447,8 @@ function ChangeImpactWorkspace({ project, documents, token, canWrite, onProblem,
 
   useEffect(() => {
     if (!documentId) {
-      setVersions([]);
-      return;
+      const timer = window.setTimeout(() => setVersions([]), 0);
+      return () => window.clearTimeout(timer);
     }
     documentApi.versions(token, documentId).then((items) => {
       setVersions(items);
@@ -3215,6 +3223,19 @@ function ProblemBanner({ problem, onClose, onRetry }: {
 
 function Empty({ text }: { text: string }) {
   return <div className="empty"><FileText /><p>{text}</p></div>;
+}
+
+function LoadingPanel() {
+  return <div className="empty" aria-live="polite"><LoaderCircle className="spin" />
+    <p>Veriler yükleniyor…</p></div>;
+}
+
+function EmptyState({ icon: Icon, title, body }: {
+  icon: LucideIcon;
+  title: string;
+  body: string;
+}) {
+  return <div className="empty"><Icon /><p><b>{title}</b><br />{body}</p></div>;
 }
 
 function compactDraft(draft: TenderDraft): TenderDraft {
