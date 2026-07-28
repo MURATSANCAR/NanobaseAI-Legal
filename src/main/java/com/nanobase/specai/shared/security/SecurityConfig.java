@@ -50,13 +50,25 @@ public class SecurityConfig {
                     "/api/v1/documents/*/requirement-extractions",
                     "/api/v1/requirement-extractions/*/cancel",
                     "/api/v1/requirement-extractions/*/reprocess",
+                    "/api/v1/tenders/*/risk-analyses",
+                    "/api/v1/risk-analyses/*/cancel",
+                    "/api/v1/risk-analyses/*/retry-failed",
                     "/api/v1/analysis-profiles/preview").hasAnyRole(
                         "SYSTEM_ADMIN", "TENANT_ADMIN", "TENDER_MANAGER",
                         "TECHNICAL_REVIEWER")
                 .requestMatchers(HttpMethod.POST,
                     "/api/v1/requirements/*/review",
                     "/api/v1/requirements/*/split",
-                    "/api/v1/requirements/*/merge").hasAnyRole(
+                    "/api/v1/requirements/*/merge",
+                    "/api/v1/risks/*/review",
+                    "/api/v1/risks/*/assign",
+                    "/api/v1/risks/*/mitigations",
+                    "/api/v1/ambiguities/*/review",
+                    "/api/v1/ambiguities/*/interpretations",
+                    "/api/v1/ambiguities/*/clarification-candidates",
+                    "/api/v1/conflicts/*/review",
+                    "/api/v1/conflicts/*/resolve",
+                    "/api/v1/conflicts/*/clarification-candidates").hasAnyRole(
                         "SYSTEM_ADMIN", "TENANT_ADMIN", "TENDER_MANAGER",
                         "TECHNICAL_REVIEWER")
                 .requestMatchers(HttpMethod.POST,
@@ -71,6 +83,9 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.PUT, "/api/v1/tenders/**").hasAnyRole(
                     "SYSTEM_ADMIN", "TENANT_ADMIN", "TENDER_MANAGER")
                 .requestMatchers(HttpMethod.PUT, "/api/v1/requirements/*").hasAnyRole(
+                    "SYSTEM_ADMIN", "TENANT_ADMIN", "TENDER_MANAGER",
+                    "TECHNICAL_REVIEWER")
+                .requestMatchers(HttpMethod.PUT, "/api/v1/risks/*").hasAnyRole(
                     "SYSTEM_ADMIN", "TENANT_ADMIN", "TENDER_MANAGER",
                     "TECHNICAL_REVIEWER")
                 .requestMatchers(HttpMethod.DELETE, "/api/v1/tenders/*/members/*").hasAnyRole(

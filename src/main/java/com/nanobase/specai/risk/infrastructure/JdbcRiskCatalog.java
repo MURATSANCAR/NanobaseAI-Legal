@@ -144,6 +144,19 @@ public class JdbcRiskCatalog implements RiskCatalogPort {
     }
 
     @Override
+    public UUID activeClarificationStrategy(UUID organizationId) {
+        return requiredUuid("""
+            select version_row.id from clarification_strategy_version version_row
+            join clarification_strategy strategy
+              on strategy.id = version_row.clarification_strategy_id
+            where version_row.status = 'ACTIVE'
+              and (strategy.organization_id = ? or strategy.organization_id is null)
+            order by (strategy.organization_id is not null) desc,
+                     version_row.version_number desc limit 1
+            """, organizationId);
+    }
+
+    @Override
     public JsonNode riskGrid(UUID organizationId) {
         return configuration("""
             select configuration_json from ui_configuration

@@ -46,6 +46,22 @@ public class RabbitConfiguration {
         "expert.feedback.recorded.v1";
     public static final String TERMINOLOGY_CANDIDATE =
         "terminology.candidate.discovered.v1";
+    public static final String RISK_ANALYSIS_QUEUE = "risk-analysis.request";
+    public static final String RISK_ANALYSIS_REQUESTED = "risk.analysis.requested.v1";
+    public static final String RISK_ANALYSIS_STARTED = "risk.analysis.started.v1";
+    public static final String RISK_ANALYSIS_PROGRESS = "risk.analysis.progress.v1";
+    public static final String RISK_ANALYSIS_COMPLETED = "risk.analysis.completed.v1";
+    public static final String RISK_ANALYSIS_FAILED = "risk.analysis.failed.v1";
+    public static final String RISK_REVIEW_REQUIRED = "risk.review.required.v1";
+    public static final String AMBIGUITY_DETECTED = "ambiguity.detected.v1";
+    public static final String CONFLICT_CANDIDATE_DETECTED =
+        "conflict.candidate.detected.v1";
+    public static final String DOCUMENT_CHANGE_SET_CREATED =
+        "document.change-set.created.v1";
+    public static final String IMPACT_ANALYSIS_REQUESTED =
+        "impact.analysis.requested.v1";
+    public static final String ANALYSIS_STALE_DETECTED =
+        "analysis.stale.detected.v1";
     public static final String KNOWLEDGE_QUEUE = "knowledge-extraction.request";
     public static final String COMPLIANCE_QUEUE = "compliance-analysis.request";
 
@@ -114,6 +130,17 @@ public class RabbitConfiguration {
     Binding requirementBinding(Queue requirementQueue, DirectExchange specAiExchange) {
         return BindingBuilder.bind(requirementQueue).to(specAiExchange)
             .with(REQUIREMENT_REQUESTED);
+    }
+
+    @Bean
+    Queue riskAnalysisQueue() {
+        return QueueBuilder.durable(RISK_ANALYSIS_QUEUE).build();
+    }
+
+    @Bean
+    Binding riskAnalysisBinding(Queue riskAnalysisQueue, DirectExchange specAiExchange) {
+        return BindingBuilder.bind(riskAnalysisQueue).to(specAiExchange)
+            .with(RISK_ANALYSIS_REQUESTED);
     }
 
     @Bean

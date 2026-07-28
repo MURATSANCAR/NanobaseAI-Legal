@@ -62,6 +62,10 @@ public interface RiskPersistencePort {
                     UUID changeConceptId, String actor, JsonNode feedback);
     void assignRisk(UUID organizationId, UUID riskId, String ownerUserId,
                     LocalDate dueDate, UUID changeConceptId, String actor);
+    void updateRisk(UUID organizationId, UUID riskId, String title, String description,
+                    Double probability, Double impact, Double exposure,
+                    UUID severityConceptId, UUID statusConceptId,
+                    UUID changeConceptId, String actor);
     List<Map<String, Object>> listAmbiguities(UUID organizationId, UUID projectId);
     Optional<Map<String, Object>> ambiguity(UUID organizationId, UUID ambiguityId);
     List<Map<String, Object>> ambiguitySources(UUID organizationId, UUID ambiguityId);
@@ -81,6 +85,8 @@ public interface RiskPersistencePort {
                          List<PropagationCandidate> candidates);
     List<Map<String, Object>> propagation(UUID organizationId, UUID riskId);
     List<Map<String, Object>> mitigationCandidates(UUID organizationId, UUID riskId);
+    void reviewMitigation(UUID organizationId, UUID riskId, UUID candidateId,
+                          String reviewStatus);
     UUID createClarificationCandidate(UUID organizationId, UUID projectId,
                                       String entityType, UUID entityId,
                                       UUID strategyVersionId, String question, String reason,

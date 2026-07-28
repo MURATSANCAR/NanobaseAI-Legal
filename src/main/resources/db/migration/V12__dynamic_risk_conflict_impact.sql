@@ -697,22 +697,49 @@ INSERT INTO policy_version (
     ('60000000-0000-0000-0000-000000000140', NULL,
      '60000000-0000-0000-0000-000000000130', 1,
      '{"weights":{"groundingGap":0.30,"confidenceGap":0.20,"testabilityGap":0.20,"evidenceGap":0.30},
+       "signalSources":{
+         "groundingGap":{"source":"groundingCoverage","transform":"ONE_MINUS"},
+         "confidenceGap":{"source":"requirementConfidence","transform":"ONE_MINUS"},
+         "testabilityGap":{"source":"testabilityPresent","transform":"ONE_MINUS"},
+         "evidenceGap":{"source":"validEvidencePresent","transform":"ONE_MINUS"}
+       },
        "detailedAnalysisThreshold":0.35,"exposureMethod":"WEIGHTED_SUM",
        "probabilityWeights":{"groundingGap":0.50,"confidenceGap":0.50},
        "impactWeights":{"testabilityGap":0.40,"evidenceGap":0.60},
-       "exposureWeights":{"probability":0.45,"impact":0.55}}'::jsonb,
+       "exposureWeights":{"probability":0.45,"impact":0.55},
+       "fallbackConcept":{"conceptCode":"RISK_CANDIDATE",
+         "reasonCodes":["POLICY_THRESHOLD_EXCEEDED"]},
+       "reviewStatusConceptCode":"REVIEW_REQUIRED",
+       "sourceRoleConceptCode":"SOURCE_SUPPORT"}'::jsonb,
      'ACTIVE', 'platform', now(), now()),
     ('60000000-0000-0000-0000-000000000141', NULL,
      '60000000-0000-0000-0000-000000000131', 1,
-     '{"candidateLimit":100,"minimumRetrievalScore":0.55,
+     '{"candidateLimit":100,"retrievalLimit":250,"minimumRetrievalScore":0.55,
        "stages":["ENTITY_SCOPE","ONTOLOGY_CONCEPT","ATTRIBUTE","VERSION","NUMERIC","RERANK"],
-       "strategies":["STRUCTURED_VALUE"]}'::jsonb,
+       "strategies":["STRUCTURED_VALUE"],
+       "structuredRules":[
+         {"path":"/value","strategyCode":"STRUCTURED_VALUE",
+          "conflictConceptCode":"CONFLICT_CANDIDATE",
+          "description":"Policy-selected structured values differ.","tolerance":0.0},
+         {"path":"/duration/value","strategyCode":"STRUCTURED_VALUE",
+          "conflictConceptCode":"CONFLICT_CANDIDATE",
+          "description":"Policy-selected duration values differ.","tolerance":0.0}
+       ],
+       "reviewStatusConceptCode":"REVIEW_REQUIRED",
+       "leftSideConceptCode":"SOURCE_LEFT","rightSideConceptCode":"SOURCE_RIGHT"}'::jsonb,
      'ACTIVE', 'platform', now(), now()),
     ('60000000-0000-0000-0000-000000000142', NULL,
      '60000000-0000-0000-0000-000000000132', 1,
      '{"features":{"missingMeasurement":0.30,"missingOperator":0.20,
        "missingTestCondition":0.25,"missingAcceptanceThreshold":0.25},
-       "findingThreshold":0.45,"conceptCode":"AMBIGUITY_CANDIDATE"}'::jsonb,
+       "featureSources":{
+         "missingMeasurement":{"jsonPointer":"/measurement"},
+         "missingOperator":{"jsonPointer":"/operator"},
+         "missingTestCondition":{"jsonPointer":"/testCondition"},
+         "missingAcceptanceThreshold":{"jsonPointer":"/acceptanceThreshold"}
+       },
+       "findingThreshold":0.45,
+       "fallbackConcept":{"conceptCode":"AMBIGUITY_CANDIDATE"}}'::jsonb,
      'ACTIVE', 'platform', now(), now()),
     ('60000000-0000-0000-0000-000000000143', NULL,
      '60000000-0000-0000-0000-000000000133', 1,
@@ -720,6 +747,55 @@ INSERT INTO policy_version (
        "impactConceptCode":"REQUIRES_REANALYSIS",
        "stalenessStatusCode":"STALE","stalenessTriggerCode":"SOURCE_CHANGED"}'::jsonb,
      'ACTIVE', 'platform', now(), now());
+
+-- Propagation is an impact-policy behavior; keeping it in the same version makes
+-- re-analysis and propagation reproducible as one immutable snapshot.
+UPDATE policy_version
+SET configuration_json = configuration_json || '{
+  "propagationConceptCode":"PROPAGATED_RISK_CANDIDATE"
+}'::jsonb
+WHERE id = '60000000-0000-0000-0000-000000000143';
+
+INSERT INTO mitigation_catalog (
+    id, organization_id, name, scope, created_at, updated_at
+) VALUES (
+    '60000000-0000-0000-0000-000000000160', NULL,
+    'Global empty mitigation baseline', 'GLOBAL', now(), now()
+);
+INSERT INTO mitigation_catalog_version (
+    id, organization_id, mitigation_catalog_id, version_number, configuration_json,
+    status, approved_by, approved_at, created_at
+) VALUES (
+    '60000000-0000-0000-0000-000000000161', NULL,
+    '60000000-0000-0000-0000-000000000160', 1,
+    '{"patterns":[],"activateGeneratedCandidates":false}'::jsonb,
+    'ACTIVE', 'platform', now(), now()
+);
+UPDATE mitigation_catalog
+SET active_version_id = '60000000-0000-0000-0000-000000000161'
+WHERE id = '60000000-0000-0000-0000-000000000160';
+
+INSERT INTO clarification_strategy (
+    id, organization_id, strategy_code, scope, created_at, updated_at
+) VALUES (
+    '60000000-0000-0000-0000-000000000170', NULL,
+    'GLOBAL_REVIEWED_CLARIFICATION', 'GLOBAL', now(), now()
+);
+INSERT INTO clarification_strategy_version (
+    id, organization_id, clarification_strategy_id, version_number,
+    configuration_json, prompt_package_version_id, output_schema_version_id,
+    status, approved_by, approved_at, created_at
+) VALUES (
+    '60000000-0000-0000-0000-000000000171', NULL,
+    '60000000-0000-0000-0000-000000000170', 1,
+    '{"delivery":"CANDIDATE_ONLY","requiresHumanApproval":true}'::jsonb,
+    '40000000-0000-0000-0000-000000000033',
+    '40000000-0000-0000-0000-000000000021',
+    'ACTIVE', 'platform', now(), now()
+);
+UPDATE clarification_strategy
+SET active_version_id = '60000000-0000-0000-0000-000000000171'
+WHERE id = '60000000-0000-0000-0000-000000000170';
 
 INSERT INTO ui_configuration (
     id, organization_id, configuration_code, configuration_json, active,

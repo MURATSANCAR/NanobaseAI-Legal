@@ -488,6 +488,26 @@ public class JdbcRiskPersistence implements RiskPersistencePort {
             """, ownerUserId, dueDate, riskId, organizationId));
     }
 
+    @Override
+    public void updateRisk(UUID organizationId, UUID riskId, String title, String description,
+                           Double probability, Double impact, Double exposure,
+                           UUID severityConceptId, UUID statusConceptId,
+                           UUID changeConceptId, String actor) {
+        snapshotRisk(organizationId, riskId, changeConceptId, actor);
+        requireUpdated(jdbc.update("""
+            update risk_record set
+                title = coalesce(?, title), description = coalesce(?, description),
+                probability_score = coalesce(?, probability_score),
+                impact_score = coalesce(?, impact_score),
+                exposure_score = coalesce(?, exposure_score),
+                severity_concept_id = coalesce(?, severity_concept_id),
+                status_concept_id = coalesce(?, status_concept_id),
+                updated_at = now(), version = version + 1
+            where id = ? and organization_id = ?
+            """, title, description, probability, impact, exposure,
+            severityConceptId, statusConceptId, riskId, organizationId));
+    }
+
     private void snapshotRisk(UUID organizationId, UUID riskId, UUID changeConceptId,
                               String actor) {
         jdbc.update("""
@@ -758,6 +778,15 @@ public class JdbcRiskPersistence implements RiskPersistencePort {
             where candidate.risk_id = ? and candidate.organization_id = ?
             order by candidate.confidence desc
             """, riskId, organizationId);
+    }
+
+    @Override
+    public void reviewMitigation(UUID organizationId, UUID riskId, UUID candidateId,
+                                 String reviewStatus) {
+        requireUpdated(jdbc.update("""
+            update mitigation_candidate set review_status = ?
+            where id = ? and risk_id = ? and organization_id = ?
+            """, reviewStatus, candidateId, riskId, organizationId));
     }
 
     @Override

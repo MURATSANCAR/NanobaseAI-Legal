@@ -13,5 +13,6 @@ public interface RiskCatalogPort {
     JsonNode severityPolicy(UUID organizationId, UUID versionId);
     JsonNode authorityPolicy(UUID organizationId, UUID versionId);
     Optional<UUID> conceptId(UUID organizationId, UUID ontologyVersionId, String code);
+    UUID activeClarificationStrategy(UUID organizationId);
     JsonNode riskGrid(UUID organizationId);
 }
