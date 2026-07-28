@@ -13,6 +13,15 @@ test("portal uses protected OIDC PKCE session flow", async () => {
   assert.match(auth, /automaticSilentRenew: true/);
 });
 
+test("portal opens directly while write actions remain session-gated", async () => {
+  const portal = await source("../app/page.tsx");
+  assert.match(portal, /const directAccess = session === null/);
+  assert.match(portal, /const canWrite = Boolean\(session\)/);
+  assert.match(portal, /Doğrudan erişim açık/);
+  assert.match(portal, /canConfigure=\{!directAccess && canOperate\}/);
+  assert.doesNotMatch(portal, /return <LoginScreen/);
+});
+
 test("project creation and document upload use the real API", async () => {
   const tenders = await source("../src/modules/tenders/api.ts");
   const documents = await source("../src/modules/documents/api.ts");

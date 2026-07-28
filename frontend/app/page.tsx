@@ -208,15 +208,16 @@ export default function SpecAiPortal() {
   const [draft, setDraft] = useState<TenderDraft>(emptyDraft);
   const [toast, setToast] = useState("");
 
+  const directAccess = session === null;
   const token = session?.access_token ?? "";
-  const roles = session ? realmRoles(session) : [];
-  const canWrite = roles.some((role) =>
+  const roles = session ? realmRoles(session) : ["DIRECT_ACCESS_VIEWER"];
+  const canWrite = Boolean(session) && roles.some((role) =>
     ["SYSTEM_ADMIN", "TENANT_ADMIN", "TENDER_MANAGER"].includes(role),
   );
-  const canAnalyze = canWrite || roles.includes("TECHNICAL_REVIEWER");
-  const canOperate = roles.some((role) =>
+  const canAnalyze = directAccess || canWrite || roles.includes("TECHNICAL_REVIEWER");
+  const canOperate = directAccess || (Boolean(session) && roles.some((role) =>
     ["SYSTEM_ADMIN", "TENANT_ADMIN"].includes(role),
-  );
+  ));
 
   const showProblem = useCallback((error: unknown) => {
     if (isApiError(error)) setProblem(error.problem);
@@ -227,6 +228,10 @@ export default function SpecAiPortal() {
         detail: error instanceof Error ? error.message : "İşlem tamamlanamadı.",
       });
   }, []);
+
+  const showSurfaceProblem = useCallback((error: unknown) => {
+    if (!directAccess) showProblem(error);
+  }, [directAccess, showProblem]);
 
   const notify = useCallback((message: string) => {
     setToast(message);
@@ -373,17 +378,6 @@ export default function SpecAiPortal() {
   }
 
   if (loading && session === undefined) return <LoadingScreen />;
-  if (!session) {
-    return <LoginScreen loading={busy} problem={problem} onLogin={async () => {
-      setBusy(true);
-      try {
-        await signIn();
-      } catch (error) {
-        showProblem(error);
-        setBusy(false);
-      }
-    }} />;
-  }
 
   return (
     <div className="app-shell">
@@ -440,10 +434,14 @@ export default function SpecAiPortal() {
           <Activity />
           <div><b>Doküman işleme</b><small>Gerçek zamanlı durum takibi</small></div>
         </div>
-        <button className="profile" onClick={() => signOut()}>
-          <span>{initials(displayName(session))}</span>
-          <div><b>{displayName(session)}</b><small>{roles[0] ?? "Kullanıcı"}</small></div>
-          <LogOut />
+        <button className="profile" onClick={() => {
+          if (session) void signOut();
+          else notify("Doğrudan erişim modu · değişiklik işlemleri kapalı");
+        }}>
+          <span>{session ? initials(displayName(session)) : "DA"}</span>
+          <div><b>{session ? displayName(session) : "Doğrudan erişim"}</b>
+            <small>{session ? (roles[0] ?? "Kullanıcı") : "Salt okunur"}</small></div>
+          {session ? <LogOut /> : <Eye />}
         </button>
       </aside>
 
@@ -462,6 +460,23 @@ export default function SpecAiPortal() {
         </header>
 
         <main className="content">
+          {directAccess && <section className="direct-access-banner">
+            <div><Eye /><span><b>Doğrudan erişim açık</b>
+              Tüm modülleri gezebilirsiniz. Veri değiştiren işlemler için güvenli
+              oturum gerekir.</span></div>
+            <button className="secondary" disabled={busy} onClick={async () => {
+              setBusy(true);
+              try {
+                await signIn();
+              } catch (error) {
+                showProblem(error);
+                setBusy(false);
+              }
+            }}>
+              {busy ? <LoaderCircle className="spin" /> : <LogIn />}
+              Canlı veriye bağlan
+            </button>
+          </section>}
           {problem && <ProblemBanner problem={problem} onClose={() => setProblem(null)}
             onRetry={() => loadProjects().catch(showProblem)} />}
           {screen === "dashboard" && (
@@ -486,16 +501,18 @@ export default function SpecAiPortal() {
           )}
           {screen === "operations" && canOperate && (
             <OperationsCenter token={token} projects={projects} documents={allDocuments}
-              onProblem={showProblem} />
+              onProblem={showSurfaceProblem} />
           )}
           {screen === "workflows" && (
             <Sprint7Workspace token={token} project={selectedProject}
-              canConfigure={canOperate} canWrite={canAnalyze}
-              onProblem={showProblem} onNotify={notify} />
+              canConfigure={!directAccess && canOperate}
+              canWrite={!directAccess && canAnalyze}
+              onProblem={showSurfaceProblem} onNotify={notify} />
           )}
           {screen === "pilot-quality" && canAnalyze && (
-            <Sprint9ControlCenter token={token} canOperate={canOperate}
-              onProblem={showProblem} onNotify={notify} />
+            <Sprint9ControlCenter token={token}
+              canOperate={!directAccess && canOperate}
+              onProblem={showSurfaceProblem} onNotify={notify} />
           )}
         </main>
       </div>
@@ -1086,34 +1103,6 @@ function Sprint7Workspace({ token, project, canConfigure, canWrite, onProblem, o
       </section>}
     </>}
   </>;
-}
-
-function LoginScreen({ loading, problem, onLogin }: {
-  loading: boolean;
-  problem: ApiProblem | null;
-  onLogin: () => void;
-}) {
-  return (
-    <main className="login-shell">
-      <section className="login-card">
-        <span className="brand-symbol">N</span>
-        <p className="eyebrow">NANOBASEAI · ŞARTNAME AI</p>
-        <h1>İhale dokümanlarını güvenle yönetin.</h1>
-        <p className="login-copy">
-          Projelerinizi oluşturun, PDF veya DOCX şartnameleri yükleyin ve
-          işleme durumunu tek merkezden takip edin.
-        </p>
-        <div className="security-note"><ShieldCheck />
-          <span>E-posta ve parola güvenli Keycloak giriş ekranında alınır.</span>
-        </div>
-        {problem && <p className="error"><AlertTriangle />{problem.detail}</p>}
-        <button className="primary large" onClick={onLogin} disabled={loading}>
-          {loading ? <LoaderCircle className="spin" /> : <LogIn />}
-          Güvenli girişe devam et
-        </button>
-      </section>
-    </main>
-  );
 }
 
 function LoadingScreen() {

@@ -219,6 +219,29 @@ button:disabled { cursor: not-allowed; opacity: .52; }
 .refresh svg, .back svg { width: 15px; }
 .mobile-menu { display: none; }
 .content { max-width: 1460px; margin: auto; padding: 32px; }
+.direct-access-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 22px;
+  padding: 13px 15px;
+  border: 1px solid #b9dfe3;
+  border-radius: 11px;
+  background: #eaf7f7;
+  color: #315d66;
+}
+.direct-access-banner > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.direct-access-banner > div > svg { width: 18px; flex: none; color: var(--teal); }
+.direct-access-banner b { display: block; color: var(--teal-dark); font-size: 12px; }
+.direct-access-banner .secondary { flex: none; }
 .title-row {
   display: flex;
   align-items: flex-end;
@@ -1899,6 +1922,8 @@ button.dynamic-field:hover { border-color: #8fb8bf; }
   .mobile-menu { margin-right: 8px; }
   .refresh { font-size: 0; }
   .content { padding: 22px 14px; }
+  .direct-access-banner { align-items: stretch; flex-direction: column; }
+  .direct-access-banner .secondary { width: 100%; }
   .title-row { align-items: flex-start; }
   .title-row h1 { font-size: 24px; }
   .title-row > div > p:last-child { display: none; }

@@ -7,7 +7,8 @@ const runId = process.env.E2E_RUN_ID ?? Date.now().toString();
 
 async function login(page: Page) {
   await page.goto("/");
-  await page.getByRole("button", { name: "Güvenli girişe devam et" }).click();
+  await expect(page.getByRole("heading", { name: "Ana panel" })).toBeVisible();
+  await page.getByRole("button", { name: "Canlı veriye bağlan" }).click();
   await page.getByLabel(/username|email/i).fill(user ?? "");
   await page.getByLabel(/password/i).fill(password ?? "");
   await page.getByRole("button", { name: /sign in|giriş/i }).click();
