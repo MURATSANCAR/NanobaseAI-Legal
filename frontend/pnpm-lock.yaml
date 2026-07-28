@@ -12,13 +12,13 @@ importers:
         specifier: 0.45.2
         version: 0.45.2
       lucide-react:
-        specifier: ^1.27.0
+        specifier: 1.27.0
         version: 1.27.0(react@19.2.6)
       next:
         specifier: 16.2.6
         version: 16.2.6(@babel/core@7.29.7)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       oidc-client-ts:
-        specifier: ^3.5.0
+        specifier: 3.5.0
         version: 3.5.0
       pdfjs-dist:
         specifier: 5.6.205
