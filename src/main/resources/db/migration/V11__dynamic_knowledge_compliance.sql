@@ -690,7 +690,27 @@ INSERT INTO ontology_concept (
     ('50000000-0000-0000-0000-000000000018', NULL,
      '40000000-0000-0000-0000-000000000002', NULL, 'UNGROUNDED',
      'Ungrounded', NULL, 'GROUNDING_STATUS',
-     '{"grounded":false}'::jsonb, TRUE, 2, now());
+     '{"grounded":false}'::jsonb, TRUE, 2, now()),
+    ('50000000-0000-0000-0000-000000000019', NULL,
+     '40000000-0000-0000-0000-000000000002', NULL, 'ENTITY_UPDATED',
+     'Entity updated', NULL, 'CHANGE_TYPE',
+     '{"changeProvider":"ENTITY_UPDATED"}'::jsonb, TRUE, 1, now()),
+    ('50000000-0000-0000-0000-00000000001a', NULL,
+     '40000000-0000-0000-0000-000000000002', NULL, 'ENTITY_MERGED',
+     'Entity merged', NULL, 'CHANGE_TYPE',
+     '{"changeProvider":"ENTITY_MERGED"}'::jsonb, TRUE, 2, now()),
+    ('50000000-0000-0000-0000-00000000001b', NULL,
+     '40000000-0000-0000-0000-000000000002', NULL, 'ENTITY_SPLIT',
+     'Entity split', NULL, 'CHANGE_TYPE',
+     '{"changeProvider":"ENTITY_SPLIT"}'::jsonb, TRUE, 3, now()),
+    ('50000000-0000-0000-0000-00000000001c', NULL,
+     '40000000-0000-0000-0000-000000000002', NULL, 'EVALUATION_REVIEWED',
+     'Evaluation reviewed', NULL, 'CHANGE_TYPE',
+     '{"changeProvider":"EVALUATION_REVIEWED"}'::jsonb, TRUE, 4, now()),
+    ('50000000-0000-0000-0000-00000000001d', NULL,
+     '40000000-0000-0000-0000-000000000002', NULL, 'EVIDENCE_LINK_CHANGED',
+     'Evidence link changed', NULL, 'CHANGE_TYPE',
+     '{"changeProvider":"EVIDENCE_LINK_CHANGED"}'::jsonb, TRUE, 5, now());
 
 INSERT INTO retrieval_policy_definition (
     id, organization_id, policy_code, scope, name, description,
