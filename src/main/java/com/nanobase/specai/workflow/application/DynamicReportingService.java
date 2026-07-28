@@ -10,6 +10,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.nanobase.specai.audit.application.AuditService;
 import com.nanobase.specai.document.application.ObjectStorage;
 import com.nanobase.specai.integration.outbox.OutboxService;
+import com.nanobase.specai.shared.observability.PlatformMetrics;
 import com.nanobase.specai.shared.security.CurrentTenant;
 import com.nanobase.specai.shared.security.TenantPrincipal;
 import com.nanobase.specai.workflow.api.ReportingContracts.CreateReportDefinitionRequest;
@@ -52,6 +53,7 @@ public class DynamicReportingService {
     private final ObjectStorage storage;
     private final AuditService audit;
     private final OutboxService outbox;
+    private final PlatformMetrics metrics;
 
     public DynamicReportingService(JdbcTemplate jdbc, ObjectMapper mapper,
                                    CurrentTenant currentTenant,
@@ -59,7 +61,7 @@ public class DynamicReportingService {
                                    List<ReportFormatRenderer> renderers,
                                    WorkflowConditionEngine conditions,
                                    ObjectStorage storage, AuditService audit,
-                                   OutboxService outbox) {
+                                   OutboxService outbox, PlatformMetrics metrics) {
         this.jdbc = jdbc;
         this.mapper = mapper;
         this.currentTenant = currentTenant;
@@ -69,6 +71,7 @@ public class DynamicReportingService {
         this.storage = storage;
         this.audit = audit;
         this.outbox = outbox;
+        this.metrics = metrics;
     }
 
     @Transactional
@@ -237,6 +240,7 @@ public class DynamicReportingService {
             "report.generation.completed.v1", "report.generation.completed.v1",
             Map.of("reportGenerationJobId", jobId, "projectId", projectId,
                 "artifactCount", result.artifacts().size()), null);
+        metrics.sprint7("report_generated_total");
         return result;
     }
 

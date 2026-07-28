@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.nanobase.specai.audit.application.AuditService;
 import com.nanobase.specai.integration.outbox.OutboxService;
+import com.nanobase.specai.shared.observability.PlatformMetrics;
 import com.nanobase.specai.shared.security.CurrentTenant;
 import com.nanobase.specai.shared.security.TenantPrincipal;
 import com.nanobase.specai.workflow.api.DecisionContracts.CreateDecisionSupportRequest;
@@ -40,13 +41,15 @@ public class DecisionAndFinalizationService {
     private final ConfigurablePolicyGate finalizationGate;
     private final AuditService audit;
     private final OutboxService outbox;
+    private final PlatformMetrics metrics;
 
     public DecisionAndFinalizationService(JdbcTemplate jdbc, ObjectMapper mapper,
                                           CurrentTenant currentTenant,
                                           WorkflowConditionEngine conditions,
                                           DecisionSupportPolicyEngine decisionEngine,
                                           ConfigurablePolicyGate finalizationGate,
-                                          AuditService audit, OutboxService outbox) {
+                                          AuditService audit, OutboxService outbox,
+                                          PlatformMetrics metrics) {
         this.jdbc = jdbc;
         this.mapper = mapper;
         this.currentTenant = currentTenant;
@@ -55,6 +58,7 @@ public class DecisionAndFinalizationService {
         this.finalizationGate = finalizationGate;
         this.audit = audit;
         this.outbox = outbox;
+        this.metrics = metrics;
     }
 
     @Transactional
@@ -132,6 +136,7 @@ public class DecisionAndFinalizationService {
         outbox.publish(principal.tenantId(), "DecisionSupportCase", id,
             "decision.support.completed.v1", "decision.support.completed.v1",
             Map.of("decisionSupportCaseId", id, "projectId", projectId), null);
+        metrics.sprint7("decision_support_total");
         return created;
     }
 
@@ -277,6 +282,7 @@ public class DecisionAndFinalizationService {
         outbox.publish(principal.tenantId(), "TenderProject", projectId,
             "project.finalized.v1", "project.finalized.v1",
             Map.of("projectId", projectId, "finalizationRecordId", id), null);
+        metrics.sprint7("project_finalized_total");
         return result;
     }
 
@@ -307,6 +313,7 @@ public class DecisionAndFinalizationService {
         outbox.publish(principal.tenantId(), "TenderProject", projectId,
             "project.reopened.v1", "project.reopened.v1",
             Map.of("projectId", projectId, "finalizationRecordId", id), null);
+        metrics.sprint7("project_reopened_total");
         return after;
     }
 

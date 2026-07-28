@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.nanobase.specai.audit.application.AuditService;
 import com.nanobase.specai.integration.outbox.OutboxService;
+import com.nanobase.specai.shared.observability.PlatformMetrics;
 import com.nanobase.specai.shared.security.CurrentTenant;
 import com.nanobase.specai.shared.security.TenantPrincipal;
 import com.nanobase.specai.workflow.api.WorkManagementContracts.AddCommentRequest;
@@ -53,13 +54,15 @@ public class WorkManagementService implements WorkflowNodeActionProvider {
     private final BusinessCalendarService calendars;
     private final AuditService audit;
     private final OutboxService outbox;
+    private final PlatformMetrics metrics;
 
     public WorkManagementService(JdbcTemplate jdbc, ObjectMapper mapper,
                                  CurrentTenant currentTenant,
                                  AssignmentPolicyEngine assignments,
                                  ApprovalPolicyEngine approvals,
                                  BusinessCalendarService calendars,
-                                 AuditService audit, OutboxService outbox) {
+                                 AuditService audit, OutboxService outbox,
+                                 PlatformMetrics metrics) {
         this.jdbc = jdbc;
         this.mapper = mapper;
         this.currentTenant = currentTenant;
@@ -68,6 +71,7 @@ public class WorkManagementService implements WorkflowNodeActionProvider {
         this.calendars = calendars;
         this.audit = audit;
         this.outbox = outbox;
+        this.metrics = metrics;
     }
 
     @Override
@@ -123,6 +127,7 @@ public class WorkManagementService implements WorkflowNodeActionProvider {
         outbox.publish(context.organizationId(), "TaskRecord", taskId,
             "task.created.v1", "task.created.v1",
             Map.of("taskId", taskId, "workflowInstanceId", context.workflowInstanceId()), null);
+        metrics.sprint7("task_created_total");
         var output = JsonNodeFactory.instance.objectNode();
         output.put("taskId", taskId.toString());
         output.put("taskCode", taskCode);
@@ -155,6 +160,7 @@ public class WorkManagementService implements WorkflowNodeActionProvider {
             config.hasNonNull("expiresAt")
                 ? Timestamp.from(Instant.parse(config.path("expiresAt").asText())) : null);
         int order = 0;
+        boolean startAllSteps = config.path("startAllSteps").asBoolean(false);
         for (JsonNode step : config.path("steps")) {
             UUID mode = requiredUuid(step, "approvalModeConceptId");
             requireConcept(mode, "APPROVAL_MODE");
@@ -163,18 +169,21 @@ public class WorkManagementService implements WorkflowNodeActionProvider {
                     id, organization_id, approval_request_id, step_code, step_order,
                     approval_mode_concept_id, required_approval_count,
                     assignment_policy_id, status_concept_id, started_at, created_at
-                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, case when ? = 0 then now() else null end,
+                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?,
+                          case when ? or ? = 0 then now() else null end,
                           now())
                 """, UUID.randomUUID(), context.organizationId(), requestId,
                 step.path("stepCode").asText("STEP_" + order), order, mode,
                 step.path("requiredApprovalCount").asInt(1),
-                optionalUuid(step, "assignmentPolicyVersionId"), status, order);
+                optionalUuid(step, "assignmentPolicyVersionId"), status,
+                startAllSteps, order);
             order++;
         }
         outbox.publish(context.organizationId(), "ApprovalRequest", requestId,
             "approval.requested.v1", "approval.requested.v1",
             Map.of("approvalRequestId", requestId,
                 "workflowInstanceId", context.workflowInstanceId()), null);
+        metrics.sprint7("approval_requested_total");
         var output = JsonNodeFactory.instance.objectNode();
         output.put("approvalRequestId", requestId.toString());
         return new WorkflowNodeExecutionResult(false, true, output,
@@ -285,6 +294,9 @@ public class WorkManagementService implements WorkflowNodeActionProvider {
             ? "task.completed.v1" : "task.blocked.v1";
         audit.record(eventType, "TaskRecord", id, before, after);
         event(principal, id, eventType, Map.of("statusConceptId", statusConceptId));
+        if ("complete".equals(actionEffect)) {
+            metrics.sprint7("task_completed_total");
+        }
         return after;
     }
 
@@ -323,6 +335,7 @@ public class WorkManagementService implements WorkflowNodeActionProvider {
         audit.record("task.escalated.v1", "TaskRecord", id, null,
             Map.of("escalationId", escalationId));
         event(principal, id, "task.escalated.v1", Map.of("escalationId", escalationId));
+        metrics.sprint7("task_escalated_total");
         return Map.of("id", escalationId, "taskId", id, "triggeredAt", Instant.now());
     }
 
@@ -403,6 +416,14 @@ public class WorkManagementService implements WorkflowNodeActionProvider {
         requireBusinessRoles(principal.subject(),
             approval.policyConfiguration().path("requiredBusinessRoleCodes"));
         requireConcept(request.decisionConceptId(), "APPROVAL_DECISION");
+        Integer openStep = jdbc.queryForObject("""
+            select count(*) from approval_step
+             where id = ? and approval_request_id = ?
+               and started_at is not null and completed_at is null
+            """, Integer.class, request.approvalStepId(), approvalId);
+        if (openStep == null || openStep != 1) {
+            throw new IllegalStateException("Approval step is not active for this request");
+        }
         UUID decisionId = UUID.randomUUID();
         JsonNode snapshot = request.decisionSnapshot() == null
             ? JsonNodeFactory.instance.objectNode() : request.decisionSnapshot();
@@ -551,10 +572,36 @@ public class WorkManagementService implements WorkflowNodeActionProvider {
             update approval_step set status_concept_id = ?, completed_at = now()
              where id = ?
             """, status, stepId);
+        if (result.approved()) {
+            jdbc.update("""
+                update approval_step set started_at = now()
+                 where id = (
+                    select id from approval_step
+                     where approval_request_id = ? and started_at is null
+                     order by step_order limit 1
+                 )
+                """, approvalId);
+            Integer remaining = jdbc.queryForObject("""
+                select count(*) from approval_step
+                 where approval_request_id = ? and completed_at is null
+                """, Integer.class, approvalId);
+            if (remaining != null && remaining > 0) {
+                return;
+            }
+        } else if (!policy.path("completeRequestOnNegative").asBoolean(true)) {
+            return;
+        }
         jdbc.update("""
             update approval_request set status_concept_id = ?, completed_at = now(),
                    updated_at = now(), version = version + 1 where id = ?
             """, status, approvalId);
+        TenantPrincipal principal = currentTenant.require();
+        outbox.publish(principal.tenantId(), "ApprovalRequest", approvalId,
+            "approval.completed.v1", "approval.completed.v1",
+            Map.of("approvalRequestId", approvalId, "approved", result.approved()), null);
+        if (!result.approved()) {
+            metrics.sprint7("approval_rejected_total");
+        }
     }
 
     private void requireBusinessRoles(String userId, JsonNode roles) {
