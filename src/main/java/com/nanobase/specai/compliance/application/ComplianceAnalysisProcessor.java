@@ -125,6 +125,11 @@ public class ComplianceAnalysisProcessor {
                 "Compliance analysis progressed",
                 Map.of("processed", processed, "completed", completed,
                     "manualReview", reviews, "failed", failed));
+            outbox.publish(organizationId, "ComplianceAnalysis", jobId,
+                "ComplianceAnalysisProgress", "compliance.analysis.progress.v1",
+                Map.of("jobId", jobId, "progress", progress,
+                    "processed", processed, "completed", completed,
+                    "manualReview", reviews, "failed", failed), correlationId);
         }
         String terminal = completed == 0 && failed > 0 ? "FAILED" : "COMPLETED";
         jdbc.update("""

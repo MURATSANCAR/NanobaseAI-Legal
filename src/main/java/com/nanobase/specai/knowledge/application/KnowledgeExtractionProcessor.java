@@ -74,6 +74,13 @@ public class KnowledgeExtractionProcessor {
         outbox.publish(organizationId, "KnowledgeExtraction", jobId,
             "KnowledgeExtractionStarted", "knowledge.extraction.started.v1",
             Map.of("jobId", jobId, "fragmentCount", fragments.size()), correlationId);
+        jobs.event(organizationId, jobId, "PROGRESS", 25,
+            "Evidence fragments and validity assessments prepared",
+            Map.of("fragmentCount", fragments.size()));
+        outbox.publish(organizationId, "KnowledgeExtraction", jobId,
+            "KnowledgeExtractionProgress", "knowledge.extraction.progress.v1",
+            Map.of("jobId", jobId, "progress", 25,
+                "fragmentCount", fragments.size()), correlationId);
         try {
             var response = gateway.extract(new KnowledgeRequest(jobId, organizationId,
                 "nanobase-spec-ai", profile.modelProfile(), profile.promptComponents(),
@@ -81,6 +88,25 @@ public class KnowledgeExtractionProcessor {
                 correlationId));
             PersistResult persisted = persistOutput(organizationId, jobId, versionId,
                 profile.ontologyVersionId(), response.output());
+            jobs.event(organizationId, jobId, "PROGRESS", 80,
+                "Knowledge graph output validated and persisted",
+                Map.of("entityCount", persisted.entities()));
+            outbox.publish(organizationId, "KnowledgeExtraction", jobId,
+                "KnowledgeExtractionProgress", "knowledge.extraction.progress.v1",
+                Map.of("jobId", jobId, "progress", 80,
+                    "entityCount", persisted.entities()), correlationId);
+            for (UUID entityId : persisted.entityIds()) {
+                outbox.publish(organizationId, "KnowledgeEntity", entityId,
+                    "KnowledgeEntityCreated", "knowledge.entity.created.v1",
+                    Map.of("entityId", entityId, "extractionJobId", jobId),
+                    correlationId);
+            }
+            for (UUID capabilityId : persisted.capabilityIds()) {
+                outbox.publish(organizationId, "Capability", capabilityId,
+                    "KnowledgeCapabilityCreated", "knowledge.capability.created.v1",
+                    Map.of("capabilityId", capabilityId, "extractionJobId", jobId),
+                    correlationId);
+            }
             metrics.knowledgeEntitiesCreated(persisted.entities());
             metrics.knowledgeAttributesExtracted(persisted.attributes());
             metrics.knowledgeRelationsExtracted(persisted.relations());
@@ -179,6 +205,7 @@ public class KnowledgeExtractionProcessor {
         int attributes = 0;
         int relations = 0;
         int capabilities = 0;
+        List<UUID> capabilityIds = new ArrayList<>();
         for (JsonNode entity : output.path("entities")) {
             List<UUID> sources = sourceIds(entity.path("sourceFragments"), fragmentIds);
             if (sources.isEmpty()) {
@@ -252,6 +279,7 @@ public class KnowledgeExtractionProcessor {
                 continue;
             }
             UUID capabilityId = UUID.randomUUID();
+            capabilityIds.add(capabilityId);
             jdbc.update("""
                 insert into capability (
                     id, organization_id, owner_entity_id, capability_concept_id,
@@ -276,7 +304,7 @@ public class KnowledgeExtractionProcessor {
             }
         }
         return new PersistResult(entities.size(), attributes, relations, capabilities,
-            reviews);
+            reviews, List.copyOf(entities.values()), List.copyOf(capabilityIds));
     }
 
     private int persistAttribute(UUID organizationId, UUID ontologyVersionId,
@@ -479,6 +507,7 @@ public class KnowledgeExtractionProcessor {
     }
 
     private record PersistResult(int entities, int attributes, int relations,
-                                 int capabilities, int reviews) {
+                                 int capabilities, int reviews,
+                                 List<UUID> entityIds, List<UUID> capabilityIds) {
     }
 }
