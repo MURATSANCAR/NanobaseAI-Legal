@@ -112,7 +112,20 @@ class PlatformInfrastructureIT {
             "requirement_dependency", "document_change_set", "document_change_item",
             "impact_analysis_job", "impact_analysis_result",
             "analysis_staleness_record", "risk_propagation_candidate",
-            "mitigation_catalog", "clarification_strategy");
+            "mitigation_catalog", "clarification_strategy",
+            "workflow_definition", "workflow_version", "workflow_node",
+            "workflow_transition", "workflow_instance", "workflow_token",
+            "workflow_execution", "workflow_transition_log", "workflow_simulation_run",
+            "task_record", "task_dependency", "task_comment", "task_attachment",
+            "assignment_policy", "business_role", "approval_request",
+            "approval_step", "approval_decision", "sla_policy", "task_sla_record",
+            "business_calendar", "notification_rule", "notification_delivery",
+            "clarification_request", "clarification_revision", "clarification_answer",
+            "report_definition", "report_definition_version",
+            "report_section_definition", "report_data_snapshot",
+            "report_generation_job", "report_artifact", "decision_support_case",
+            "executive_decision", "project_finalization_record",
+            "dashboard_definition", "dashboard_widget");
         assertThat(minio.bucketExists(
             BucketExistsArgs.builder().bucket("specai-original").build())).isTrue();
         assertThat(rabbitAdmin.getQueueInfo("document-processing.request")).isNotNull();

@@ -105,8 +105,26 @@ import {
   type AiQualitySnapshot,
   type OperationsSnapshot,
 } from "@/src/modules/operations/api";
+import {
+  decisionApi,
+  reportingApi,
+  workApi,
+  workflowApi,
+  type ApprovalRequest,
+  type ClarificationCenter,
+  type ConceptOption as WorkflowConcept,
+  type DecisionSupportCase,
+  type DynamicDashboard,
+  type ReportDefinition,
+  type ReportJob,
+  type SimulationResult,
+  type TaskRecord,
+  type WorkflowDefinition,
+  type WorkflowNodeDraft,
+  type WorkflowTransitionDraft,
+} from "@/src/modules/workflow/api";
 
-type Screen = "dashboard" | "projects" | "project" | "operations";
+type Screen = "dashboard" | "projects" | "project" | "workflows" | "operations";
 type ProjectTab =
   | "overview"
   | "documents"
@@ -379,6 +397,10 @@ export default function SpecAiPortal() {
           }}>
           <Building2 /><span>Firma ve ürünler</span>
         </button>
+        <button className={screen === "workflows" ? "nav active" : "nav"}
+          onClick={() => { setScreen("workflows"); setSidebarOpen(false); }}>
+          <ClipboardCheck /><span>Workflow merkezi</span>
+        </button>
         <p className="nav-label">GÜVENLİK</p>
         <button className="nav" onClick={() => notify(`Roller: ${roles.join(", ")}`)}>
           <ShieldCheck /><span>Yetkilerim</span>
@@ -438,6 +460,11 @@ export default function SpecAiPortal() {
           {screen === "operations" && canOperate && (
             <OperationsCenter token={token} projects={projects} documents={allDocuments}
               onProblem={showProblem} />
+          )}
+          {screen === "workflows" && (
+            <Sprint7Workspace token={token} project={selectedProject}
+              canConfigure={canOperate} canWrite={canAnalyze}
+              onProblem={showProblem} onNotify={notify} />
           )}
         </main>
       </div>

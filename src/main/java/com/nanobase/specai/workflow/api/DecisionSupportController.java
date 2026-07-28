@@ -30,6 +30,11 @@ public class DecisionSupportController {
         return decisions.createCase(projectId, request);
     }
 
+    @GetMapping("/tenders/{projectId}/decision-support-cases")
+    java.util.List<DecisionSupportResponse> list(@PathVariable UUID projectId) {
+        return decisions.cases(projectId);
+    }
+
     @GetMapping("/decision-support-cases/{id}")
     DecisionSupportResponse get(@PathVariable UUID id) {
         return decisions.getCase(id);

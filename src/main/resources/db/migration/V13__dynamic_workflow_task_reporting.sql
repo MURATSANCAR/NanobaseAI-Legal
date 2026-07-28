@@ -109,18 +109,31 @@ CREATE TABLE sla_policy_version (
 ALTER TABLE sla_policy ADD CONSTRAINT fk_sla_policy_active_version
     FOREIGN KEY (active_version_id) REFERENCES sla_policy_version(id);
 
-CREATE TABLE escalation_policy_version (
+CREATE TABLE escalation_policy (
     id UUID PRIMARY KEY,
     organization_id UUID REFERENCES organization(id),
     policy_code VARCHAR(160) NOT NULL,
+    scope VARCHAR(40) NOT NULL,
+    active_version_id UUID,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
+    UNIQUE NULLS NOT DISTINCT (organization_id, policy_code)
+);
+
+CREATE TABLE escalation_policy_version (
+    id UUID PRIMARY KEY,
+    organization_id UUID REFERENCES organization(id),
+    escalation_policy_id UUID NOT NULL REFERENCES escalation_policy(id) ON DELETE CASCADE,
     version_number INTEGER NOT NULL,
     configuration_json JSONB NOT NULL,
     status VARCHAR(40) NOT NULL,
     approved_by VARCHAR(255),
     approved_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL,
-    UNIQUE NULLS NOT DISTINCT (organization_id, policy_code, version_number)
+    UNIQUE (escalation_policy_id, version_number)
 );
+ALTER TABLE escalation_policy ADD CONSTRAINT fk_escalation_policy_active_version
+    FOREIGN KEY (active_version_id) REFERENCES escalation_policy_version(id);
 
 CREATE TABLE business_calendar (
     id UUID PRIMARY KEY,
@@ -693,18 +706,31 @@ CREATE TABLE report_artifact (
     UNIQUE (report_generation_job_id, format_concept_id, version_number)
 );
 
-CREATE TABLE decision_policy_version (
+CREATE TABLE decision_policy (
     id UUID PRIMARY KEY,
     organization_id UUID REFERENCES organization(id),
     policy_code VARCHAR(160) NOT NULL,
+    scope VARCHAR(40) NOT NULL,
+    active_version_id UUID,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
+    UNIQUE NULLS NOT DISTINCT (organization_id, policy_code)
+);
+
+CREATE TABLE decision_policy_version (
+    id UUID PRIMARY KEY,
+    organization_id UUID REFERENCES organization(id),
+    decision_policy_id UUID NOT NULL REFERENCES decision_policy(id) ON DELETE CASCADE,
     version_number INTEGER NOT NULL,
     configuration_json JSONB NOT NULL,
     status VARCHAR(40) NOT NULL,
     approved_by VARCHAR(255),
     approved_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL,
-    UNIQUE NULLS NOT DISTINCT (organization_id, policy_code, version_number)
+    UNIQUE (decision_policy_id, version_number)
 );
+ALTER TABLE decision_policy ADD CONSTRAINT fk_decision_policy_active_version
+    FOREIGN KEY (active_version_id) REFERENCES decision_policy_version(id);
 
 CREATE TABLE decision_support_case (
     id UUID PRIMARY KEY,
@@ -749,18 +775,31 @@ CREATE TABLE executive_decision (
     created_at TIMESTAMPTZ NOT NULL
 );
 
-CREATE TABLE finalization_policy_version (
+CREATE TABLE finalization_policy (
     id UUID PRIMARY KEY,
     organization_id UUID REFERENCES organization(id),
     policy_code VARCHAR(160) NOT NULL,
+    scope VARCHAR(40) NOT NULL,
+    active_version_id UUID,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
+    UNIQUE NULLS NOT DISTINCT (organization_id, policy_code)
+);
+
+CREATE TABLE finalization_policy_version (
+    id UUID PRIMARY KEY,
+    organization_id UUID REFERENCES organization(id),
+    finalization_policy_id UUID NOT NULL REFERENCES finalization_policy(id) ON DELETE CASCADE,
     version_number INTEGER NOT NULL,
     configuration_json JSONB NOT NULL,
     status VARCHAR(40) NOT NULL,
     approved_by VARCHAR(255),
     approved_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL,
-    UNIQUE NULLS NOT DISTINCT (organization_id, policy_code, version_number)
+    UNIQUE (finalization_policy_id, version_number)
 );
+ALTER TABLE finalization_policy ADD CONSTRAINT fk_finalization_policy_active_version
+    FOREIGN KEY (active_version_id) REFERENCES finalization_policy_version(id);
 
 CREATE TABLE project_finalization_record (
     id UUID PRIMARY KEY,
@@ -944,12 +983,18 @@ UPDATE report_template
 SET active_version_id = '70000000-0000-0000-0000-000000000111'
 WHERE id = '70000000-0000-0000-0000-000000000110';
 
+INSERT INTO decision_policy (
+    id, organization_id, policy_code, scope, created_at, updated_at
+) VALUES (
+    '70000000-0000-0000-0000-000000000119', NULL,
+    'GLOBAL_EXPLAINABLE_DECISION_SUPPORT', 'GLOBAL', now(), now()
+);
 INSERT INTO decision_policy_version (
-    id, organization_id, policy_code, version_number, configuration_json,
+    id, organization_id, decision_policy_id, version_number, configuration_json,
     status, approved_by, approved_at, created_at
 ) VALUES (
     '70000000-0000-0000-0000-000000000120', NULL,
-    'GLOBAL_EXPLAINABLE_DECISION_SUPPORT', 1,
+    '70000000-0000-0000-0000-000000000119', 1,
     '{"defaultConfidence":0.0,"maximumExplanationFactors":10,
       "factorRules":[
         {"factorConceptCode":"VERIFIED_READINESS","effectScore":0.6,"weight":1.0,
@@ -974,13 +1019,22 @@ INSERT INTO decision_policy_version (
       ]}'::jsonb,
     'ACTIVE', 'platform', now(), now()
 );
+UPDATE decision_policy
+SET active_version_id = '70000000-0000-0000-0000-000000000120'
+WHERE id = '70000000-0000-0000-0000-000000000119';
 
+INSERT INTO finalization_policy (
+    id, organization_id, policy_code, scope, created_at, updated_at
+) VALUES (
+    '70000000-0000-0000-0000-000000000129', NULL,
+    'GLOBAL_HUMAN_CONTROLLED_FINALIZATION', 'GLOBAL', now(), now()
+);
 INSERT INTO finalization_policy_version (
-    id, organization_id, policy_code, version_number, configuration_json,
+    id, organization_id, finalization_policy_id, version_number, configuration_json,
     status, approved_by, approved_at, created_at
 ) VALUES (
     '70000000-0000-0000-0000-000000000130', NULL,
-    'GLOBAL_HUMAN_CONTROLLED_FINALIZATION', 1,
+    '70000000-0000-0000-0000-000000000129', 1,
     '{"rules":[
       {"code":"EXECUTIVE_DECISION_REQUIRED","severity":"BLOCKING",
        "condition":{"field":"project.executiveDecisionRecorded","operator":"EQUAL","value":true}},
@@ -993,6 +1047,9 @@ INSERT INTO finalization_policy_version (
     ]}'::jsonb,
     'ACTIVE', 'platform', now(), now()
 );
+UPDATE finalization_policy
+SET active_version_id = '70000000-0000-0000-0000-000000000130'
+WHERE id = '70000000-0000-0000-0000-000000000129';
 
 INSERT INTO dashboard_definition (
     id, organization_id, dashboard_code, name, scope, created_at, updated_at
@@ -1053,7 +1110,8 @@ BEGIN
         'assignment_policy', 'assignment_policy_version', 'business_role', 'user_business_role',
         'task_record', 'task_dependency', 'task_comment', 'task_attachment',
         'approval_policy', 'approval_policy_version', 'approval_request', 'approval_step',
-        'approval_decision', 'sla_policy', 'sla_policy_version', 'escalation_policy_version',
+        'approval_decision', 'sla_policy', 'sla_policy_version', 'escalation_policy',
+        'escalation_policy_version',
         'task_sla_record', 'escalation_record', 'business_calendar', 'calendar_exception',
         'notification_template', 'notification_template_version', 'notification_rule',
         'notification_delivery', 'clarification_request', 'clarification_revision',
@@ -1061,8 +1119,9 @@ BEGIN
         'report_definition_version', 'report_section_definition', 'report_template',
         'report_template_version', 'report_data_policy', 'report_data_policy_version',
         'report_generation_job', 'report_data_snapshot', 'report_artifact',
-        'decision_policy_version', 'decision_support_case', 'decision_support_factor',
-        'executive_decision', 'finalization_policy_version', 'project_finalization_record',
+        'decision_policy', 'decision_policy_version', 'decision_support_case',
+        'decision_support_factor', 'executive_decision', 'finalization_policy',
+        'finalization_policy_version', 'project_finalization_record',
         'dashboard_definition', 'dashboard_version', 'dashboard_widget'
     ]
     LOOP

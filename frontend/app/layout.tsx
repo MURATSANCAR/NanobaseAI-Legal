@@ -18,19 +18,19 @@ export async function generateMetadata(): Promise<Metadata> {
   const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host");
   const protocol = requestHeaders.get("x-forwarded-proto") ?? "https";
   const origin = host ? `${protocol}://${host}` : "http://localhost:3000";
-  const image = new URL("/og-sprint6.png", origin).toString();
+  const image = new URL("/og-sprint8.png", origin).toString();
   return {
     metadataBase: new URL(origin),
     title: "NANObaseAI | Şartname AI",
     description:
-      "Şartname risklerini, çelişkileri ve değişiklik etkilerini kanıta dayalı olarak analiz edin.",
+      "Şartname analizini güvenlik, recovery, AI kalite ve pilot kabul kanıtlarıyla yönetin.",
     icons: {
       icon: "/favicon.svg",
       shortcut: "/favicon.svg",
     },
     openGraph: {
       title: "NANObaseAI | Şartname AI",
-      description: "Risk, çelişki ve değişiklik etkisini tek açıklanabilir analiz yüzeyinde yönetin.",
+      description: "Security, recovery, AI quality ve pilot readiness kanıtlarını tek yüzeyde yönetin.",
       type: "website",
       locale: "tr_TR",
       images: [{ url: image, width: 1536, height: 1024, alt: "NANObaseAI Şartname AI" }],
@@ -38,7 +38,7 @@ export async function generateMetadata(): Promise<Metadata> {
     twitter: {
       card: "summary_large_image",
       title: "NANObaseAI | Şartname AI",
-      description: "Risk, çelişki ve değişiklik etkisini tek açıklanabilir analiz yüzeyinde yönetin.",
+      description: "Security, recovery, AI quality ve pilot readiness kanıtlarını tek yüzeyde yönetin.",
       images: [image],
     },
   };

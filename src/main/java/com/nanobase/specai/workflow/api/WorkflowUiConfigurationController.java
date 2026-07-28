@@ -71,6 +71,36 @@ public class WorkflowUiConfigurationController {
         return response;
     }
 
+    @GetMapping("/report-designer")
+    Map<String, Object> reportDesigner() {
+        List<Map<String, Object>> dataPolicies = jdbc.queryForList("""
+            select v.id, p.policy_code as code, v.version_number as "versionNumber"
+              from report_data_policy p
+              join report_data_policy_version v on v.id = p.active_version_id
+             order by p.policy_code
+            """);
+        List<Map<String, Object>> templates = jdbc.queryForList("""
+            select v.id, t.template_code as code, v.version_number as "versionNumber",
+                   c.concept_code as "formatConceptCode", t.format_concept_id as "formatConceptId",
+                   t.language
+              from report_template t
+              join report_template_version v on v.id = t.active_version_id
+              join ontology_concept c on c.id = t.format_concept_id
+             order by t.template_code
+            """);
+        return Map.of("dataPolicies", dataPolicies, "templates", templates);
+    }
+
+    @GetMapping("/decision-policies")
+    List<Map<String, Object>> decisionPolicies() {
+        return jdbc.queryForList("""
+            select v.id, p.policy_code as code, v.version_number as "versionNumber"
+              from decision_policy p
+              join decision_policy_version v on v.id = p.active_version_id
+             order by p.policy_code
+            """);
+    }
+
     @GetMapping("/dashboard/{code}")
     JsonNode dashboard(@PathVariable String code) {
         UUID tenant = currentTenant.require().tenantId();

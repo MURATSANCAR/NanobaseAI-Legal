@@ -269,6 +269,15 @@ public class DynamicReportingService {
     }
 
     @Transactional(readOnly = true)
+    public List<ReportJobResponse> jobs(UUID projectId) {
+        return jdbc.query("""
+            select id from report_generation_job
+             where project_id = ? order by created_at desc
+            """, (result, row) -> result.getObject(1, UUID.class), projectId)
+            .stream().map(this::job).toList();
+    }
+
+    @Transactional(readOnly = true)
     public List<ReportArtifactResponse> artifacts(UUID jobId) {
         return jdbc.query("""
             select a.id, a.format_concept_id, c.concept_code, a.file_name,

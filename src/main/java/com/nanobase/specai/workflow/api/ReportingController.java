@@ -65,6 +65,11 @@ public class ReportingController {
         return reports.generate(projectId, request);
     }
 
+    @GetMapping("/tenders/{projectId}/reports")
+    List<ReportJobResponse> projectReports(@PathVariable UUID projectId) {
+        return reports.jobs(projectId);
+    }
+
     @GetMapping("/reports/{jobId}")
     ReportJobResponse get(@PathVariable UUID jobId) {
         return reports.job(jobId);

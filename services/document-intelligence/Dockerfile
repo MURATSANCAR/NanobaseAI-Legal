@@ -16,5 +16,6 @@ RUN mkdir -p /var/lib/specai /tmp/specai-docling \
 
 USER docling
 EXPOSE 8090
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health/live', timeout=3)"]
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8090", "--workers", "1", "--no-access-log"]
-

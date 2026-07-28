@@ -152,4 +152,38 @@ class ArchitectureTest {
                 com.nanobase.specai.compliance.application.ComparisonStrategy.class)
             .check(classes);
     }
+
+    @Test
+    void workflowDomainHasNoFixedBusinessEnums() {
+        noClasses().that().resideInAPackage("..workflow..")
+            .should().beEnums()
+            .check(classes);
+    }
+
+    @Test
+    void workflowAndReportExtensionPointsRemainInterfaces() {
+        classes().that().haveSimpleName("WorkflowConditionEngine")
+            .or().haveSimpleName("WorkflowNodeHandler")
+            .or().haveSimpleName("WorkflowNodeActionProvider")
+            .or().haveSimpleName("AssignmentPolicyEngine")
+            .or().haveSimpleName("ApprovalPolicyEngine")
+            .or().haveSimpleName("ReportSectionDataProvider")
+            .or().haveSimpleName("ReportFormatRenderer")
+            .or().haveSimpleName("DecisionSupportPolicyEngine")
+            .or().haveSimpleName("NotificationChannelAdapter")
+            .should().beInterfaces()
+            .check(classes);
+    }
+
+    @Test
+    void controllersDoNotResolveWorkflowConditionsOrCalculateSla() {
+        noClasses().that().areAnnotatedWith(RestController.class)
+            .should().dependOnClassesThat().areAssignableTo(
+                com.nanobase.specai.workflow.application.WorkflowConditionEngine.class)
+            .orShould().dependOnClassesThat().areAssignableTo(
+                com.nanobase.specai.workflow.application.BusinessCalendarService.class)
+            .orShould().dependOnClassesThat().areAssignableTo(
+                com.nanobase.specai.workflow.application.ApprovalPolicyEngine.class)
+            .check(classes);
+    }
 }

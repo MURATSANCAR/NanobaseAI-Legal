@@ -205,6 +205,15 @@ public class DecisionAndFinalizationService {
             base.statusConceptCode(), base.explanation(), factors, executive);
     }
 
+    @Transactional(readOnly = true)
+    public List<DecisionSupportResponse> cases(UUID projectId) {
+        return jdbc.query("""
+            select id from decision_support_case
+             where project_id = ? order by created_at desc
+            """, (result, row) -> result.getObject(1, UUID.class), projectId)
+            .stream().map(this::getCase).toList();
+    }
+
     @Transactional
     public Map<String, Object> decide(UUID caseId, ExecutiveDecisionRequest request) {
         TenantPrincipal principal = currentTenant.require();

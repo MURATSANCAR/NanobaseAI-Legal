@@ -137,6 +137,19 @@ services:
     networks: [specai]
     restart: "no"
 
+  clamav:
+    image: clamav/clamav:1.4.3
+    volumes:
+      - clamav-data:/var/lib/clamav
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/clamdcheck.sh"]
+      interval: 15s
+      timeout: 10s
+      retries: 30
+      start_period: 60s
+    networks: [specai]
+    restart: unless-stopped
+
   backend:
     build:
       context: .
@@ -157,6 +170,9 @@ services:
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}
       REDIS_HOST: redis
       REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
+      CLAMAV_ENABLED: "true"
+      CLAMAV_HOST: clamav
+      FILE_SECURITY_FAIL_CLOSED: "true"
       DOCUMENT_INTELLIGENCE_ENABLED: "true"
       DOCLING_ENABLED: "true"
       DOCLING_BASE_URL: http://document-intelligence:8090
@@ -182,6 +198,8 @@ services:
         condition: service_healthy
       ai-orchestrator:
         condition: service_healthy
+      clamav:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://localhost:8080/actuator/health/readiness | grep '\"status\":\"UP\"'"]
       interval: 10s
@@ -189,6 +207,12 @@ services:
       retries: 24
       start_period: 20s
     networks: [specai]
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,mode=1770
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 256
     restart: unless-stopped
 
   document-intelligence:
@@ -210,8 +234,6 @@ services:
     depends_on:
       minio-init:
         condition: service_completed_successfully
-    ports:
-      - "127.0.0.1:8090:8090"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8090/health/ready', timeout=3)"]
       interval: 10s
@@ -226,6 +248,12 @@ services:
         reservations:
           memory: 512M
     networks: [specai]
+    read_only: true
+    tmpfs:
+      - /tmp:size=1g,mode=1770,uid=10001,gid=10001
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 128
     restart: unless-stopped
 
   ai-orchestrator:
@@ -234,8 +262,6 @@ services:
     environment:
       MODEL_DEPLOYMENTS_JSON: ${AI_MODEL_DEPLOYMENTS_JSON:-[]}
       LOG_LEVEL: ${AI_ORCHESTRATOR_LOG_LEVEL:-INFO}
-    ports:
-      - "127.0.0.1:8092:8090"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
@@ -244,6 +270,12 @@ services:
       timeout: 5s
       retries: 12
     networks: [specai]
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,mode=1770
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 128
     restart: unless-stopped
 
   frontend:
@@ -276,6 +308,7 @@ volumes:
   rabbitmq-data:
   redis-data:
   document-intelligence-data:
+  clamav-data:
 
 networks:
   specai:
