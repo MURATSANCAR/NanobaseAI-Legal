@@ -8,6 +8,19 @@ export type Screen =
   | "pilot-quality"
   | "operations";
 
+export type ProjectHub = "analysis" | "findings" | "changes" | "project";
+
+export type AnalysisStep =
+  | "documents"
+  | "requirements"
+  | "knowledge"
+  | "compliance"
+  | "risks";
+
+export type ProjectSubNav = "overview" | "activity" | "settings";
+
+export type FindingsFilter = "risks" | "conflicts" | "ambiguities";
+
 export type ProjectTab =
   | "overview"
   | "documents"
