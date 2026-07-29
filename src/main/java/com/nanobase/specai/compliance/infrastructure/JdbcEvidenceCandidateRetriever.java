@@ -6,18 +6,24 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nanobase.specai.compliance.application.ComplianceModels.CandidateEvidence;
 import com.nanobase.specai.compliance.application.ComplianceModels.PolicyVersion;
 import com.nanobase.specai.compliance.application.EvidenceCandidateRetriever;
+import com.nanobase.specai.compliance.application.LexicalEvidenceQuery;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 @Repository
 public class JdbcEvidenceCandidateRetriever implements EvidenceCandidateRetriever {
+    private static final Logger log = LoggerFactory.getLogger(JdbcEvidenceCandidateRetriever.class);
+
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
 
@@ -32,15 +38,20 @@ public class JdbcEvidenceCandidateRetriever implements EvidenceCandidateRetrieve
                                             Instant evidenceCutoff,
                                             PolicyVersion policy) {
         Requirement requirement = requirement(organizationId, requirementId);
+        LexicalEvidenceQuery lexical = LexicalEvidenceQuery.from(requirement.normalizedText());
         JsonNode limits = policy.configuration().path("candidateLimits");
-        int metadataLimit = limits.path("metadata").asInt(100);
+        int metadataLimit = Math.max(1, limits.path("metadata").asInt(100));
         double defaultAuthority = policy.configuration()
             .path("defaultAuthorityScore").asDouble(0.4);
         String attributeConcept = requirement.attributes()
             .path("attributeConceptId").asText("");
         UUID attributeConceptId = parseUuid(attributeConcept);
         UUID primaryConceptId = requirement.primaryConceptId();
-        return jdbc.query("""
+        String tokenList = lexical.tokenList();
+        String tsQuery = lexical.isEmpty() ? "" : lexical.tsQuery();
+        int minimumHits = lexical.minimumHits();
+
+        List<CandidateEvidence> candidates = jdbc.query("""
             select fragment.id as fragment_id,
                    claim.id as claim_id,
                    coalesce(attribute.entity_id, claim.subject_entity_id,
@@ -60,8 +71,10 @@ public class JdbcEvidenceCandidateRetriever implements EvidenceCandidateRetrieve
                                   (attribute.attribute_concept_id = ?::uuid
                                    or claim.predicate_concept_id = ?::uuid)
                         then 1.0 else 0.0 end as ontology_score,
-                   ts_rank_cd(to_tsvector('simple', fragment.normalized_text),
-                              plainto_tsquery('simple', coalesce(?, ''))) as lexical_score,
+                   case when ? = '' then 0.0
+                        else ts_rank_cd(to_tsvector('simple', fragment.normalized_text),
+                                       to_tsquery('simple', ?))
+                   end as lexical_score,
                    case when ?::uuid is not null
                              and attribute.attribute_concept_id = ?::uuid
                         then 1.0 else 0.0 end as attribute_score,
@@ -75,7 +88,16 @@ public class JdbcEvidenceCandidateRetriever implements EvidenceCandidateRetrieve
                    fragment.valid_until,
                    fragment.document_id,
                    fragment.document_version_id,
-                   fragment.page_number
+                   fragment.page_number,
+                   case when ? = '' then 0
+                        else (
+                            select count(*)::int
+                            from unnest(string_to_array(?, ' ')) as q(token)
+                            where q.token <> ''
+                              and to_tsvector('simple', fragment.normalized_text)
+                                  @@ to_tsquery('simple', q.token || ':*')
+                        )
+                   end as lexical_hits
             from evidence_fragment fragment
             join document source_document
               on source_document.id = fragment.document_id
@@ -161,8 +183,16 @@ public class JdbcEvidenceCandidateRetriever implements EvidenceCandidateRetrieve
               and (
                 attribute.id is not null or claim.id is not null
                 or capability.id is not null
-                or to_tsvector('simple', fragment.normalized_text)
-                   @@ plainto_tsquery('simple', coalesce(?, ''))
+                or (
+                    ? <> ''
+                    and (
+                        select count(*)::int
+                        from unnest(string_to_array(?, ' ')) as q(token)
+                        where q.token <> ''
+                          and to_tsvector('simple', fragment.normalized_text)
+                              @@ to_tsquery('simple', q.token || ':*')
+                    ) >= ?
+                )
               )
               and (
                 coalesce(attribute.entity_id, claim.subject_entity_id,
@@ -196,14 +226,44 @@ public class JdbcEvidenceCandidateRetriever implements EvidenceCandidateRetrieve
             limit ?
             """, this::candidate,
             primaryConceptId, primaryConceptId, primaryConceptId,
-            requirement.normalizedText(),
+            tsQuery, tsQuery,
             attributeConceptId, attributeConceptId, defaultAuthority,
-            targetEntityId, targetEntityId, organizationId,
+            targetEntityId, targetEntityId,
+            tokenList, tokenList,
+            organizationId,
             Timestamp.from(evidenceCutoff),
-            requirement.normalizedText(),
+            tokenList, tokenList, minimumHits,
             Timestamp.from(entityCutoff), targetEntityId, targetEntityId,
             targetEntityId, targetEntityId,
             metadataLimit);
+
+        Double topScore = candidates.stream()
+            .map(CandidateEvidence::lexicalScore)
+            .max(Double::compareTo)
+            .orElse(null);
+        Map<String, Object> trace = new LinkedHashMap<>();
+        trace.put("requirementId", requirementId);
+        trace.put("organizationId", organizationId);
+        trace.put("targetEntityId", targetEntityId);
+        trace.put("queryTextLength", lexical.queryTextLength());
+        trace.put("queryTokenCount", lexical.tokens().size());
+        trace.put("minimumLexicalHits", minimumHits);
+        trace.put("vectorCollection", null);
+        trace.put("queryEmbeddingDimension", null);
+        trace.put("keywordCandidateCount", candidates.size());
+        trace.put("finalCandidateCount", candidates.size());
+        trace.put("topScore", topScore);
+        trace.put("documentScopeLocked", false);
+        log.info("evidence_retrieval {}", writeTrace(trace));
+        return candidates;
+    }
+
+    private String writeTrace(Map<String, Object> trace) {
+        try {
+            return mapper.writeValueAsString(trace);
+        } catch (JsonProcessingException exception) {
+            return trace.toString();
+        }
     }
 
     private static UUID parseUuid(String value) {
@@ -231,12 +291,13 @@ public class JdbcEvidenceCandidateRetriever implements EvidenceCandidateRetrieve
     }
 
     private CandidateEvidence candidate(ResultSet result, int row) throws SQLException {
-        Map<String, Object> metadata = new java.util.LinkedHashMap<>();
+        Map<String, Object> metadata = new LinkedHashMap<>();
         metadata.put("documentId", result.getObject("document_id", UUID.class));
         metadata.put("documentVersionId",
             result.getObject("document_version_id", UUID.class));
         metadata.put("pageNumber", result.getObject("page_number"));
         metadata.put("validUntil", instant(result, "valid_until"));
+        metadata.put("lexicalHits", result.getObject("lexical_hits"));
         return new CandidateEvidence(
             result.getObject("fragment_id", UUID.class),
             result.getObject("claim_id", UUID.class),

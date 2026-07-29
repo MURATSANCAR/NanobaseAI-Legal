@@ -56,7 +56,7 @@ public class EvidenceService {
             ) latest on true
             left join ontology_concept status on status.id = latest.status_concept_id
             where fragment.organization_id = ?
-              and (? is null or fragment.document_id = ?)
+              and (?::uuid is null or fragment.document_id = ?::uuid)
               and (? is null or status.concept_code = ?)
             order by fragment.created_at desc
             """, organizationId, documentId, documentId, validityStatus, validityStatus);

@@ -66,7 +66,7 @@ public class KnowledgeGraphService {
             join ontology_concept concept on concept.id = entity.entity_type_concept_id
             where entity.organization_id = ?
               and entity.valid_until is null
-              and (? is null or entity.entity_type_concept_id = ?)
+              and (?::uuid is null or entity.entity_type_concept_id = ?::uuid)
               and (? = '' or lower(entity.name) like ('%' || ? || '%')
                    or lower(entity.entity_code) like ('%' || ? || '%'))
             order by lower(entity.name), entity.id

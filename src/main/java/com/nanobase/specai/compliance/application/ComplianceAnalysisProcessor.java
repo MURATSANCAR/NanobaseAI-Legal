@@ -25,12 +25,15 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class ComplianceAnalysisProcessor {
+    private static final Logger log = LoggerFactory.getLogger(ComplianceAnalysisProcessor.class);
     private final TenantDatabaseContext tenantDatabase;
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
@@ -170,6 +173,27 @@ public class ComplianceAnalysisProcessor {
             metrics.retrievalCompleted(retrievalTimer);
         }
         metrics.retrievalCandidates(candidates.size());
+        Double topScore = candidates.stream()
+            .map(CandidateEvidence::lexicalScore)
+            .max(Double::compareTo)
+            .orElse(null);
+        Map<String, Object> retrievalTrace = new LinkedHashMap<>();
+        retrievalTrace.put("complianceRunId", job.id());
+        retrievalTrace.put("requirementId", task.requirementId());
+        retrievalTrace.put("organizationId", organizationId);
+        retrievalTrace.put("projectId", job.projectId());
+        retrievalTrace.put("targetEntityId", task.targetEntityId());
+        retrievalTrace.put("vectorCollection", null);
+        retrievalTrace.put("queryEmbeddingDimension", null);
+        retrievalTrace.put("keywordCandidateCount", candidates.size());
+        retrievalTrace.put("finalCandidateCount", candidates.size());
+        retrievalTrace.put("topScore", topScore);
+        retrievalTrace.put("documentScopeLocked", false);
+        try {
+            log.info("evidence_retrieval {}", mapper.writeValueAsString(retrievalTrace));
+        } catch (JsonProcessingException ignored) {
+            log.info("evidence_retrieval {}", retrievalTrace);
+        }
         var rerankingTimer = metrics.rerankingStarted();
         RankedEvidenceResult ranked;
         try {
