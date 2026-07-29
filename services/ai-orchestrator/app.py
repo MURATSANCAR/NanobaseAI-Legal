@@ -42,6 +42,10 @@ class Deployment:
     runtime_model: str
     api_key: str | None
     timeout_seconds: float
+    temperature: float = 0.0
+    top_p: float | None = None
+    reasoning: bool | None = None
+    default_max_tokens: int | None = None
 
 
 class ExtractionRequest(BaseModel):
@@ -139,6 +143,22 @@ def load_deployments() -> tuple[Deployment, ...]:
                 runtime_model=str(item["runtimeModel"]),
                 api_key=api_key,
                 timeout_seconds=float(item.get("timeoutSeconds", 120)),
+                temperature=float(item.get("temperature", 0)),
+                top_p=(
+                    float(item["topP"])
+                    if item.get("topP") is not None
+                    else None
+                ),
+                reasoning=(
+                    bool(item["reasoning"])
+                    if item.get("reasoning") is not None
+                    else None
+                ),
+                default_max_tokens=(
+                    int(item["maxTokens"])
+                    if item.get("maxTokens") is not None
+                    else None
+                ),
             )
         )
     return tuple(deployments)
@@ -334,7 +354,10 @@ async def _structured_runtime_call(
     validator = Draft202012Validator(output_schema)
     assessment = assess_prompt_security(untrusted_context)
     _audit_prompt_signals(assessment, correlation_id)
-    body = {
+    max_tokens = maximum_output_tokens
+    if deployment.default_max_tokens is not None:
+        max_tokens = min(max_tokens, deployment.default_max_tokens)
+    body: dict[str, Any] = {
         "model": deployment.runtime_model,
         "messages": [
             {
@@ -362,8 +385,8 @@ async def _structured_runtime_call(
                 ),
             },
         ],
-        "temperature": 0,
-        "max_tokens": maximum_output_tokens,
+        "temperature": deployment.temperature,
+        "max_tokens": max_tokens,
         "response_format": {
             "type": "json_schema",
             "json_schema": {
@@ -373,6 +396,12 @@ async def _structured_runtime_call(
             },
         },
     }
+    if deployment.top_p is not None:
+        body["top_p"] = deployment.top_p
+    if deployment.reasoning is False:
+        # Qwen3.5 / vLLM: keep thinking off for structured compliance JSON.
+        body["chat_template_kwargs"] = {"enable_thinking": False}
+        body["enable_thinking"] = False
     headers = {"Content-Type": "application/json"}
     if deployment.api_key:
         headers["Authorization"] = f"Bearer {deployment.api_key}"

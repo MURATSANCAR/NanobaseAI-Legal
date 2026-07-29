@@ -13,3 +13,17 @@ Backend'in dış model adı daima `nanobase-spec-ai`'dır. FastAPI AI Orchestrat
 `MODEL_DEPLOYMENTS_JSON` içinden profile karşılık gelen OpenAI-compatible runtime'ı
 seçer. Runtime model adı, base URL ve credential UI'a veya requirement açıklamasına
 dönmez. Orchestrator tool, internet ve filesystem erişimi sağlamaz.
+
+## Compliance semantic routing
+
+Compliance semantic evaluation `ComplianceSemanticRouter` ile yönetilir:
+
+| Mode | Canlı karar | FAST (9B) |
+|------|-------------|-----------|
+| `BALANCED_ONLY` | BALANCED (35B) | yok |
+| `SHADOW` | BALANCED | paralel kayıt / karşılaştırma |
+| `LIVE_FAST` | FAST; düşük güven / çelişki / çok kanıt / FAST failure → BALANCED | birincil |
+
+Önerilen FAST runtime (ayrı vLLM/SGLang deployment): `reasoning=false`,
+`temperature=0`, `topP=0.8`, `maxTokens=512`, `timeoutSeconds=300`.
+Shadow kapıları ve rollback: `docs/runbooks/RUNBOOK-COMPLIANCE-FAST-SHADOW.md`.

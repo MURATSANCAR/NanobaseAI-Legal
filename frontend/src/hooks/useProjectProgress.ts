@@ -2,18 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  completionFromCounts,
   emptyCompletion,
   isDocumentsComplete,
   recommendedStep,
   type StepCompletion,
 } from "@/src/lib/analysis-pipeline";
 import type { AnalysisStep } from "@/src/lib/portal-utils";
-import { complianceApi } from "@/src/modules/compliance/api";
 import type { ProjectDocument } from "@/src/modules/documents/api";
-import { knowledgeApi } from "@/src/modules/knowledge/api";
-import { requirementApi } from "@/src/modules/requirements/api";
-import { riskApi } from "@/src/modules/risks/api";
+import { tenderApi } from "@/src/modules/tenders/api";
 
 export type ProjectProgress = {
   completion: StepCompletion;
@@ -22,13 +18,18 @@ export type ProjectProgress = {
   refresh: () => Promise<void>;
 };
 
-async function safeCount(loader: () => Promise<unknown[]>): Promise<number | null> {
-  try {
-    const items = await loader();
-    return items.length;
-  } catch {
-    return null;
-  }
+const ANALYSIS_STEPS: AnalysisStep[] = [
+  "documents",
+  "requirements",
+  "knowledge",
+  "compliance",
+  "risks",
+];
+
+function asAnalysisStep(value: string | undefined): AnalysisStep | null {
+  return ANALYSIS_STEPS.includes(value as AnalysisStep)
+    ? (value as AnalysisStep)
+    : null;
 }
 
 export function useProjectProgress(
@@ -37,6 +38,9 @@ export function useProjectProgress(
   documents: ProjectDocument[],
 ): ProjectProgress {
   const [completion, setCompletion] = useState<StepCompletion>(emptyCompletion);
+  const [serverRecommended, setServerRecommended] = useState<AnalysisStep | null>(
+    null,
+  );
   const [loading, setLoading] = useState(false);
 
   const documentsReady = useMemo(
@@ -47,29 +51,26 @@ export function useProjectProgress(
   const refresh = useCallback(async () => {
     if (!token || !projectId) {
       setCompletion(emptyCompletion());
+      setServerRecommended(null);
       return;
     }
     setLoading(true);
     try {
-      const [requirementCount, entityCount, evaluationCount, riskCount] =
-        await Promise.all([
-          safeCount(async () => {
-            const page = await requirementApi.list(token, projectId);
-            return page.content;
-          }),
-          safeCount(() => knowledgeApi.entities(token)),
-          safeCount(() => complianceApi.evaluations(token, projectId)),
-          safeCount(() => riskApi.list(token, projectId)),
-        ]);
-      setCompletion(
-        completionFromCounts({
-          documentsReady,
-          requirementCount,
-          entityCount,
-          evaluationCount,
-          riskCount,
-        }),
-      );
+      const progress = await tenderApi.analysisProgress(token, projectId);
+      setCompletion({
+        documents: progress.documents || documentsReady,
+        requirements: progress.requirements,
+        knowledge: progress.knowledge,
+        compliance: progress.compliance,
+        risks: progress.risks,
+      });
+      setServerRecommended(asAnalysisStep(progress.recommendedStep));
+    } catch {
+      // Keep last known completion; documents flag still updates locally.
+      setCompletion((current) => ({
+        ...current,
+        documents: documentsReady || current.documents,
+      }));
     } finally {
       setLoading(false);
     }
@@ -90,9 +91,14 @@ export function useProjectProgress(
     );
   }, [documentsReady]);
 
+  const recommended =
+    serverRecommended && !completion[serverRecommended]
+      ? serverRecommended
+      : recommendedStep(completion);
+
   return {
     completion,
-    recommended: recommendedStep(completion),
+    recommended,
     loading,
     refresh,
   };

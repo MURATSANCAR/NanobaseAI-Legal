@@ -13,11 +13,16 @@ import {
   X,
 } from "lucide-react";
 import type { AuthSession } from "@/src/modules/auth/auth";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "@/src/components/layout/AppShell";
 import type { SidebarNavItem } from "@/src/components/layout/Sidebar";
 import { PRODUCT_BRAND, PRODUCT_BRAND_SHORT } from "@/src/config/brand";
 import { useProjectProgress } from "@/src/hooks/useProjectProgress";
+import {
+  buildPortalHash,
+  parsePortalHash,
+  type PortalRoute,
+} from "@/src/lib/portal-route";
 import {
   compactDraft,
   emptyDraft,
@@ -36,6 +41,7 @@ import {
   saveExpertMode,
   saveProjectUx,
 } from "@/src/lib/project-ux-storage";
+import type { Sprint7Tab, Sprint9Tab } from "@/src/screens/_shared";
 import { auditApi, type AuditEvent } from "@/src/modules/audit/api";
 import {
   displayName,
@@ -79,6 +85,11 @@ export default function SpecAiPortal() {
   const [expertMode, setExpertMode] = useState(false);
   const [uxHydrated, setUxHydrated] = useState(false);
   const [resumeRecommended, setResumeRecommended] = useState(false);
+  const [workflowTab, setWorkflowTab] = useState<Sprint7Tab>("tasks");
+  const [pilotTab, setPilotTab] = useState<Sprint9Tab>("quality");
+  const [routeReady, setRouteReady] = useState(false);
+  const [projectsLoaded, setProjectsLoaded] = useState(false);
+  const applyingHash = useRef(false);
   const [projects, setProjects] = useState<TenderProject[]>([]);
   const [allDocuments, setAllDocuments] = useState<ProjectDocument[]>([]);
   const [documents, setDocuments] = useState<ProjectDocument[]>([]);
@@ -131,53 +142,83 @@ export default function SpecAiPortal() {
 
   const loadProjects = useCallback(
     async (accessToken = token) => {
-      if (!accessToken) return;
+      if (!accessToken) {
+        setProjectsLoaded(true);
+        return;
+      }
       setProblem(null);
-      const page = await tenderApi.list(accessToken);
-      setProjects(page.content);
-      const documentGroups = await Promise.all(
-        page.content.map(async (project) => {
-          try {
-            return await documentApi.list(accessToken, project.id);
-          } catch {
-            return [];
-          }
-        }),
-      );
-      setAllDocuments(documentGroups.flat());
+      try {
+        const page = await tenderApi.list(accessToken);
+        setProjects(page.content);
+        const documentGroups = await Promise.all(
+          page.content.map(async (project) => {
+            try {
+              return await documentApi.list(accessToken, project.id);
+            } catch {
+              return [];
+            }
+          }),
+        );
+        setAllDocuments(documentGroups.flat());
+      } finally {
+        setProjectsLoaded(true);
+      }
     },
     [token],
   );
 
   const loadProject = useCallback(
-    async (project: TenderProject, accessToken = token) => {
+    async (
+      project: TenderProject,
+      accessToken = token,
+      route?: Extract<PortalRoute, { screen: "project" }>,
+    ) => {
       if (!accessToken) return;
       setSelectedProject(project);
       setScreen("project");
       setLoading(true);
       setProblem(null);
-      setExpertMode(loadExpertMode());
-      const prefs = loadProjectUx(project.id);
-      if (prefs) {
-        setProjectHub(prefs.lastHub);
-        setAnalysisStep(prefs.lastStep);
-        setProjectSubNav(prefs.projectSubNav);
+
+      if (route) {
         setResumeRecommended(false);
-        if (prefs.lastHub === "analysis") {
-          setProjectTab(prefs.lastStep);
-        } else if (prefs.lastHub === "findings") {
-          setProjectTab("risks");
-        } else if (prefs.lastHub === "changes") {
-          setProjectTab("changes");
+        if (route.expertMode) {
+          setExpertMode(true);
+          setProjectTab(route.tab);
         } else {
-          setProjectTab(prefs.projectSubNav);
+          setExpertMode(false);
+          setProjectHub(route.hub);
+          setAnalysisStep(route.analysisStep);
+          setFindingsFilter(route.findingsFilter);
+          setProjectSubNav(route.projectSubNav);
+          if (route.hub === "analysis") setProjectTab(route.analysisStep);
+          else if (route.hub === "findings") setProjectTab(route.findingsFilter);
+          else if (route.hub === "changes") setProjectTab("changes");
+          else setProjectTab(route.projectSubNav);
         }
       } else {
-        setProjectHub("analysis");
-        setAnalysisStep("documents");
-        setProjectSubNav("overview");
-        setProjectTab("documents");
-        setResumeRecommended(true);
+        setExpertMode(loadExpertMode());
+        const prefs = loadProjectUx(project.id);
+        if (prefs) {
+          setProjectHub(prefs.lastHub);
+          setAnalysisStep(prefs.lastStep);
+          setProjectSubNav(prefs.projectSubNav);
+          setResumeRecommended(false);
+          if (prefs.lastHub === "analysis") {
+            setProjectTab(prefs.lastStep);
+          } else if (prefs.lastHub === "findings") {
+            setProjectTab("risks");
+          } else if (prefs.lastHub === "changes") {
+            setProjectTab("changes");
+          } else {
+            setProjectTab(prefs.projectSubNav);
+          }
+        } else {
+          setProjectHub("analysis");
+          setAnalysisStep("documents");
+          setProjectSubNav("overview");
+          setProjectTab("documents");
+          setResumeRecommended(true);
+        }
       }
       try {
         const [projectDocuments, projectMembers, auditPage] = await Promise.all([
@@ -201,6 +242,72 @@ export default function SpecAiPortal() {
       }
     },
     [showProblem, token],
+  );
+
+  const applyRoute = useCallback(
+    async (route: PortalRoute) => {
+      applyingHash.current = true;
+      try {
+        if (route.screen === "dashboard") {
+          setScreen("dashboard");
+          return;
+        }
+        if (route.screen === "projects") {
+          setScreen("projects");
+          return;
+        }
+        if (route.screen === "operations") {
+          if (canOperate) setScreen("operations");
+          return;
+        }
+        if (route.screen === "workflows") {
+          if (!canAnalyze) return;
+          setWorkflowTab(route.tab);
+          setScreen("workflows");
+          return;
+        }
+        if (route.screen === "pilot-quality") {
+          if (!canAnalyze) return;
+          setPilotTab(route.tab);
+          setScreen("pilot-quality");
+          return;
+        }
+        if (route.screen === "project") {
+          const project = projects.find((item) => item.id === route.projectId);
+          if (!project) {
+            setScreen("projects");
+            return;
+          }
+          if (selectedProject?.id === project.id) {
+            if (route.expertMode) {
+              setExpertMode(true);
+              setProjectTab(route.tab);
+            } else {
+              setExpertMode(false);
+              setProjectHub(route.hub);
+              setAnalysisStep(route.analysisStep);
+              setFindingsFilter(route.findingsFilter);
+              setProjectSubNav(route.projectSubNav);
+            }
+            setScreen("project");
+            return;
+          }
+          await loadProject(project, token, route);
+        }
+      } finally {
+        window.setTimeout(() => {
+          applyingHash.current = false;
+        }, 0);
+      }
+    },
+    [
+      canAnalyze,
+      canOperate,
+      loadProject,
+      projects,
+      selectedProject?.id,
+      token,
+    ],
   );
 
   useEffect(() => {
@@ -254,6 +361,80 @@ export default function SpecAiPortal() {
     setExpertMode(loadExpertMode());
     setUxHydrated(true);
   }, []);
+
+  useEffect(() => {
+    if (session === null) setProjectsLoaded(true);
+  }, [session]);
+
+  useEffect(() => {
+    if (!uxHydrated || !projectsLoaded || routeReady || session === undefined) return;
+    const route = parsePortalHash(window.location.hash);
+    if (!route) {
+      setRouteReady(true);
+      return;
+    }
+    void applyRoute(route).finally(() => setRouteReady(true));
+  }, [applyRoute, projectsLoaded, routeReady, session, uxHydrated]);
+
+  useEffect(() => {
+    if (!uxHydrated || !routeReady) return;
+    const onHashChange = () => {
+      const route = parsePortalHash(window.location.hash);
+      if (route) void applyRoute(route);
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, [applyRoute, routeReady, uxHydrated]);
+
+  useEffect(() => {
+    if (!uxHydrated || !routeReady || applyingHash.current) return;
+    let route: PortalRoute;
+    if (screen === "project" && selectedProject) {
+      route = expertMode
+        ? {
+            screen: "project",
+            projectId: selectedProject.id,
+            expertMode: true,
+            tab: projectTab,
+          }
+        : {
+            screen: "project",
+            projectId: selectedProject.id,
+            expertMode: false,
+            hub: projectHub,
+            analysisStep,
+            findingsFilter,
+            projectSubNav,
+          };
+    } else if (screen === "workflows") {
+      route = { screen: "workflows", tab: workflowTab };
+    } else if (screen === "pilot-quality") {
+      route = { screen: "pilot-quality", tab: pilotTab };
+    } else if (screen === "operations") {
+      route = { screen: "operations" };
+    } else if (screen === "projects") {
+      route = { screen: "projects" };
+    } else {
+      route = { screen: "dashboard" };
+    }
+    const next = buildPortalHash(route);
+    if (window.location.hash !== next) {
+      window.history.replaceState(null, "", next);
+    }
+  }, [
+    analysisStep,
+    expertMode,
+    findingsFilter,
+    pilotTab,
+    projectHub,
+    projectSubNav,
+    projectTab,
+    routeReady,
+    screen,
+    selectedProject,
+    uxHydrated,
+    workflowTab,
+  ]);
 
   useEffect(() => {
     if (!resumeRecommended || progress.loading) return;
@@ -607,6 +788,8 @@ export default function SpecAiPortal() {
           canWrite={canAnalyze}
           onProblem={showProblem}
           onNotify={notify}
+          tab={workflowTab}
+          onTab={setWorkflowTab}
         />
       )}
       {screen === "pilot-quality" && canAnalyze && (
@@ -615,6 +798,8 @@ export default function SpecAiPortal() {
           canOperate={canOperate}
           onProblem={showProblem}
           onNotify={notify}
+          tab={pilotTab}
+          onTab={setPilotTab}
         />
       )}
 

@@ -114,4 +114,25 @@ public final class TenderContracts {
                 member.canManageMembers(), member.canArchiveProject(), member.createdAt());
         }
     }
+
+    public record AnalysisProgressCounts(
+        long readyDocuments,
+        long requirements,
+        long knowledgeEntities,
+        long complianceEvaluations,
+        long risks
+    ) {
+    }
+
+    public record AnalysisProgressResponse(
+        UUID projectId,
+        boolean documents,
+        boolean requirements,
+        boolean knowledge,
+        boolean compliance,
+        boolean risks,
+        String recommendedStep,
+        AnalysisProgressCounts counts
+    ) {
+    }
 }

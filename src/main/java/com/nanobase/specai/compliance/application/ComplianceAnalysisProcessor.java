@@ -46,7 +46,7 @@ public class ComplianceAnalysisProcessor {
     private final EvidenceReranker reranker;
     private final ComparisonStrategyRegistry comparisons;
     private final PolicyComplianceConfidenceEngine confidenceEngine;
-    private final ComplianceAiGateway aiGateway;
+    private final ComplianceSemanticRouter semanticRouter;
     private final ComplianceJobService jobs;
     private final OutboxService outbox;
     private final PlatformMetrics metrics;
@@ -60,7 +60,7 @@ public class ComplianceAnalysisProcessor {
         EvidenceReranker reranker,
         ComparisonStrategyRegistry comparisons,
         PolicyComplianceConfidenceEngine confidenceEngine,
-        ComplianceAiGateway aiGateway,
+        ComplianceSemanticRouter semanticRouter,
         ComplianceJobService jobs,
         OutboxService outbox,
         PlatformMetrics metrics,
@@ -74,7 +74,7 @@ public class ComplianceAnalysisProcessor {
         this.reranker = reranker;
         this.comparisons = comparisons;
         this.confidenceEngine = confidenceEngine;
-        this.aiGateway = aiGateway;
+        this.semanticRouter = semanticRouter;
         this.jobs = jobs;
         this.outbox = outbox;
         this.metrics = metrics;
@@ -328,7 +328,7 @@ public class ComplianceAnalysisProcessor {
         summary.put("status", comparison.status());
         summary.set("confidence", mapper.valueToTree(confidence));
         return new EvaluationOutcome(decision, summary, confidence.score(),
-            confidence.requiresReview(), null, List.of(best), contradiction);
+            confidence.requiresReview(), null, List.of(best), contradiction, null);
     }
 
     private EvaluationOutcome semanticOutcome(
@@ -339,13 +339,18 @@ public class ComplianceAnalysisProcessor {
         List<Map<String, Object>> evidence = selectedEvidencePayload(
             organizationId, ranked.ranked());
         List<Decision> decisions = decisions(organizationId);
-        var response = aiGateway.evaluate(new SemanticRequest(
+        boolean contradiction = evidence.stream().anyMatch(item ->
+            number(item.get("contradictionStrength")) > 0);
+        SemanticRequest request = new SemanticRequest(
             organizationId, "nanobase-spec-ai", modelProfile(organizationId),
             prompt.components(), prompt.schema(),
             Map.of("id", requirement.id(), "text", requirement.text(),
                 "attributes", requirement.attributes()),
             ontology(organizationId, job.analysisProfileId()), evidence,
-            decisions.stream().map(Decision::code).toList(), maxOutputTokens, correlationId));
+            decisions.stream().map(Decision::code).toList(), maxOutputTokens, correlationId);
+        ComplianceSemanticRouter.RoutedEvaluation routed =
+            semanticRouter.evaluate(request, contradiction);
+        var response = routed.response();
         String decisionCode = response.output()
             .path("recommendedDecisionConcept").asText();
         if (decisionCode == null || decisionCode.isBlank()) {
@@ -380,8 +385,6 @@ public class ComplianceAnalysisProcessor {
                     0);
             }
         }
-        boolean contradiction = evidence.stream().anyMatch(item ->
-            number(item.get("contradictionStrength")) > 0);
         ConfidenceResult confidence = confidenceEngine.evaluate(new ConfidenceContext(
             Map.of("relevance", averageScore(ranked.ranked()),
                 "validity", averageValidity(ranked.ranked()),
@@ -399,8 +402,9 @@ public class ComplianceAnalysisProcessor {
         summary.put("strategyProvider", "llm-semantic-evaluation");
         summary.set("semanticEvaluation", response.output());
         summary.set("confidence", mapper.valueToTree(confidence));
+        summary.set("modelRouting", mapper.valueToTree(routed.routing()));
         return new EvaluationOutcome(decisionId, summary, combined, review,
-            response.modelRunId(), ranked.ranked(), contradiction);
+            response.modelRunId(), ranked.ranked(), contradiction, routed.routing());
     }
 
     private EvaluationOutcome missingOutcome(UUID organizationId, Job job,
@@ -414,7 +418,7 @@ public class ComplianceAnalysisProcessor {
         summary.put("requirementId", requirement.id().toString());
         summary.set("confidence", mapper.valueToTree(confidence));
         return new EvaluationOutcome(decision, summary, confidence.score(),
-            true, null, List.of(), false);
+            true, null, List.of(), false, null);
     }
 
     private UUID persistEvaluation(
@@ -424,6 +428,7 @@ public class ComplianceAnalysisProcessor {
         UUID evaluationId = UUID.randomUUID();
         UUID grounding = conceptByMetadata(organizationId, "grounded",
             !outcome.selectedEvidence().isEmpty());
+        ComplianceSemanticRouter.RoutingTrace routing = outcome.routing();
         jdbc.update("""
             insert into compliance_evaluation (
                 id, organization_id, project_id, requirement_id, target_scope_json,
@@ -432,8 +437,12 @@ public class ComplianceAnalysisProcessor {
                 grounding_status_concept_id, review_status, analysis_profile_id,
                 retrieval_policy_version_id, matching_policy_version_id,
                 comparison_policy_version_id, confidence_policy_version_id,
-                prompt_package_version_id, created_at, updated_at
+                prompt_package_version_id,
+                live_model_profile, shadow_model_profile, shadow_result_json,
+                shadow_comparison_json, escalation_reason,
+                created_at, updated_at
             ) values (?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                      ?, ?, ?::jsonb, ?::jsonb, ?,
                       now(), now())
             """, evaluationId, organizationId, job.projectId(), requirement.id(),
             task.targetEntityId() == null ? "{}"
@@ -444,7 +453,14 @@ public class ComplianceAnalysisProcessor {
             outcome.requiresReview() ? "REQUIRES_REVIEW" : "AI_RECOMMENDATION",
             job.analysisProfileId(), job.retrievalPolicyVersionId(),
             job.matchingPolicyVersionId(), job.comparisonPolicyVersionId(),
-            job.confidencePolicyVersionId(), job.promptPackageVersionId());
+            job.confidencePolicyVersionId(), job.promptPackageVersionId(),
+            routing == null ? null : routing.liveProfile(),
+            routing == null ? null : routing.shadowProfile(),
+            routing == null || routing.shadowResult() == null
+                ? null : routing.shadowResult().toString(),
+            routing == null || routing.comparison() == null
+                ? null : routing.comparison().toString(),
+            routing == null ? null : routing.escalationReason());
         for (RankedEvidence selected : outcome.selectedEvidence()) {
             boolean contradiction = outcome.contradiction();
             UUID role = conceptByMetadata(organizationId, "polarity",
@@ -674,11 +690,17 @@ public class ComplianceAnalysisProcessor {
     }
 
     private String modelProfile(UUID organizationId) {
-        return jdbc.queryForObject("""
+        List<String> profiles = jdbc.query("""
             select profile_code from model_profile
             where active = true and (organization_id = ? or organization_id is null)
-            order by (organization_id is not null) desc limit 1
-            """, String.class, organizationId);
+            order by (organization_id is not null) desc,
+                     case profile_code when 'BALANCED' then 0 when 'FAST' then 1 else 2 end,
+                     profile_code
+            """, (result, index) -> result.getString("profile_code"), organizationId);
+        if (profiles.isEmpty()) {
+            throw new IllegalStateException("No active model profile configured");
+        }
+        return profiles.getFirst();
     }
 
     private double averageScore(List<RankedEvidence> values) {
@@ -777,7 +799,8 @@ public class ComplianceAnalysisProcessor {
         boolean requiresReview,
         UUID modelRunId,
         List<RankedEvidence> selectedEvidence,
-        boolean contradiction
+        boolean contradiction,
+        ComplianceSemanticRouter.RoutingTrace routing
     ) {
     }
 

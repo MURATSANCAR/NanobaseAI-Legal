@@ -1,11 +1,13 @@
 package com.nanobase.specai.tender.api;
 
 import com.nanobase.specai.tender.api.TenderContracts.AddProjectMemberRequest;
+import com.nanobase.specai.tender.api.TenderContracts.AnalysisProgressResponse;
 import com.nanobase.specai.tender.api.TenderContracts.CreateTenderRequest;
 import com.nanobase.specai.tender.api.TenderContracts.ProjectMemberResponse;
 import com.nanobase.specai.tender.api.TenderContracts.TenderResponse;
 import com.nanobase.specai.tender.api.TenderContracts.UpdateProjectMemberRequest;
 import com.nanobase.specai.tender.api.TenderContracts.UpdateTenderRequest;
+import com.nanobase.specai.tender.application.AnalysisProgressService;
 import com.nanobase.specai.tender.application.ProjectMemberService;
 import com.nanobase.specai.tender.application.TenderProjectService;
 import jakarta.validation.Valid;
@@ -32,10 +34,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class TenderController {
     private final TenderProjectService service;
     private final ProjectMemberService memberService;
+    private final AnalysisProgressService progressService;
 
-    public TenderController(TenderProjectService service, ProjectMemberService memberService) {
+    public TenderController(TenderProjectService service, ProjectMemberService memberService,
+                            AnalysisProgressService progressService) {
         this.service = service;
         this.memberService = memberService;
+        this.progressService = progressService;
     }
 
     @PostMapping
@@ -52,6 +57,11 @@ public class TenderController {
     @GetMapping("/{id}")
     TenderResponse get(@PathVariable UUID id) {
         return service.get(id);
+    }
+
+    @GetMapping("/{id}/analysis-progress")
+    AnalysisProgressResponse analysisProgress(@PathVariable UUID id) {
+        return progressService.progress(id);
     }
 
     @PutMapping("/{id}")

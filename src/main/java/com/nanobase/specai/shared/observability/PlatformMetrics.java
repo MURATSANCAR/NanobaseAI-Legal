@@ -84,6 +84,10 @@ public class PlatformMetrics {
     private final Counter complianceContradictoryEvidence;
     private final Counter retrievalCandidate;
     private final Counter comparisonStrategy;
+    private final Counter complianceShadowAttempt;
+    private final Counter complianceShadowAgreement;
+    private final Counter complianceShadowDisagreement;
+    private final Counter complianceFalseCompliant;
     private final Timer retrievalDuration;
     private final Timer rerankingDuration;
 
@@ -143,6 +147,13 @@ public class PlatformMetrics {
             registry.counter("compliance_contradictory_evidence_total");
         retrievalCandidate = registry.counter("retrieval_candidate_total");
         comparisonStrategy = registry.counter("comparison_strategy_total");
+        complianceShadowAttempt = registry.counter("compliance_shadow_total");
+        complianceShadowAgreement =
+            registry.counter("compliance_shadow_agreement_total");
+        complianceShadowDisagreement =
+            registry.counter("compliance_shadow_disagreement_total");
+        complianceFalseCompliant =
+            registry.counter("compliance_false_compliant_total");
         retrievalDuration = registry.timer("retrieval_duration_seconds");
         rerankingDuration = registry.timer("reranking_duration_seconds");
         registry.timer("risk_analysis_duration_seconds");
@@ -251,6 +262,49 @@ public class PlatformMetrics {
         comparisonStrategy.increment();
         registry.counter("comparison_strategy_provider_total", "provider", provider)
             .increment();
+    }
+
+    public void complianceLlmProfile(String profile, boolean success, Duration duration) {
+        String safeProfile = profile == null || profile.isBlank() ? "unknown" : profile;
+        registry.counter("compliance_llm_profile_total",
+            "profile", safeProfile,
+            "result", success ? "success" : "failure").increment();
+        if (duration != null) {
+            registry.timer("compliance_llm_latency_seconds", "profile", safeProfile)
+                .record(duration);
+        }
+    }
+
+    public void complianceShadowAttempt() {
+        complianceShadowAttempt.increment();
+    }
+
+    public void complianceShadowAgreement(boolean agreement) {
+        if (agreement) {
+            complianceShadowAgreement.increment();
+        } else {
+            complianceShadowDisagreement.increment();
+        }
+    }
+
+    public void complianceShadowFailure(String failureCode) {
+        registry.counter("compliance_shadow_failure_total",
+            "failure_code", failureCode == null ? "unknown" : failureCode).increment();
+    }
+
+    public void complianceFastEscalation(String reason) {
+        registry.counter("compliance_fast_escalation_total",
+            "reason", reason == null ? "unknown" : reason).increment();
+    }
+
+    public void complianceStructuredJsonFailure(String profile) {
+        registry.counter("compliance_structured_json_failure_total",
+            "profile", profile == null || profile.isBlank() ? "unknown" : profile)
+            .increment();
+    }
+
+    public void complianceFalseCompliant() {
+        complianceFalseCompliant.increment();
     }
 
     public void sprint7(String metricName) {

@@ -143,16 +143,27 @@ import {
 
 
 import { Empty, EmptyState, LoadingPanel, type Sprint7Tab } from "./_shared";
+import { WorkspaceRail } from "@/src/components/pipeline/WorkspaceRail";
 
-export function Sprint7Workspace({ token, project, canConfigure, canWrite, onProblem, onNotify }: {
+export function Sprint7Workspace({
+  token,
+  project,
+  canConfigure,
+  canWrite,
+  onProblem,
+  onNotify,
+  tab,
+  onTab,
+}: {
   token: string;
   project: TenderProject | null;
   canConfigure: boolean;
   canWrite: boolean;
   onProblem: (error: unknown) => void;
   onNotify: (message: string) => void;
+  tab: Sprint7Tab;
+  onTab: (tab: Sprint7Tab) => void;
 }) {
-  const [tab, setTab] = useState<Sprint7Tab>("tasks");
   const [loading, setLoading] = useState(true);
   const [tasks, setTasks] = useState<TaskRecord[]>([]);
   const [taskColumns, setTaskColumns] = useState<Array<{
@@ -402,13 +413,13 @@ export function Sprint7Workspace({ token, project, canConfigure, canWrite, onPro
     }
   }
 
-  const centerTabs: Array<[Sprint7Tab, string]> = [
-    ["tasks", "Görevler"],
-    ["approvals", "Onaylar"],
-    ["clarifications", "Açıklamalar"],
-    ["workflow-designer", "Workflow tasarımı"],
-    ["report-designer", "Raporlar"],
-    ["decision-support", "Yönetici kararı"],
+  const centerTabs: Array<[Sprint7Tab, string, LucideIcon, string]> = [
+    ["tasks", "Görevler", ClipboardCheck, "Çalışma"],
+    ["approvals", "Onaylar", ShieldCheck, "Çalışma"],
+    ["clarifications", "Açıklamalar", FileClock, "Çalışma"],
+    ["workflow-designer", "Workflow", GitCompareArrows, "Yapılandırma"],
+    ["report-designer", "Raporlar", Gauge, "Yapılandırma"],
+    ["decision-support", "Yönetici kararı", BrainCircuit, "Yapılandırma"],
   ];
 
   return (
@@ -435,12 +446,19 @@ export function Sprint7Workspace({ token, project, canConfigure, canWrite, onPro
         <small>{widget.dataSource.entity ?? "Dinamik veri kaynağı"}</small>
       </article>)}
     </section>}
-    <nav className="tabs sprint7-tabs" aria-label="Workflow merkezi bölümleri">
-      {centerTabs.map(([value, label]) => <button key={value}
-        className={tab === value ? "active" : ""} onClick={() => setTab(value)}>
-        {label}
-      </button>)}
-    </nav>
+    <div className="workspace-layout">
+      <WorkspaceRail
+        ariaLabel="Workflow bölümleri"
+        activeId={tab}
+        onSelect={(id) => onTab(id as Sprint7Tab)}
+        items={centerTabs.map(([id, label, icon, group]) => ({
+          id,
+          label,
+          icon,
+          group,
+        }))}
+      />
+      <div className="workspace-main">
     {loading ? <LoadingPanel /> : <>
       {tab === "tasks" && <section className="panel sprint7-panel">
         <div className="panel-head"><div><b>Görev merkezi</b>
@@ -713,6 +731,8 @@ export function Sprint7Workspace({ token, project, canConfigure, canWrite, onPro
           body="Karar faktörleri ve finalizasyon geçmişi proje kapsamında yüklenir." />}
       </section>}
     </>}
+      </div>
+    </div>
   </PageShell>
   );
 }

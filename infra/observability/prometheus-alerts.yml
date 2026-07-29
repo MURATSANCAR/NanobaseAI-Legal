@@ -42,6 +42,25 @@ groups:
         for: 5m
         labels: {severity: high, owner: ai}
         annotations: {runbook: RUNBOOK-MODEL-UNAVAILABLE.md}
+      - alert: ComplianceShadowDisagreementHigh
+        expr: |
+          (
+            rate(compliance_shadow_disagreement_total[30m])
+            /
+            clamp_min(rate(compliance_shadow_total[30m]), 1e-9)
+          ) > 0.05
+        for: 15m
+        labels: {severity: high, owner: ai}
+        annotations:
+          summary: FAST/BALANCED shadow disagreement exceeds 5%
+          runbook: RUNBOOK-COMPLIANCE-FAST-SHADOW.md
+      - alert: ComplianceFalseCompliant
+        expr: increase(compliance_false_compliant_total[24h]) > 0
+        for: 1m
+        labels: {severity: critical, owner: ai}
+        annotations:
+          summary: FAST returned COMPLIANT where BALANCED did not
+          runbook: RUNBOOK-COMPLIANCE-FAST-SHADOW.md
       - alert: SecurityScanFailure
         expr: rate(file_security_scan_failed_total[10m]) > 0
         for: 5m

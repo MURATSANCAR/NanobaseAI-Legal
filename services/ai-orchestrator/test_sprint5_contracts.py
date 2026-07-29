@@ -151,6 +151,8 @@ class FakeClient:
     def __init__(self, value: dict | None = None, failure: Exception | None = None):
         self.value = value
         self.failure = failure
+        self.last_json: dict | None = None
+        self.last_timeout: float | None = None
 
     async def __aenter__(self):
         return self
@@ -158,17 +160,31 @@ class FakeClient:
     async def __aexit__(self, *_args):
         return None
 
-    async def post(self, *_args, **_kwargs):
+    async def post(self, *_args, **kwargs):
+        self.last_json = kwargs.get("json")
         if self.failure is not None:
             raise self.failure
         return FakeResponse(self.value or {})
 
 
-def runtime_call(monkeypatch: pytest.MonkeyPatch, client: FakeClient):
-    monkeypatch.setattr(orchestrator.httpx, "AsyncClient", lambda **_kwargs: client)
+def runtime_call(
+    monkeypatch: pytest.MonkeyPatch,
+    client: FakeClient,
+    *,
+    deployment_override: orchestrator.Deployment | None = None,
+    maximum_output_tokens: int = 64,
+):
+    captured: dict[str, float] = {}
+
+    def fake_client(**kwargs):
+        captured["timeout"] = kwargs.get("timeout")
+        client.last_timeout = kwargs.get("timeout")
+        return client
+
+    monkeypatch.setattr(orchestrator.httpx, "AsyncClient", fake_client)
     return asyncio.run(
         orchestrator._structured_runtime_call(
-            deployment=deployment(),
+            deployment=deployment_override or deployment(),
             prompt_components=["Return JSON."],
             output_schema={
                 "type": "object",
@@ -178,7 +194,7 @@ def runtime_call(monkeypatch: pytest.MonkeyPatch, client: FakeClient):
             schema_name="contract",
             task="test",
             untrusted_context={},
-            maximum_output_tokens=64,
+            maximum_output_tokens=maximum_output_tokens,
             correlation_id="test",
         )
     )
@@ -265,3 +281,53 @@ def test_fallback_model_is_used_after_primary_exhaustion(
     )
     assert called_models == ["primary", "fallback"]
     assert result.output["recommendedDecisionConcept"] == "COMPLIANT"
+
+
+def test_fast_deployment_applies_reasoning_off_top_p_and_token_cap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = FakeClient(value={"requiredField": "ok"})
+    fast = orchestrator.Deployment(
+        profile="FAST",
+        base_url="http://runtime.invalid",
+        runtime_model="nanobase-qwen35-9b",
+        api_key=None,
+        timeout_seconds=300,
+        temperature=0.0,
+        top_p=0.8,
+        reasoning=False,
+        default_max_tokens=512,
+    )
+    runtime_call(
+        monkeypatch,
+        client,
+        deployment_override=fast,
+        maximum_output_tokens=1024,
+    )
+    assert client.last_json is not None
+    assert client.last_json["max_tokens"] == 512
+    assert client.last_json["temperature"] == 0.0
+    assert client.last_json["top_p"] == 0.8
+    assert client.last_json["enable_thinking"] is False
+    assert client.last_json["chat_template_kwargs"]["enable_thinking"] is False
+    assert client.last_timeout == 300
+
+
+def test_load_deployments_parses_fast_runtime_options(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(
+        "MODEL_DEPLOYMENTS_JSON",
+        (
+            '[{"profile":"FAST","baseUrl":"http://fast:8011",'
+            '"runtimeModel":"nanobase-qwen35-9b","timeoutSeconds":300,'
+            '"temperature":0,"topP":0.8,"reasoning":false,"maxTokens":512}]'
+        ),
+    )
+    loaded = orchestrator.load_deployments()
+    assert len(loaded) == 1
+    assert loaded[0].profile == "FAST"
+    assert loaded[0].top_p == 0.8
+    assert loaded[0].reasoning is False
+    assert loaded[0].default_max_tokens == 512
+    assert loaded[0].timeout_seconds == 300

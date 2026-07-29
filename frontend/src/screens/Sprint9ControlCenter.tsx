@@ -143,14 +143,23 @@ import {
 
 
 import { MetricCard, Empty, EmptyState, LoadingPanel, formatRatio, prettyJson, readUnknown, type Sprint9Tab } from "./_shared";
+import { WorkspaceRail } from "@/src/components/pipeline/WorkspaceRail";
 
-export function Sprint9ControlCenter({ token, canOperate, onProblem, onNotify }: {
+export function Sprint9ControlCenter({
+  token,
+  canOperate,
+  onProblem,
+  onNotify,
+  tab,
+  onTab,
+}: {
   token: string;
   canOperate: boolean;
   onProblem: (error: unknown) => void;
   onNotify: (message: string) => void;
+  tab: Sprint9Tab;
+  onTab: (tab: Sprint9Tab) => void;
 }) {
-  const [tab, setTab] = useState<Sprint9Tab>("quality");
   const [dashboard, setDashboard] = useState<PilotDashboard>();
   const [feedback, setFeedback] = useState<FeedbackCase[]>([]);
   const [selectedFeedback, setSelectedFeedback] = useState<FeedbackCase>();
@@ -319,6 +328,14 @@ export function Sprint9ControlCenter({ token, canOperate, onProblem, onNotify }:
     ...(dashboard?.rootCauseDistribution ?? []).map((item) => Number(item.count)),
   );
   const triage = selectedFeedback?.triage?.[0];
+  const railItems = [
+    { id: "quality" as const, label: "Pilot kalite", icon: Gauge, group: "Pilot" },
+    { id: "errors" as const, label: "Hata analizi", icon: GitCompareArrows, group: "Pilot" },
+    { id: "improvements" as const, label: "İyileştirmeler", icon: FlaskConical, group: "Pilot" },
+    ...(canOperate
+      ? [{ id: "release" as const, label: "RC ve go-live", icon: Rocket, group: "Release" }]
+      : []),
+  ];
 
   return (
     <PageShell
@@ -336,17 +353,14 @@ export function Sprint9ControlCenter({ token, canOperate, onProblem, onNotify }:
       }
       maxWidth="max-w-[1460px]"
     >
-    <div className="workspace-tabs sprint9-tabs tabs">
-      <button className={tab === "quality" ? "active" : ""}
-        onClick={() => setTab("quality")}><Gauge />Pilot kalite</button>
-      <button className={tab === "errors" ? "active" : ""}
-        onClick={() => setTab("errors")}><GitCompareArrows />Hata analizi</button>
-      <button className={tab === "improvements" ? "active" : ""}
-        onClick={() => setTab("improvements")}><FlaskConical />İyileştirmeler</button>
-      {canOperate && <button className={tab === "release" ? "active" : ""}
-        onClick={() => setTab("release")}><Rocket />RC ve go-live</button>}
-    </div>
-
+    <div className="workspace-layout">
+      <WorkspaceRail
+        ariaLabel="Pilot kalite bölümleri"
+        activeId={tab}
+        onSelect={(id) => onTab(id as Sprint9Tab)}
+        items={railItems}
+      />
+      <div className="workspace-main">
     {tab === "quality" && <section className="sprint9-quality">
       <div className="sprint9-metric-grid">
         <MetricCard label="Toplam feedback" value={dashboard?.totalFeedback ?? 0}
@@ -640,6 +654,8 @@ export function Sprint9ControlCenter({ token, canOperate, onProblem, onNotify }:
         </div>
       </aside>
     </section>}
+      </div>
+    </div>
   </PageShell>
   );
 }

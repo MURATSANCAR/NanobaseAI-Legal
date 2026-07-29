@@ -62,6 +62,23 @@ export type ProjectMember = {
   createdAt: string;
 };
 
+export type AnalysisProgressResponse = {
+  projectId: string;
+  documents: boolean;
+  requirements: boolean;
+  knowledge: boolean;
+  compliance: boolean;
+  risks: boolean;
+  recommendedStep: string;
+  counts: {
+    readyDocuments: number;
+    requirements: number;
+    knowledgeEntities: number;
+    complianceEvaluations: number;
+    risks: number;
+  };
+};
+
 export const tenderApi = {
   list: (token: string) =>
     apiRequest<TenderPage>("/api/v1/tenders?size=100&sort=createdAt,desc", token),
@@ -79,6 +96,11 @@ export const tenderApi = {
     apiRequest<TenderProject>(`/api/v1/tenders/${projectId}/archive`, token, {
       method: "POST",
     }),
+  analysisProgress: (token: string, projectId: string) =>
+    apiRequest<AnalysisProgressResponse>(
+      `/api/v1/tenders/${projectId}/analysis-progress`,
+      token,
+    ),
   members: (token: string, projectId: string) =>
     apiRequest<ProjectMember[]>(`/api/v1/tenders/${projectId}/members`, token),
   addMember: (
