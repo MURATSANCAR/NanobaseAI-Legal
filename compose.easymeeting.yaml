@@ -97,6 +97,8 @@ services:
       OPENCONTRACTS_API_TOKEN: ${OPENCONTRACTS_API_TOKEN:-}
       AI_ORCHESTRATOR_BASE_URL: http://ai-orchestrator:8090
       SPECAI_AI_ORCHESTRATOR_BASE_URL: http://ai-orchestrator:8090
+      # Host llama-server is single-slot and often saturated; keep backend waits aligned with orchestrator.
+      AI_ORCHESTRATOR_KNOWLEDGE_READ_TIMEOUT: ${AI_ORCHESTRATOR_KNOWLEDGE_READ_TIMEOUT:-PT600S}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-https://portal.nanobase.ai}
     ports: !override
       # 8089 is Apache Superset on the portal host — keep Legal API off that port.
