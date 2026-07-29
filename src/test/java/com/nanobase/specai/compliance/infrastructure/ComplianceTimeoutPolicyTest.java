@@ -12,12 +12,12 @@ class ComplianceTimeoutPolicyTest {
         Duration queueWait = Duration.ofSeconds(120);
         Duration generation = Duration.ofSeconds(600);
         Duration networkMargin = Duration.ofSeconds(40);
-        Duration backendRead = Duration.ofSeconds(660);
+        Duration backendRead = Duration.ofSeconds(780);
 
         assertThat(backendRead)
             .isGreaterThan(queueWait.plus(generation));
         assertThat(backendRead)
-            .isGreaterThanOrEqualTo(queueWait.plus(generation).plus(networkMargin).minusSeconds(100));
+            .isGreaterThanOrEqualTo(queueWait.plus(generation).plus(networkMargin).minusSeconds(20));
     }
 
     @Test

@@ -19,8 +19,11 @@ class HttpComplianceAiGatewayTest {
 
         assertThat(HttpComplianceAiGateway.classify(failure))
             .isEqualTo(SemanticEvaluationFailureCode.LLM_TIMEOUT);
+        // Blind read-timeout retry is forbidden until cancellation/slot release is confirmed.
         assertThat(HttpComplianceAiGateway.retryable(SemanticEvaluationFailureCode.LLM_TIMEOUT))
-            .isTrue();
+            .isFalse();
+        assertThat(HttpComplianceAiGateway.retryable(
+            SemanticEvaluationFailureCode.LLM_TIMEOUT, true, true)).isTrue();
     }
 
     @Test

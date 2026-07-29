@@ -47,8 +47,8 @@ public class HttpComplianceAiGateway implements ComplianceAiGateway {
         ObjectMapper mapper,
         @Value("${specai.ai-orchestrator.base-url:http://localhost:8092}") String baseUrl,
         @Value("${specai.ai-orchestrator.connect-timeout:PT5S}") Duration connectTimeout,
-        @Value("${specai.ai-orchestrator.compliance-read-timeout:PT660S}") Duration readTimeout,
-        @Value("${specai.ai-orchestrator.compliance-global-deadline:PT700S}")
+        @Value("${specai.ai-orchestrator.compliance-read-timeout:PT780S}") Duration readTimeout,
+        @Value("${specai.ai-orchestrator.compliance-global-deadline:PT820S}")
             Duration globalDeadline,
         @Value("${specai.ai-orchestrator.compliance-retry-attempts:1}") int retryAttempts,
         @Value("${specai.ai-orchestrator.compliance-retry-backoff:PT2S}") Duration retryBackoff
