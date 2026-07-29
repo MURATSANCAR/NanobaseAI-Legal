@@ -167,8 +167,8 @@ specai:
       failure-threshold: ${DOCUMENT_PROVIDER_FAILURE_THRESHOLD:5}
       open-duration: ${DOCUMENT_PROVIDER_OPEN_DURATION:PT30S}
     http:
-      connect-timeout: ${DOCUMENT_PROVIDER_CONNECT_TIMEOUT:PT3S}
-      read-timeout: ${DOCUMENT_PROVIDER_READ_TIMEOUT:PT30S}
+      connect-timeout: ${DOCUMENT_PROVIDER_CONNECT_TIMEOUT:PT5S}
+      read-timeout: ${DOCUMENT_PROVIDER_READ_TIMEOUT:PT180S}
   outbox:
     interval-ms: ${OUTBOX_INTERVAL_MS:1000}
     batch-size: ${OUTBOX_BATCH_SIZE:50}
@@ -177,7 +177,7 @@ specai:
     base-backoff: ${OUTBOX_BASE_BACKOFF:PT1S}
     maximum-backoff: ${OUTBOX_MAX_BACKOFF:PT5M}
   messaging:
-    maximum-consumer-retries: ${MESSAGE_MAXIMUM_RETRIES:3}
+    maximum-consumer-retries: ${MESSAGE_MAXIMUM_RETRIES:8}
     idempotency-processing-timeout: ${MESSAGE_PROCESSING_TIMEOUT:PT30M}
   ai-orchestrator:
     base-url: ${AI_ORCHESTRATOR_BASE_URL:${SPECAI_AI_ORCHESTRATOR_BASE_URL:http://localhost:8090}}

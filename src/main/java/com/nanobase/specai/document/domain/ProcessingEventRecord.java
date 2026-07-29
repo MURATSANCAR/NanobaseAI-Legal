@@ -4,6 +4,8 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -26,6 +28,7 @@ public class ProcessingEventRecord {
     private String message;
     @Column(name = "event_type", nullable = false, updatable = false, length = 80)
     private String eventType;
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "metadata_json", nullable = false, updatable = false,
         columnDefinition = "jsonb")
     private String metadataJson;

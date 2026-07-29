@@ -104,6 +104,7 @@ public class AnalysisProfileService {
             material.inputs().confidencePolicyVersionId(),
             json(material.snapshot()), material.contentHash(), now);
         profiles.save(profile);
+        profiles.flush();
         outbox.publish(profile.organizationId(), "AnalysisProfile", profile.id(),
             "AnalysisProfileCreated", RabbitConfiguration.ANALYSIS_PROFILE_CREATED,
             java.util.Map.of("profileId", profile.id(), "documentId", documentId),

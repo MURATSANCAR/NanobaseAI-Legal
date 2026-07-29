@@ -21,9 +21,12 @@ import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Component
 public class DocumentUploadedConsumer {
+    private static final Logger log = LoggerFactory.getLogger(DocumentUploadedConsumer.class);
     static final String CONSUMER_NAME = "document-processing-consumer-v1";
     private static final TypeReference<EventEnvelope<DocumentUploaded>> EVENT_TYPE =
         new TypeReference<>() { };
@@ -77,6 +80,10 @@ public class DocumentUploadedConsumer {
             metrics.processingCompleted(sample);
         } catch (Exception exception) {
             metrics.processingFailed(sample);
+            log.error("Document processing consumer failed eventId={} jobId={} message={}",
+                event == null ? null : event.eventId(),
+                event == null || event.payload() == null ? null : event.payload().processingJobId(),
+                exception.getMessage(), exception);
             if (claimed && event != null) {
                 idempotency.failed(CONSUMER_NAME, event.eventId());
             }

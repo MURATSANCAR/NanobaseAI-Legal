@@ -9,6 +9,8 @@ import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.time.Instant;
 import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "outbox_event")
@@ -27,6 +29,7 @@ public class OutboxEvent {
     private int eventVersion;
     @Column(name = "routing_key", nullable = false, updatable = false, length = 150)
     private String routingKey;
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "payload_json", nullable = false, updatable = false, columnDefinition = "jsonb")
     private String payloadJson;
     @Column(name = "organization_id", nullable = false, updatable = false)

@@ -5,6 +5,8 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -33,6 +35,7 @@ public class Clause {
     private int pageStart;
     @Column(name = "page_end", nullable = false)
     private int pageEnd;
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "bounding_boxes_json", nullable = false, columnDefinition = "jsonb")
     private String boundingBoxesJson;
     @Column(name = "content_hash", nullable = false, length = 64)

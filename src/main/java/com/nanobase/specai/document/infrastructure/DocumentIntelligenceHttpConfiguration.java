@@ -18,6 +18,7 @@ public class DocumentIntelligenceHttpConfiguration {
         Duration readTimeout) {
         return builder -> {
             HttpClient httpClient = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
                 .connectTimeout(connectTimeout)
                 .build();
             JdkClientHttpRequestFactory requestFactory =

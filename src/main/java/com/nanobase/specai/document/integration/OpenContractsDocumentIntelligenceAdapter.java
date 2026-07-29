@@ -7,6 +7,7 @@ import java.util.Locale;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -43,6 +44,7 @@ public class OpenContractsDocumentIntelligenceAdapter
         String corpusId = existing == null ? null : existing.externalCorpusId();
         if (corpusId == null) {
             CorpusResponse corpus = execute(() -> client.post().uri("/api/v1/corpora")
+                .contentType(MediaType.APPLICATION_JSON)
                 .body(new CorpusRequest(command.organizationId(), command.projectId()))
                 .retrieve().body(CorpusResponse.class));
             if (corpus == null || corpus.id() == null || corpus.id().isBlank()) {
@@ -54,6 +56,7 @@ public class OpenContractsDocumentIntelligenceAdapter
         final String resolvedCorpusId = corpusId;
         SubmissionResponse response = execute(() -> client.post()
             .uri("/api/v1/corpora/{corpusId}/documents", resolvedCorpusId)
+            .contentType(MediaType.APPLICATION_JSON)
             .body(new SubmissionRequest(command.documentVersionId(),
                 command.objectStorageKey(), command.originalFileName(), command.mimeType(),
                 command.sha256(), command.correlationId()))

@@ -2,6 +2,7 @@ package com.nanobase.specai.document.security;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.sql.Timestamp;
 import java.time.Clock;
 import java.util.Map;
 import java.util.UUID;
@@ -36,7 +37,7 @@ public class FileSecurityAssessmentRecorder {
             ) values (?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?)
             """, UUID.randomUUID(), organizationId, projectId, sha256, result.scanner(),
             result.scannerVersion(), result.status().name(), json(signals), correlationId,
-            clock.instant());
+            Timestamp.from(clock.instant()));
     }
 
     private String json(Map<String, Object> value) {

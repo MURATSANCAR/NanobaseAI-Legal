@@ -110,6 +110,7 @@ public class RequirementExtractionJobService {
             UUID.randomUUID(), principal.tenantId(), document.projectId(), document.id(),
             profile.documentVersionId(), profile, terminologySnapshotId, correlationId,
             parentJobId, now));
+        jobs.flush();
         store.event(job.organizationId(), job.id(), "QUEUED", 0,
             "Requirement extraction queued",
             Map.of("analysisProfileId", profile.id()), now);

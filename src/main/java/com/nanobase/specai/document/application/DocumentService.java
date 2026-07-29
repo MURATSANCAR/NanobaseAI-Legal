@@ -132,12 +132,13 @@ public class DocumentService {
             }
             Document document = Document.uploaded(documentId, principal.tenantId(), projectId,
                 resolvedLogicalName, type, includedInAnalysis, principal.subject(), now);
-            documents.save(document);
+            document = documents.save(document);
             DocumentVersion version = new DocumentVersion(versionId, principal.tenantId(),
                 documentId, 1, objectKey, upload.fileName(), upload.mimeType(), file.getSize(),
                 upload.sha256(), principal.subject(), now);
             versions.save(version);
             document.attachVersion(versionId, 1, now);
+            document = documents.save(document);
             DocumentProcessingJob job = processingJobs.create(principal.tenantId(), projectId,
                 documentId, versionId, RequestContext.current().correlationId(), now);
             outbox.documentUploaded(principal.tenantId(), event(document, version, job));

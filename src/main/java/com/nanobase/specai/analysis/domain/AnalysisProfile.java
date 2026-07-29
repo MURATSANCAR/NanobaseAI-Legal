@@ -4,6 +4,8 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -23,12 +25,15 @@ public class AnalysisProfile {
     private UUID documentId;
     @Column(name = "document_version_id", nullable = false, updatable = false)
     private UUID documentVersionId;
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "sector_context_json", nullable = false, updatable = false,
         columnDefinition = "jsonb")
     private String sectorContextJson;
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "document_context_json", nullable = false, updatable = false,
         columnDefinition = "jsonb")
     private String documentContextJson;
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "terminology_set_ids_json", nullable = false, updatable = false,
         columnDefinition = "jsonb")
     private String terminologySetIdsJson;
@@ -44,6 +49,7 @@ public class AnalysisProfile {
     private UUID modelRoutingPolicyId;
     @Column(name = "confidence_policy_id", nullable = false, updatable = false)
     private UUID confidencePolicyId;
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "snapshot_json", nullable = false, updatable = false,
         columnDefinition = "jsonb")
     private String snapshotJson;

@@ -24,9 +24,9 @@ public interface ClauseRepository extends JpaRepository<Clause, UUID> {
           and (:clauseType is null or clause.clauseType = :clauseType)
           and (:pageNumber is null
                or :pageNumber between clause.pageStart and clause.pageEnd)
-          and (:search is null
-               or lower(coalesce(clause.title, '')) like lower(concat('%', :search, '%'))
-               or lower(clause.normalizedText) like lower(concat('%', :search, '%')))
+          and (coalesce(:search, '') = ''
+               or lower(coalesce(clause.title, '')) like lower(concat('%', coalesce(:search, ''), '%'))
+               or lower(clause.normalizedText) like lower(concat('%', coalesce(:search, ''), '%')))
         """)
     Page<Clause> search(
         @Param("versionId") UUID versionId,

@@ -4,6 +4,8 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -23,8 +25,10 @@ public class DocumentTable {
     private String caption;
     @Column(name = "markdown_content", columnDefinition = "text")
     private String markdownContent;
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "structured_content_json", nullable = false, columnDefinition = "jsonb")
     private String structuredContentJson;
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "bounding_boxes_json", nullable = false, columnDefinition = "jsonb")
     private String boundingBoxesJson;
     @Column(name = "content_hash", nullable = false, length = 64)

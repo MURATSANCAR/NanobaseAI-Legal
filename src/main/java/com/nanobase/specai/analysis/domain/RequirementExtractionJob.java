@@ -63,7 +63,7 @@ public class RequirementExtractionJob {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
     @Version
-    private long version;
+    private Long version;
 
     protected RequirementExtractionJob() {
     }
@@ -159,5 +159,5 @@ public class RequirementExtractionJob {
     public Instant completedAt() { return completedAt; }
     public Instant createdAt() { return createdAt; }
     public Instant updatedAt() { return updatedAt; }
-    public long version() { return version; }
+    public long version() { return version == null ? 0L : version; }
 }

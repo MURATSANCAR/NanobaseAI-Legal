@@ -5,6 +5,7 @@ import java.util.Locale;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -30,6 +31,7 @@ public class DoclingDocumentIntelligenceAdapter implements DocumentIntelligenceP
     @Override
     public ProcessingSubmission submit(DocumentProcessingCommand command) {
         ParseResponse response = execute(() -> client.post().uri("/v1/documents/parse")
+            .contentType(MediaType.APPLICATION_JSON)
             .body(new ParseRequest(command.documentVersionId(),
                 new Source("S3_COMPATIBLE", bucket, command.objectStorageKey()),
                 command.mimeType(), command.languageHint(),

@@ -12,6 +12,7 @@ import com.nanobase.specai.analysis.application.AnalysisModels.PromptMaterial;
 import com.nanobase.specai.analysis.application.AnalysisModels.TerminologyMatch;
 import com.nanobase.specai.analysis.application.AnalysisModels.UnitMatch;
 import java.nio.charset.StandardCharsets;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -321,7 +322,7 @@ public class JdbcAnalysisCatalog implements AnalysisCatalogPort {
                 created_at, updated_at
             ) values (?, ?, ?, ?, ?, ?, ?, ?, cast(? as jsonb), 'CANDIDATE', false, ?, ?)
             """, id, organizationId, catalogId, term, normalize(term), termType,
-            semanticRole, weight, stringify(metadata), now, now);
+            semanticRole, weight, stringify(metadata), Timestamp.from(now), Timestamp.from(now));
         return id;
     }
 
@@ -331,7 +332,7 @@ public class JdbcAnalysisCatalog implements AnalysisCatalogPort {
             update terminology_entry
             set approval_status = ?, active = ?, updated_at = ?
             where id = ? and organization_id = ? and approval_status = 'CANDIDATE'
-            """, approved ? "APPROVED" : "REJECTED", approved, Instant.now(),
+            """, approved ? "APPROVED" : "REJECTED", approved, Timestamp.from(Instant.now()),
             entryId, organizationId);
         if (updated == 0) {
             throw new IllegalArgumentException("Candidate terminology entry not found: " + entryId);

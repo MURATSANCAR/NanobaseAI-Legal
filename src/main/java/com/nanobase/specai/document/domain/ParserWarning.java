@@ -4,6 +4,8 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -25,6 +27,7 @@ public class ParserWarning {
     private String message;
     @Column(name = "page_number")
     private Integer pageNumber;
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "metadata_json", nullable = false, columnDefinition = "jsonb")
     private String metadataJson;
     @Column(name = "created_at", nullable = false, updatable = false)

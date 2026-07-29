@@ -4,6 +4,8 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -18,6 +20,7 @@ public class RequirementRevision {
     private UUID requirementId;
     @Column(name = "revision_number", nullable = false, updatable = false)
     private int revisionNumber;
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "snapshot_json", nullable = false, updatable = false,
         columnDefinition = "jsonb")
     private String snapshotJson;

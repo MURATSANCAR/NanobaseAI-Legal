@@ -8,6 +8,7 @@ import com.nanobase.specai.analysis.application.AnalysisModels.ModelRoutingResul
 import com.nanobase.specai.analysis.api.ExtractionEventStream;
 import com.nanobase.specai.analysis.domain.Requirement;
 import com.nanobase.specai.document.domain.Clause;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -36,7 +37,7 @@ public class AnalysisPersistenceStore {
                 message, metadata_json, occurred_at
             ) values (?, ?, ?, ?, ?, ?, cast(? as jsonb), ?)
             """, UUID.randomUUID(), organizationId, jobId, eventType, progress,
-            truncate(message, 1000), json(metadata), now);
+            truncate(message, 1000), json(metadata), Timestamp.from(now));
         eventStream.publish(jobId, eventType, Map.of(
             "eventType", eventType,
             "progress", progress,
@@ -76,7 +77,7 @@ public class AnalysisPersistenceStore {
             ) values (?, ?, ?, ?, ?, ?, cast(? as jsonb), cast(? as jsonb), ?, ?)
             """, id, organizationId, jobId, clauseId, routing.profileId(),
             routing.deploymentId(), json(routing.reasonCodes()), json(signals),
-            policyVersionId, now);
+            policyVersionId, Timestamp.from(now));
         return id;
     }
 
@@ -95,7 +96,8 @@ public class AnalysisPersistenceStore {
             routingDecisionId, promptVersionId, schemaVersionId,
             schemaValid ? "COMPLETED" : "REJECTED", response.latencyMs(),
             response.inputTokens(), response.outputTokens(), schemaValid,
-            errorCode, startedAt, response.completedAt());
+            errorCode, Timestamp.from(startedAt),
+            response.completedAt() == null ? null : Timestamp.from(response.completedAt()));
     }
 
     public void sourceFragments(Requirement requirement, Clause clause,
@@ -119,7 +121,8 @@ public class AnalysisPersistenceStore {
                 """, UUID.randomUUID(), requirement.organizationId(), requirement.id(),
                 clause.id(), fragment, normalize(fragment), charStart, charEnd,
                 clause.pageStart(), clause.pageEnd(), clause.boundingBoxesJson(), method,
-                "INDETERMINATE".equals(method) ? "INDETERMINATE" : "GROUNDED", now);
+                "INDETERMINATE".equals(method) ? "INDETERMINATE" : "GROUNDED",
+                Timestamp.from(now));
         }
     }
 
@@ -161,7 +164,7 @@ public class AnalysisPersistenceStore {
             """, id, organizationId, projectId, entityType, entityId, feedbackType,
             json(original), json(corrected), reason, reviewerId, analysisProfileId,
             ontologyVersionId, policyVersionId, promptVersionId, modelRunId,
-            approvedForLearning, now);
+            approvedForLearning, Timestamp.from(now));
         return id;
     }
 
@@ -186,7 +189,7 @@ public class AnalysisPersistenceStore {
             ) values (?, ?, ?, cast(? as jsonb), ?, cast(? as jsonb), ?)
             on conflict (id) do nothing
             """, id, organizationId, projectId, source, hash,
-            json(Map.of("catalogIds", jsonNode(source))), now);
+            json(Map.of("catalogIds", jsonNode(source))), Timestamp.from(now));
         return id;
     }
 

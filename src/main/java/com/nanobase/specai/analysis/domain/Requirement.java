@@ -49,6 +49,7 @@ public class Requirement {
     private String actionText;
     @Column(name = "object_text", columnDefinition = "text")
     private String objectText;
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
     @Column(name = "attributes_json", nullable = false, columnDefinition = "jsonb")
     private String attributesJson;
     @Column(name = "extraction_method", nullable = false, length = 160)
@@ -72,6 +73,7 @@ public class Requirement {
     @Column(name = "combined_confidence", nullable = false, precision = 10, scale = 6)
     @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.NUMERIC)
     private double combinedConfidence;
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
     @Column(name = "explanation_json", nullable = false, columnDefinition = "jsonb")
     private String explanationJson;
     @Column(name = "created_at", nullable = false, updatable = false)

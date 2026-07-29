@@ -6,6 +6,8 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "audit_event")
@@ -26,8 +28,10 @@ public class AuditEvent {
     private String ipAddress;
     @Column(name = "user_agent", updatable = false, length = 500)
     private String userAgent;
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "before_json", updatable = false, columnDefinition = "jsonb")
     private String beforeJson;
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "after_json", nullable = false, updatable = false, columnDefinition = "jsonb")
     private String afterJson;
     @Column(name = "correlation_id", nullable = false, updatable = false)
