@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  Building2,
   CheckCircle2,
   ClipboardCheck,
   Eye,
@@ -18,14 +17,25 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/src/components/layout/AppShell";
 import type { SidebarNavItem } from "@/src/components/layout/Sidebar";
 import { PRODUCT_BRAND, PRODUCT_BRAND_SHORT } from "@/src/config/brand";
+import { useProjectProgress } from "@/src/hooks/useProjectProgress";
 import {
   compactDraft,
   emptyDraft,
   initials,
   processingStatuses,
+  type AnalysisStep,
+  type FindingsFilter,
+  type ProjectHub,
+  type ProjectSubNav,
   type ProjectTab,
   type Screen,
 } from "@/src/lib/portal-utils";
+import {
+  loadExpertMode,
+  loadProjectUx,
+  saveExpertMode,
+  saveProjectUx,
+} from "@/src/lib/project-ux-storage";
 import { auditApi, type AuditEvent } from "@/src/modules/audit/api";
 import {
   displayName,
@@ -61,7 +71,14 @@ import {
 export default function SpecAiPortal() {
   const [session, setSession] = useState<AuthSession | null>();
   const [screen, setScreen] = useState<Screen>("dashboard");
-  const [projectTab, setProjectTab] = useState<ProjectTab>("overview");
+  const [projectTab, setProjectTab] = useState<ProjectTab>("documents");
+  const [projectHub, setProjectHub] = useState<ProjectHub>("analysis");
+  const [analysisStep, setAnalysisStep] = useState<AnalysisStep>("documents");
+  const [projectSubNav, setProjectSubNav] = useState<ProjectSubNav>("overview");
+  const [findingsFilter, setFindingsFilter] = useState<FindingsFilter>("risks");
+  const [expertMode, setExpertMode] = useState(false);
+  const [uxHydrated, setUxHydrated] = useState(false);
+  const [resumeRecommended, setResumeRecommended] = useState(false);
   const [projects, setProjects] = useState<TenderProject[]>([]);
   const [allDocuments, setAllDocuments] = useState<ProjectDocument[]>([]);
   const [documents, setDocuments] = useState<ProjectDocument[]>([]);
@@ -96,6 +113,7 @@ export default function SpecAiPortal() {
     Boolean(session) &&
     roles.some((role) => ["SYSTEM_ADMIN", "TENANT_ADMIN"].includes(role));
 
+  const progress = useProjectProgress(token, selectedProject?.id, documents);
   const showProblem = useCallback((error: unknown) => {
     if (isApiError(error)) setProblem(error.problem);
     else
@@ -138,6 +156,29 @@ export default function SpecAiPortal() {
       setScreen("project");
       setLoading(true);
       setProblem(null);
+      setExpertMode(loadExpertMode());
+      const prefs = loadProjectUx(project.id);
+      if (prefs) {
+        setProjectHub(prefs.lastHub);
+        setAnalysisStep(prefs.lastStep);
+        setProjectSubNav(prefs.projectSubNav);
+        setResumeRecommended(false);
+        if (prefs.lastHub === "analysis") {
+          setProjectTab(prefs.lastStep);
+        } else if (prefs.lastHub === "findings") {
+          setProjectTab("risks");
+        } else if (prefs.lastHub === "changes") {
+          setProjectTab("changes");
+        } else {
+          setProjectTab(prefs.projectSubNav);
+        }
+      } else {
+        setProjectHub("analysis");
+        setAnalysisStep("documents");
+        setProjectSubNav("overview");
+        setProjectTab("documents");
+        setResumeRecommended(true);
+      }
       try {
         const [projectDocuments, projectMembers, auditPage] = await Promise.all([
           documentApi.list(accessToken, project.id),
@@ -208,6 +249,68 @@ export default function SpecAiPortal() {
     }, 5000);
     return () => window.clearInterval(timer);
   }, [documents, selectedProject, token]);
+
+  useEffect(() => {
+    setExpertMode(loadExpertMode());
+    setUxHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!resumeRecommended || progress.loading) return;
+    setAnalysisStep(progress.recommended);
+    setProjectTab(progress.recommended);
+    setResumeRecommended(false);
+  }, [progress.loading, progress.recommended, resumeRecommended]);
+
+  useEffect(() => {
+    if (!uxHydrated) return;
+    saveExpertMode(expertMode);
+  }, [expertMode, uxHydrated]);
+
+  useEffect(() => {
+    if (!selectedProject) return;
+    saveProjectUx(selectedProject.id, {
+      lastHub: projectHub,
+      lastStep: analysisStep,
+      projectSubNav,
+    });
+  }, [analysisStep, projectHub, projectSubNav, selectedProject]);
+
+  function applyExpertMode(next: boolean) {
+    if (next) {
+      if (projectHub === "analysis") setProjectTab(analysisStep);
+      else if (projectHub === "findings") setProjectTab(findingsFilter);
+      else if (projectHub === "changes") setProjectTab("changes");
+      else setProjectTab(projectSubNav);
+    } else if (
+      projectTab === "documents" ||
+      projectTab === "requirements" ||
+      projectTab === "knowledge" ||
+      projectTab === "compliance" ||
+      projectTab === "risks"
+    ) {
+      setProjectHub("analysis");
+      setAnalysisStep(projectTab);
+    } else if (
+      projectTab === "conflicts" ||
+      projectTab === "ambiguities"
+    ) {
+      setProjectHub("findings");
+      setFindingsFilter(projectTab);
+    } else if (projectTab === "changes") {
+      setProjectHub("changes");
+    } else {
+      setProjectHub("project");
+      if (
+        projectTab === "overview" ||
+        projectTab === "activity" ||
+        projectTab === "settings"
+      ) {
+        setProjectSubNav(projectTab);
+      }
+    }
+    setExpertMode(next);
+  }
 
   const filteredProjects = useMemo(() => {
     const normalized = query.toLocaleLowerCase("tr");
@@ -291,36 +394,21 @@ export default function SpecAiPortal() {
       badge: projects.length,
       onClick: () => setScreen("projects"),
     },
-    {
-      id: "knowledge",
-      label: "Firma ve ürünler",
-      icon: Building2,
-      group: "Çalışma alanı",
-      active: screen === "project" && projectTab === "knowledge",
-      onClick: () => {
-        if (selectedProject) {
-          setScreen("project");
-          setProjectTab("knowledge");
-        } else {
-          setScreen("projects");
-        }
-      },
-    },
     ...(canAnalyze
       ? [
           {
             id: "workflows",
-            label: "Workflow merkezi",
+            label: "Workflow",
             icon: ClipboardCheck,
-            group: "Çalışma alanı",
+            group: "Gelişmiş",
             active: screen === "workflows",
             onClick: () => setScreen("workflows"),
           } satisfies SidebarNavItem,
           {
             id: "pilot-quality",
-            label: "Pilot kalite merkezi",
+            label: "Pilot kalite",
             icon: FlaskConical,
-            group: "Çalışma alanı",
+            group: "Gelişmiş",
             active: screen === "pilot-quality",
             onClick: () => setScreen("pilot-quality"),
           } satisfies SidebarNavItem,
@@ -445,6 +533,9 @@ export default function SpecAiPortal() {
           events={auditEvents}
           projects={projects}
           onProjects={() => setScreen("projects")}
+          onContinueAnalysis={(project) => {
+            void loadProject(project);
+          }}
         />
       )}
       {screen === "projects" && (
@@ -462,8 +553,22 @@ export default function SpecAiPortal() {
       {screen === "project" && selectedProject && (
         <ProjectDetail
           project={selectedProject}
+          hub={projectHub}
+          onHub={setProjectHub}
+          analysisStep={analysisStep}
+          onAnalysisStep={(step) => {
+            setAnalysisStep(step);
+            setProjectTab(step);
+          }}
+          projectSubNav={projectSubNav}
+          onProjectSubNav={setProjectSubNav}
+          findingsFilter={findingsFilter}
+          onFindingsFilter={setFindingsFilter}
+          expertMode={expertMode}
+          onExpertMode={applyExpertMode}
           tab={projectTab}
           onTab={setProjectTab}
+          completion={progress.completion}
           documents={documents}
           members={members}
           auditEvents={auditEvents}
@@ -472,10 +577,16 @@ export default function SpecAiPortal() {
           canAnalyze={canAnalyze}
           loading={loading}
           onBack={() => setScreen("projects")}
-          onDocuments={setDocuments}
+          onDocuments={(next) => {
+            setDocuments(next);
+            void progress.refresh();
+          }}
           onMembers={setMembers}
           onProblem={showProblem}
-          onNotify={notify}
+          onNotify={(message) => {
+            notify(message);
+            void progress.refresh();
+          }}
           onArchive={archiveProject}
           busy={busy}
         />

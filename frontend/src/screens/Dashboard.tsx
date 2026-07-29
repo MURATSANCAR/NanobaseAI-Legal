@@ -144,11 +144,17 @@ import {
 
 import { Empty } from "./_shared";
 
-export function Dashboard({ metrics, projects, onProjects }: {
+export function Dashboard({
+  metrics,
+  projects,
+  onProjects,
+  onContinueAnalysis,
+}: {
   metrics: ReturnType<typeof dashboardMetrics>;
   events: AuditEvent[];
   projects: TenderProject[];
   onProjects: () => void;
+  onContinueAnalysis: (project: TenderProject) => void;
 }) {
   const cards = [
     ["Aktif projeler", metrics.activeProjects, FolderKanban, "text-violet-600"],
@@ -198,7 +204,13 @@ export function Dashboard({ metrics, projects, onProjects }: {
                     <b>{project.name}</b>
                     <small>{project.institutionName}</small>
                   </div>
-                  <em>{project.projectCode}</em>
+                  <button
+                    type="button"
+                    className="continue-analysis-btn"
+                    onClick={() => onContinueAnalysis(project)}
+                  >
+                    Analize devam <ChevronRight className="h-3.5 w-3.5" />
+                  </button>
                 </div>
               ))
             : <Empty text="Yaklaşan son teklif tarihi bulunmuyor." />}
@@ -219,10 +231,13 @@ export function Dashboard({ metrics, projects, onProjects }: {
                     <b>{project.name}</b>
                     <small>{project.status.replaceAll("_", " ")}</small>
                   </div>
-                  <StatusBadge
-                    label={project.status.replaceAll("_", " ")}
-                    status={project.status}
-                  />
+                  <button
+                    type="button"
+                    className="continue-analysis-btn"
+                    onClick={() => onContinueAnalysis(project)}
+                  >
+                    Analize devam
+                  </button>
                 </div>
               ))
             : <Empty text="Henüz proje oluşturulmadı." />}

@@ -21,6 +21,7 @@ export { RequirementsMatrix } from "./RequirementsMatrix";
 export { RiskCenter } from "./RiskCenter";
 export { ConflictWorkspace } from "./ConflictWorkspace";
 export { AmbiguityWorkspace } from "./AmbiguityWorkspace";
+export { FindingsWorkspace } from "./FindingsWorkspace";
 export { ChangeImpactWorkspace } from "./ChangeImpactWorkspace";
 export { DocumentCenter } from "./DocumentCenter";
 export { DocumentReview } from "./DocumentReview";

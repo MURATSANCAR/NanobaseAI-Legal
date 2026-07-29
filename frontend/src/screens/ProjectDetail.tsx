@@ -1,146 +1,34 @@
 "use client";
 
 import {
-  Activity,
-  AlertTriangle,
-  Archive,
   ArrowLeft,
-  Building2,
-  CalendarDays,
-  CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
-  Download,
-  Eye,
-  FileClock,
-  FileText,
-  BrainCircuit,
-  FlaskConical,
-  GitCompareArrows,
-  ClipboardCheck,
   FolderKanban,
-  Gauge,
   LoaderCircle,
-  Plus,
-  RefreshCw,
-  Rocket,
-  Search,
-  ShieldCheck,
-  ServerCog,
-  Upload,
-  UserPlus,
-  Users,
-  X,
-  ZoomIn,
-  ZoomOut,
-  type LucideIcon,
+  SlidersHorizontal,
 } from "lucide-react";
-import type { PDFDocumentProxy } from "pdfjs-dist";
-import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import {
-  formatBytes,
-  formatDate,
-  initials,
-  processingStatuses,
-  type ProjectTab,
+  EXPERT_TABS,
+  PROJECT_HUBS,
+  isStepReachable,
+  type StepCompletion,
+} from "@/src/lib/analysis-pipeline";
+import type {
+  AnalysisStep,
+  FindingsFilter,
+  ProjectHub,
+  ProjectSubNav,
+  ProjectTab,
 } from "@/src/lib/portal-utils";
-import { MetricCard as QaMetricCard } from "@/src/components/qa/MetricCard";
 import { PageShell } from "@/src/components/qa/PageShell";
-import { ScrollTable } from "@/src/components/qa/ScrollTable";
 import { StatusBadge } from "@/src/components/qa/StatusBadge";
+import { AnalysisStepper } from "@/src/components/pipeline/AnalysisStepper";
+import { PipelineNav } from "@/src/components/pipeline/PipelineNav";
 import { type AuditEvent } from "@/src/modules/audit/api";
-import { dashboardMetrics } from "@/src/modules/dashboard/metrics";
+import { type ProjectDocument } from "@/src/modules/documents/api";
 import {
-  documentApi,
-  documentTypeLabels,
-  statusLabels,
-  subscribeToProcessingEvents,
-  type BoundingBox,
-  type Clause,
-  type DocumentType,
-  type ProcessingEvent,
-  type ProcessingJob,
-  type ProjectDocument,
-} from "@/src/modules/documents/api";
-import {
-  tenderApi,
   type ProjectMember,
-  type TenderDraft,
   type TenderProject,
 } from "@/src/modules/tenders/api";
-import {
-  requirementApi,
-  type ExtractionJob,
-  type Requirement,
-  type RequirementColumn,
-} from "@/src/modules/requirements/api";
-import {
-  complianceApi,
-  type ComplianceColumn,
-  type ComplianceEvaluation,
-  type ComplianceEvaluationDetail,
-  type ComplianceJob,
-} from "@/src/modules/compliance/api";
-import {
-  dynamicValueLabel,
-  knowledgeApi,
-  type ConceptOption,
-  type EntityDetail,
-  type EntityUiConfiguration,
-  type EvidenceFragment,
-  type KnowledgeEntity,
-  type KnowledgeExtractionJob,
-} from "@/src/modules/knowledge/api";
-import {
-  riskApi,
-  type AmbiguityFinding,
-  type ChangeItem,
-  type ChangeSet,
-  type ConflictRecord,
-  type DynamicColumn,
-  type ImpactAnalysis,
-  type RiskAnalysisJob,
-  type RiskRecord,
-  type RiskSource,
-} from "@/src/modules/risks/api";
-import { type ApiProblem } from "@/src/shared/api";
-import {
-  operationsApi,
-  type AiQualitySnapshot,
-  type OperationsSnapshot,
-} from "@/src/modules/operations/api";
-import {
-  decisionApi,
-  reportingApi,
-  workApi,
-  workflowApi,
-  type ApprovalRequest,
-  type ClarificationCenter,
-  type ConceptOption as WorkflowConcept,
-  type DecisionSupportCase,
-  type DynamicDashboard,
-  type ReportDefinition,
-  type ReportJob,
-  type SimulationResult,
-  type TaskRecord,
-  type WorkflowDefinition,
-  type WorkflowNodeDraft,
-  type WorkflowTransitionDraft,
-} from "@/src/modules/workflow/api";
-import {
-  pilotApi,
-  type DynamicConcept,
-  type FeedbackCase,
-  type ImprovementCandidate,
-  type PilotDashboard,
-} from "@/src/modules/pilot/api";
-import {
-  releaseApi,
-  type GoLivePackage,
-  type ReleaseRecord,
-  type SystemVersion,
-} from "@/src/modules/release/api";
-
 
 import { Overview } from "./Overview";
 import { DocumentCenter } from "./DocumentCenter";
@@ -153,13 +41,58 @@ import { AmbiguityWorkspace } from "./AmbiguityWorkspace";
 import { ChangeImpactWorkspace } from "./ChangeImpactWorkspace";
 import { ActivityHistory } from "./ActivityHistory";
 import { ProjectSettings } from "./ProjectSettings";
+import { FindingsWorkspace } from "./FindingsWorkspace";
 
-export function ProjectDetail({ project, tab, onTab, documents, members, auditEvents, token,
-  canWrite, canAnalyze, loading, onBack, onDocuments, onMembers, onProblem, onNotify,
-  onArchive, busy }: {
+const PROJECT_SUBNAVS: Array<{ id: ProjectSubNav; label: string }> = [
+  { id: "overview", label: "Genel bakış" },
+  { id: "activity", label: "Aktivite" },
+  { id: "settings", label: "Ayarlar" },
+];
+
+export function ProjectDetail({
+  project,
+  hub,
+  onHub,
+  analysisStep,
+  onAnalysisStep,
+  projectSubNav,
+  onProjectSubNav,
+  findingsFilter,
+  onFindingsFilter,
+  expertMode,
+  onExpertMode,
+  tab,
+  onTab,
+  completion,
+  documents,
+  members,
+  auditEvents,
+  token,
+  canWrite,
+  canAnalyze,
+  loading,
+  onBack,
+  onDocuments,
+  onMembers,
+  onProblem,
+  onNotify,
+  onArchive,
+  busy,
+}: {
   project: TenderProject;
+  hub: ProjectHub;
+  onHub: (hub: ProjectHub) => void;
+  analysisStep: AnalysisStep;
+  onAnalysisStep: (step: AnalysisStep) => void;
+  projectSubNav: ProjectSubNav;
+  onProjectSubNav: (nav: ProjectSubNav) => void;
+  findingsFilter: FindingsFilter;
+  onFindingsFilter: (filter: FindingsFilter) => void;
+  expertMode: boolean;
+  onExpertMode: (value: boolean) => void;
   tab: ProjectTab;
   onTab: (tab: ProjectTab) => void;
+  completion: StepCompletion;
   documents: ProjectDocument[];
   members: ProjectMember[];
   auditEvents: AuditEvent[];
@@ -175,6 +108,14 @@ export function ProjectDetail({ project, tab, onTab, documents, members, auditEv
   onArchive: () => void;
   busy: boolean;
 }) {
+  function selectStep(step: AnalysisStep) {
+    if (!isStepReachable(step, completion) && !completion[step]) {
+      onNotify("Önce önceki adımı tamamlayın");
+      return;
+    }
+    onAnalysisStep(step);
+  }
+
   return (
     <PageShell
       title={project.name}
@@ -210,31 +151,44 @@ export function ProjectDetail({ project, tab, onTab, documents, members, auditEv
               </div>
             </div>
           </div>
-          <nav className="tabs project-tabs" aria-label="Proje detay sekmeleri">
-            {(
-              [
-                ["overview", "Genel bakış"],
-                ["documents", "Dokümanlar"],
-                ["requirements", "Gereksinim matrisi"],
-                ["knowledge", "Firma ve ürünler"],
-                ["compliance", "Uygunluk"],
-                ["risks", "Risk merkezi"],
-                ["conflicts", "Çelişkiler"],
-                ["ambiguities", "Belirsizlikler"],
-                ["changes", "Değişiklik ve etki"],
-                ["activity", "Aktivite geçmişi"],
-                ["settings", "Ayarlar"],
-              ] as const
-            ).map(([id, label]) => (
-              <button
-                key={id}
-                className={tab === id ? "active" : ""}
-                onClick={() => onTab(id)}
-              >
-                {label}
-              </button>
-            ))}
-          </nav>
+          <div className="project-hub-bar">
+            {!expertMode ? (
+              <nav className="project-hubs" aria-label="Proje alanları">
+                {PROJECT_HUBS.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={hub === item.id ? "active" : ""}
+                    onClick={() => onHub(item.id)}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </nav>
+            ) : (
+              <nav className="tabs project-tabs" aria-label="Proje detay sekmeleri">
+                {EXPERT_TABS.map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    className={tab === id ? "active" : ""}
+                    onClick={() => onTab(id)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </nav>
+            )}
+            <button
+              type="button"
+              className="expert-toggle"
+              aria-pressed={expertMode}
+              onClick={() => onExpertMode(!expertMode)}
+            >
+              <SlidersHorizontal className="h-3.5 w-3.5" />
+              {expertMode ? "Rehberli görünüm" : "Uzman görünümü"}
+            </button>
+          </div>
         </div>
       }
     >
@@ -243,7 +197,7 @@ export function ProjectDetail({ project, tab, onTab, documents, members, auditEv
           <LoaderCircle className="spin" />
           Yükleniyor…
         </div>
-      ) : (
+      ) : expertMode ? (
         <>
           {tab === "overview" && (
             <Overview project={project} documents={documents} members={members} />
@@ -338,6 +292,129 @@ export function ProjectDetail({ project, tab, onTab, documents, members, auditEv
               onArchive={onArchive}
               busy={busy}
             />
+          )}
+        </>
+      ) : (
+        <>
+          {hub === "analysis" && (
+            <section className="analysis-pipeline">
+              <AnalysisStepper
+                current={analysisStep}
+                completion={completion}
+                onSelect={selectStep}
+              />
+              {analysisStep === "documents" && (
+                <DocumentCenter
+                  project={project}
+                  documents={documents}
+                  token={token}
+                  canWrite={canWrite}
+                  onDocuments={onDocuments}
+                  onProblem={onProblem}
+                  onNotify={onNotify}
+                />
+              )}
+              {analysisStep === "requirements" && (
+                <RequirementsMatrix
+                  project={project}
+                  documents={documents}
+                  token={token}
+                  canWrite={canAnalyze}
+                  onProblem={onProblem}
+                  onNotify={onNotify}
+                />
+              )}
+              {analysisStep === "knowledge" && (
+                <KnowledgeCenter
+                  project={project}
+                  documents={documents}
+                  token={token}
+                  canWrite={canAnalyze}
+                  onProblem={onProblem}
+                  onNotify={onNotify}
+                />
+              )}
+              {analysisStep === "compliance" && (
+                <ComplianceWorkspace
+                  project={project}
+                  token={token}
+                  canWrite={canAnalyze}
+                  onProblem={onProblem}
+                  onNotify={onNotify}
+                />
+              )}
+              {analysisStep === "risks" && (
+                <RiskCenter
+                  project={project}
+                  token={token}
+                  canWrite={canAnalyze}
+                  onProblem={onProblem}
+                  onNotify={onNotify}
+                />
+              )}
+              <PipelineNav
+                step={analysisStep}
+                completion={completion}
+                onStep={selectStep}
+                onGoFindings={() => onHub("findings")}
+              />
+            </section>
+          )}
+          {hub === "findings" && (
+            <FindingsWorkspace
+              project={project}
+              token={token}
+              canWrite={canAnalyze}
+              filter={findingsFilter}
+              onFilter={onFindingsFilter}
+              onProblem={onProblem}
+              onNotify={onNotify}
+            />
+          )}
+          {hub === "changes" && (
+            <ChangeImpactWorkspace
+              project={project}
+              documents={documents}
+              token={token}
+              canWrite={canAnalyze}
+              onProblem={onProblem}
+              onNotify={onNotify}
+            />
+          )}
+          {hub === "project" && (
+            <section>
+              <nav className="project-subnav" aria-label="Proje bilgileri">
+                {PROJECT_SUBNAVS.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={projectSubNav === item.id ? "active" : ""}
+                    onClick={() => onProjectSubNav(item.id)}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </nav>
+              {projectSubNav === "overview" && (
+                <Overview project={project} documents={documents} members={members} />
+              )}
+              {projectSubNav === "activity" && (
+                <ActivityHistory events={auditEvents} />
+              )}
+              {projectSubNav === "settings" && (
+                <ProjectSettings
+                  project={project}
+                  members={members}
+                  token={token}
+                  canWrite={canWrite}
+                  onMembers={onMembers}
+                  onProblem={onProblem}
+                  onNotify={onNotify}
+                  onArchive={onArchive}
+                  busy={busy}
+                />
+              )}
+            </section>
           )}
         </>
       )}
