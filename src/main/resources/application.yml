@@ -181,3 +181,5 @@ specai:
     idempotency-processing-timeout: ${MESSAGE_PROCESSING_TIMEOUT:PT30M}
   ai-orchestrator:
     base-url: ${AI_ORCHESTRATOR_BASE_URL:${SPECAI_AI_ORCHESTRATOR_BASE_URL:http://localhost:8090}}
+    connect-timeout: ${AI_ORCHESTRATOR_CONNECT_TIMEOUT:PT5S}
+    knowledge-read-timeout: ${AI_ORCHESTRATOR_KNOWLEDGE_READ_TIMEOUT:PT60S}

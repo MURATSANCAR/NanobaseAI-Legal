@@ -49,12 +49,16 @@ public class KnowledgeExtractionProcessor {
         this.evidencePolicies = evidencePolicies;
     }
 
+    /**
+     * Prepares evidence and marks the job RUNNING in its own transaction so the UI
+     * can leave QUEUED before the (possibly long) AI call starts.
+     */
     @Transactional
-    public void process(UUID organizationId, UUID jobId) {
+    public PreparedJob prepareRunning(UUID organizationId, UUID jobId) {
         tenantDatabase.apply(organizationId);
         Map<String, Object> job = job(organizationId, jobId);
         if (!"QUEUED".equals(job.get("status"))) {
-            return;
+            return null;
         }
         UUID documentId = (UUID) job.get("document_id");
         UUID versionId = (UUID) job.get("document_version_id");
@@ -65,29 +69,48 @@ public class KnowledgeExtractionProcessor {
             organizationId, documentId, versionId);
         evidencePolicies.assess(organizationId, versionId);
         jdbc.update("""
-            update knowledge_extraction_job set status = 'RUNNING', started_at = now(),
-                total_fragment_count = ?, updated_at = now(), version = version + 1
+            update knowledge_extraction_job set status = 'RUNNING',
+                started_at = clock_timestamp(), total_fragment_count = ?,
+                updated_at = clock_timestamp(), version = version + 1
             where id = ? and organization_id = ?
             """, fragments.size(), jobId, organizationId);
         jobs.event(organizationId, jobId, "STARTED", 0,
             "Knowledge extraction started", Map.of("fragmentCount", fragments.size()));
-        outbox.publish(organizationId, "KnowledgeExtraction", jobId,
-            "KnowledgeExtractionStarted", "knowledge.extraction.started.v1",
-            Map.of("jobId", jobId, "fragmentCount", fragments.size()), correlationId);
         jobs.event(organizationId, jobId, "PROGRESS", 25,
             "Evidence fragments and validity assessments prepared",
             Map.of("fragmentCount", fragments.size()));
         outbox.publish(organizationId, "KnowledgeExtraction", jobId,
+            "KnowledgeExtractionStarted", "knowledge.extraction.started.v1",
+            Map.of("jobId", jobId, "fragmentCount", fragments.size()), correlationId);
+        outbox.publish(organizationId, "KnowledgeExtraction", jobId,
             "KnowledgeExtractionProgress", "knowledge.extraction.progress.v1",
             Map.of("jobId", jobId, "progress", 25,
                 "fragmentCount", fragments.size()), correlationId);
+        return new PreparedJob(organizationId, jobId, versionId, correlationId,
+            profile, fragments);
+    }
+
+    /**
+     * Runs the AI extraction and terminal status update. Called after
+     * {@link #prepareRunning} has committed so RUNNING is already visible.
+     */
+    @Transactional
+    public void extractAndComplete(PreparedJob prepared) {
+        if (prepared == null) {
+            return;
+        }
+        tenantDatabase.apply(prepared.organizationId());
+        UUID organizationId = prepared.organizationId();
+        UUID jobId = prepared.jobId();
+        UUID correlationId = prepared.correlationId();
+        Profile profile = prepared.profile();
         try {
             var response = gateway.extract(new KnowledgeRequest(jobId, organizationId,
                 "nanobase-spec-ai", profile.modelProfile(), profile.promptComponents(),
-                profile.outputSchema(), profile.ontologyConcepts(), fragments, 4096,
-                correlationId));
-            PersistResult persisted = persistOutput(organizationId, jobId, versionId,
-                profile.ontologyVersionId(), response.output());
+                profile.outputSchema(), profile.ontologyConcepts(), prepared.fragments(),
+                4096, correlationId));
+            PersistResult persisted = persistOutput(organizationId, jobId,
+                prepared.versionId(), profile.ontologyVersionId(), response.output());
             jobs.event(organizationId, jobId, "PROGRESS", 80,
                 "Knowledge graph output validated and persisted",
                 Map.of("entityCount", persisted.entities()));
@@ -115,7 +138,8 @@ public class KnowledgeExtractionProcessor {
                 update knowledge_extraction_job set status = 'COMPLETED',
                     processed_fragment_count = total_fragment_count,
                     extracted_entity_count = ?, manual_review_count = ?,
-                    completed_at = now(), updated_at = now(), version = version + 1
+                    completed_at = clock_timestamp(), updated_at = clock_timestamp(),
+                    version = version + 1
                 where id = ? and organization_id = ?
                 """, persisted.entities(), persisted.reviews(), jobId, organizationId);
             jobs.event(organizationId, jobId, "COMPLETED", 100,
@@ -127,22 +151,57 @@ public class KnowledgeExtractionProcessor {
                 Map.of("jobId", jobId, "entityCount", persisted.entities(),
                     "manualReviewCount", persisted.reviews()), correlationId);
         } catch (RuntimeException failure) {
+            String errorCode = errorCode(failure);
+            String errorMessage = truncate(friendlyMessage(failure));
             jdbc.update("""
                 update knowledge_extraction_job set status = 'FAILED',
-                    error_code = ?, error_message = ?, completed_at = now(),
-                    updated_at = now(), version = version + 1
+                    error_code = ?, error_message = ?,
+                    completed_at = clock_timestamp(), updated_at = clock_timestamp(),
+                    version = version + 1
                 where id = ? and organization_id = ?
-                """, failure.getClass().getSimpleName(),
-                truncate(failure.getMessage()), jobId, organizationId);
+                  and status not in ('COMPLETED', 'FAILED', 'CANCELLED')
+                """, errorCode, errorMessage, jobId, organizationId);
             jobs.event(organizationId, jobId, "FAILED", 100,
                 "Knowledge extraction failed",
-                Map.of("errorCode", failure.getClass().getSimpleName()));
+                Map.of("errorCode", errorCode, "errorMessage", errorMessage));
             outbox.publish(organizationId, "KnowledgeExtraction", jobId,
                 "KnowledgeExtractionFailed", "knowledge.extraction.failed.v1",
-                Map.of("jobId", jobId, "errorCode", failure.getClass().getSimpleName()),
+                Map.of("jobId", jobId, "errorCode", errorCode),
                 correlationId);
-            throw failure;
+            // Do not rethrow: that would roll back FAILED and leave the job RUNNING/QUEUED
+            // while idempotency already marks the event consumed.
         }
+    }
+
+    private static String errorCode(RuntimeException failure) {
+        Throwable root = failure;
+        while (root.getCause() instanceof RuntimeException nested && nested != root) {
+            root = nested;
+        }
+        String name = root.getClass().getSimpleName();
+        if (root instanceof org.springframework.web.client.ResourceAccessException
+            || name.contains("Timeout") || name.contains("Connect")) {
+            return "AI_ORCHESTRATOR_UNAVAILABLE";
+        }
+        if (root instanceof org.springframework.web.client.HttpServerErrorException) {
+            return "AI_ORCHESTRATOR_ERROR";
+        }
+        return name.isBlank() ? "KNOWLEDGE_EXTRACTION_FAILED" : name;
+    }
+
+    private static String friendlyMessage(RuntimeException failure) {
+        Throwable root = failure;
+        while (root.getCause() != null && root.getCause() != root) {
+            root = root.getCause();
+        }
+        String message = root.getMessage();
+        if (message != null && (message.contains("timed out") || message.contains("Timeout")
+            || message.contains("Connection refused") || message.contains("I/O error")
+            || message.contains("busy or unavailable"))) {
+            return "AI orchestrator is busy or unavailable; try again later";
+        }
+        return message == null || message.isBlank()
+            ? "Knowledge extraction failed" : message;
     }
 
     private List<Map<String, Object>> evidenceFragments(UUID organizationId,
@@ -509,5 +568,11 @@ public class KnowledgeExtractionProcessor {
     private record PersistResult(int entities, int attributes, int relations,
                                  int capabilities, int reviews,
                                  List<UUID> entityIds, List<UUID> capabilityIds) {
+    }
+
+
+    public record PreparedJob(UUID organizationId, UUID jobId, UUID versionId,
+                              UUID correlationId, Profile profile,
+                              List<Map<String, Object>> fragments) {
     }
 }

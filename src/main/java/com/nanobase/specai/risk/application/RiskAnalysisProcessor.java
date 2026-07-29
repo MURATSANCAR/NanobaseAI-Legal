@@ -210,7 +210,7 @@ public class RiskAnalysisProcessor {
             outbox.publish(organizationId, "RiskAnalysis", jobId,
                 "risk.analysis.failed.v1", RabbitConfiguration.RISK_ANALYSIS_FAILED,
                 Map.of("jobId", jobId, "errorCode", failure.getClass().getSimpleName()), null);
-            throw failure;
+            // Do not rethrow: that would roll back FAILED and leave the job stuck.
         }
     }
 

@@ -7,12 +7,16 @@ import com.nanobase.specai.integration.outbox.ConsumerIdempotencyService;
 import com.nanobase.specai.integration.outbox.RabbitConfiguration;
 import com.nanobase.specai.knowledge.application.KnowledgeExtractionJobService.KnowledgeRequested;
 import com.nanobase.specai.knowledge.application.KnowledgeExtractionProcessor;
+import com.nanobase.specai.knowledge.application.KnowledgeExtractionProcessor.PreparedJob;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Component;
 
 @Component
 public class KnowledgeExtractionConsumer {
+    private static final Logger log = LoggerFactory.getLogger(KnowledgeExtractionConsumer.class);
     static final String CONSUMER_NAME = "knowledge-extraction-consumer-v1";
     private static final TypeReference<EventEnvelope<KnowledgeRequested>> EVENT_TYPE =
         new TypeReference<>() { };
@@ -39,9 +43,14 @@ public class KnowledgeExtractionConsumer {
             return;
         }
         try {
-            processor.process(event.organizationId(), event.payload().jobId());
+            // Two separate transactional boundaries: RUNNING commits before the AI call.
+            PreparedJob prepared = processor.prepareRunning(
+                event.organizationId(), event.payload().jobId());
+            processor.extractAndComplete(prepared);
             idempotency.complete(CONSUMER_NAME, event.eventId());
         } catch (RuntimeException failure) {
+            log.error("Knowledge extraction consumer failed eventId={} jobId={} message={}",
+                event.eventId(), event.payload().jobId(), failure.getMessage(), failure);
             idempotency.failed(CONSUMER_NAME, event.eventId());
             throw failure;
         }
