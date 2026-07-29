@@ -38,6 +38,8 @@ public class JdbcEvidenceCandidateRetriever implements EvidenceCandidateRetrieve
             .path("defaultAuthorityScore").asDouble(0.4);
         String attributeConcept = requirement.attributes()
             .path("attributeConceptId").asText("");
+        UUID attributeConceptId = parseUuid(attributeConcept);
+        UUID primaryConceptId = requirement.primaryConceptId();
         return jdbc.query("""
             select fragment.id as fragment_id,
                    claim.id as claim_id,
@@ -54,19 +56,20 @@ public class JdbcEvidenceCandidateRetriever implements EvidenceCandidateRetrieve
                             (claim.value_json ->> 'booleanValue')::boolean) as boolean_value,
                    coalesce(attribute.date_value,
                             (claim.value_json ->> 'dateValue')::timestamptz) as date_value,
-                   case when ? is not null and
-                                  (attribute.attribute_concept_id = ?
-                                   or claim.predicate_concept_id = ?)
+                   case when ?::uuid is not null and
+                                  (attribute.attribute_concept_id = ?::uuid
+                                   or claim.predicate_concept_id = ?::uuid)
                         then 1.0 else 0.0 end as ontology_score,
                    ts_rank_cd(to_tsvector('simple', fragment.normalized_text),
-                              plainto_tsquery('simple', ?)) as lexical_score,
-                   case when ? <> '' and attribute.attribute_concept_id::text = ?
+                              plainto_tsquery('simple', coalesce(?, ''))) as lexical_score,
+                   case when ?::uuid is not null
+                             and attribute.attribute_concept_id = ?::uuid
                         then 1.0 else 0.0 end as attribute_score,
                    coalesce(validity.score, 0.0) as validity_score,
                    coalesce(authority.score, ?::numeric) as authority_score,
                    coalesce(history.acceptance, 0.0) as historical_score,
-                   case when ? is null or coalesce(attribute.entity_id,
-                        claim.subject_entity_id, capability.owner_entity_id) = ?
+                   case when ?::uuid is null or coalesce(attribute.entity_id,
+                        claim.subject_entity_id, capability.owner_entity_id) = ?::uuid
                         then 0 else 1 end as relation_distance,
                    version.uploaded_at as document_date,
                    fragment.valid_until,
@@ -155,8 +158,12 @@ public class JdbcEvidenceCandidateRetriever implements EvidenceCandidateRetrieve
             where fragment.organization_id = ?
               and fragment.created_at <= ?
               and (fragment.valid_until is null or fragment.valid_until > now())
-              and (attribute.id is not null or claim.id is not null
-                   or capability.id is not null)
+              and (
+                attribute.id is not null or claim.id is not null
+                or capability.id is not null
+                or to_tsvector('simple', fragment.normalized_text)
+                   @@ plainto_tsquery('simple', coalesce(?, ''))
+              )
               and (
                 coalesce(attribute.entity_id, claim.subject_entity_id,
                          capability.owner_entity_id) is null
@@ -169,17 +176,17 @@ public class JdbcEvidenceCandidateRetriever implements EvidenceCandidateRetrieve
                 )
               )
               and (
-                ? is null
+                ?::uuid is null
                 or coalesce(attribute.entity_id, claim.subject_entity_id,
-                            capability.owner_entity_id) = ?
+                            capability.owner_entity_id) = ?::uuid
                 or exists (
                     select 1 from knowledge_relation relation
                     where relation.organization_id = fragment.organization_id
                       and relation.valid_until is null
-                      and ((relation.source_entity_id = ?
+                      and ((relation.source_entity_id = ?::uuid
                             and relation.target_entity_id = coalesce(attribute.entity_id,
                                 claim.subject_entity_id, capability.owner_entity_id))
-                        or (relation.target_entity_id = ?
+                        or (relation.target_entity_id = ?::uuid
                             and relation.source_entity_id = coalesce(attribute.entity_id,
                                 claim.subject_entity_id, capability.owner_entity_id)))
                 )
@@ -188,14 +195,26 @@ public class JdbcEvidenceCandidateRetriever implements EvidenceCandidateRetrieve
                      validity_score desc, fragment.created_at desc
             limit ?
             """, this::candidate,
-            requirement.primaryConceptId(), requirement.primaryConceptId(),
-            requirement.primaryConceptId(), requirement.normalizedText(),
-            attributeConcept, attributeConcept, defaultAuthority,
+            primaryConceptId, primaryConceptId, primaryConceptId,
+            requirement.normalizedText(),
+            attributeConceptId, attributeConceptId, defaultAuthority,
             targetEntityId, targetEntityId, organizationId,
-            java.sql.Timestamp.from(evidenceCutoff),
-            java.sql.Timestamp.from(entityCutoff), targetEntityId, targetEntityId,
+            Timestamp.from(evidenceCutoff),
+            requirement.normalizedText(),
+            Timestamp.from(entityCutoff), targetEntityId, targetEntityId,
             targetEntityId, targetEntityId,
             metadataLimit);
+    }
+
+    private static UUID parseUuid(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return UUID.fromString(value.trim());
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
     }
 
     private Requirement requirement(UUID organizationId, UUID requirementId) {
