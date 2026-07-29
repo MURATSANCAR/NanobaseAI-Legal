@@ -43,19 +43,36 @@ public class OpenContractsDocumentIntelligenceAdapter
             .orElse(null);
         String corpusId = existing == null ? null : existing.externalCorpusId();
         if (corpusId == null) {
-            CorpusResponse corpus = execute(() -> client.post().uri("/api/v1/corpora")
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(new CorpusRequest(command.organizationId(), command.projectId()))
-                .retrieve().body(CorpusResponse.class));
-            if (corpus == null || corpus.id() == null || corpus.id().isBlank()) {
-                throw new ProviderUnavailableException(
-                    "OpenContracts response is missing corpus ID");
-            }
-            corpusId = corpus.id();
+            corpusId = createCorpus(command);
         }
-        final String resolvedCorpusId = corpusId;
+        try {
+            return submitToCorpus(command, corpusId);
+        } catch (ProviderUnavailableException exception) {
+            if (!isMissingCorpus(exception) || existing == null) {
+                throw exception;
+            }
+            // OpenContracts facade storage is ephemeral across recreates; recreate corpus.
+            String recreated = createCorpus(command);
+            return submitToCorpus(command, recreated);
+        }
+    }
+
+    private String createCorpus(DocumentProcessingCommand command) {
+        CorpusResponse corpus = execute(() -> client.post().uri("/api/v1/corpora")
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(new CorpusRequest(command.organizationId(), command.projectId()))
+            .retrieve().body(CorpusResponse.class));
+        if (corpus == null || corpus.id() == null || corpus.id().isBlank()) {
+            throw new ProviderUnavailableException(
+                "OpenContracts response is missing corpus ID");
+        }
+        return corpus.id();
+    }
+
+    private ProcessingSubmission submitToCorpus(DocumentProcessingCommand command,
+                                                String corpusId) {
         SubmissionResponse response = execute(() -> client.post()
-            .uri("/api/v1/corpora/{corpusId}/documents", resolvedCorpusId)
+            .uri("/api/v1/corpora/{corpusId}/documents", corpusId)
             .contentType(MediaType.APPLICATION_JSON)
             .body(new SubmissionRequest(command.documentVersionId(),
                 command.objectStorageKey(), command.originalFileName(), command.mimeType(),
@@ -67,11 +84,26 @@ public class OpenContractsDocumentIntelligenceAdapter
                 "OpenContracts response is missing external document ID");
         }
         mappings.submitted(command.organizationId(), command.documentVersionId(),
-            ExternalDocumentMapping.Provider.OPENCONTRACTS, resolvedCorpusId,
+            ExternalDocumentMapping.Provider.OPENCONTRACTS, corpusId,
             response.documentId(), response.providerVersion());
         return new ProcessingSubmission(new ExternalProcessingReference(PROVIDER,
             response.documentId(), command.organizationId(), command.documentVersionId()),
             status(response.status()));
+    }
+
+    private static boolean isMissingCorpus(Throwable exception) {
+        Throwable current = exception;
+        while (current != null) {
+            String message = current.getMessage();
+            if (message != null) {
+                String lower = message.toLowerCase(Locale.ROOT);
+                if (lower.contains("corpus not found") || lower.contains("404 not found")) {
+                    return true;
+                }
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 
     @Override

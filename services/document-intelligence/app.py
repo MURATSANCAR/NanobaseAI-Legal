@@ -396,7 +396,7 @@ def provider_neutral_result(
     page_dimensions = extract_page_dimensions(exported)
     text_items = exported.get("texts") or []
     page_text: dict[int, list[str]] = {}
-    clauses: list[dict[str, Any]] = []
+    parsed_items: list[dict[str, Any]] = []
     for index, item in enumerate(text_items):
         text = str(item.get("text") or "")
         provisions = item.get("prov") or []
@@ -410,25 +410,19 @@ def provider_neutral_result(
             page_number = int(provision.get("page_no") or 1)
             page_text.setdefault(page_number, []).append(text)
         label = str(item.get("label") or "").lower()
-        if label in {"title", "section_header", "chapter_header"} and text.strip():
-            page_number = boxes[0]["page"] if boxes else 1
-            clauses.append(
-                {
-                    "sourceId": f"docling-{index}",
-                    "parentSourceId": None,
-                    "clauseNumber": extract_clause_number(text),
-                    "title": text.strip()[:500],
-                    "rawText": text,
-                    "normalizedText": normalize_text(text),
-                    "clauseType": label.upper(),
-                    "pageStart": page_number,
-                    "pageEnd": page_number,
-                    "boundingBoxes": boxes,
-                    "contentHash": hashlib.sha256(text.encode("utf-8")).hexdigest(),
-                    "sortOrder": index,
-                    "metadata": {"providerLabel": label, "providerItem": index},
-                }
-            )
+        page_number = boxes[0]["page"] if boxes else 1
+        parsed_items.append(
+            {
+                "index": index,
+                "text": text,
+                "normalized": normalize_text(text),
+                "label": label,
+                "boxes": boxes,
+                "page": page_number,
+            }
+        )
+    running_noise = detect_running_noise(parsed_items)
+    clauses = build_reflowed_clauses(parsed_items, running_noise)
     page_numbers = sorted(page_dimensions) or sorted(page_text) or [1]
     pages: list[dict[str, Any]] = []
     warnings: list[dict[str, Any]] = []
@@ -550,6 +544,108 @@ def extract_tables(
             }
         )
     return tables
+
+
+HEADER_LABELS = frozenset({"title", "section_header", "chapter_header"})
+FOOTER_NOISE = re.compile(
+    r"(?i)^\s*(sayfa\s+\d+|page\s+\d+|©|\(c\)|tim\s*©)",
+)
+
+
+def detect_running_noise(items: list[dict[str, Any]]) -> set[str]:
+    """Identify repeated running headers/footers that should not split sections."""
+    counts: dict[str, int] = {}
+    for item in items:
+        normalized = item["normalized"]
+        if not normalized or len(normalized) > 160:
+            continue
+        counts[normalized] = counts.get(normalized, 0) + 1
+    noise = {
+        text
+        for text, count in counts.items()
+        if count >= 3 or FOOTER_NOISE.search(text) is not None
+    }
+    for item in items:
+        normalized = item["normalized"]
+        if FOOTER_NOISE.search(normalized or ""):
+            noise.add(normalized)
+    return noise
+
+
+def is_section_boundary(item: dict[str, Any], running_noise: set[str]) -> bool:
+    if item["label"] not in HEADER_LABELS:
+        return False
+    text = (item["text"] or "").strip()
+    if not text:
+        return False
+    normalized = item["normalized"]
+    if normalized in running_noise:
+        return False
+    return True
+
+
+def build_reflowed_clauses(
+    items: list[dict[str, Any]], running_noise: set[str]
+) -> list[dict[str, Any]]:
+    """Attach body paragraphs to the preceding real heading until the next heading.
+
+    Docling often emits heading-only clauses while obligation text lives on pages.
+    Reflow keeps title as the heading and concatenates following non-header text so
+    requirement extraction / grounding see the real şartname body.
+    """
+    clauses: list[dict[str, Any]] = []
+    index = 0
+    while index < len(items):
+        item = items[index]
+        if not is_section_boundary(item, running_noise):
+            index += 1
+            continue
+        title = item["text"].strip()
+        body_parts = [title]
+        boxes = list(item["boxes"])
+        pages = [item["page"]]
+        source_indexes = [item["index"]]
+        cursor = index + 1
+        while cursor < len(items):
+            nxt = items[cursor]
+            if is_section_boundary(nxt, running_noise):
+                break
+            nxt_text = (nxt["text"] or "").strip()
+            nxt_norm = nxt["normalized"]
+            if nxt_text and nxt_norm not in running_noise:
+                body_parts.append(nxt_text)
+                boxes.extend(nxt["boxes"])
+                pages.append(nxt["page"])
+                source_indexes.append(nxt["index"])
+            cursor += 1
+        raw_text = "\n".join(body_parts)
+        page_start = min(pages) if pages else item["page"]
+        page_end = max(pages) if pages else item["page"]
+        clauses.append(
+            {
+                "sourceId": f"docling-{item['index']}",
+                "parentSourceId": None,
+                "clauseNumber": extract_clause_number(title),
+                "title": title[:500],
+                "rawText": raw_text,
+                "normalizedText": normalize_text(raw_text),
+                "clauseType": item["label"].upper(),
+                "pageStart": page_start,
+                "pageEnd": page_end,
+                "boundingBoxes": boxes,
+                "contentHash": hashlib.sha256(raw_text.encode("utf-8")).hexdigest(),
+                "sortOrder": item["index"],
+                "metadata": {
+                    "providerLabel": item["label"],
+                    "providerItem": item["index"],
+                    "reflowed": True,
+                    "reflowedItemCount": len(source_indexes),
+                    "sourceItemIndexes": source_indexes,
+                },
+            }
+        )
+        index = cursor
+    return clauses
 
 
 def extract_clause_number(text: str) -> str | None:
