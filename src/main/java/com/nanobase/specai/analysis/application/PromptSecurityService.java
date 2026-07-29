@@ -2,6 +2,7 @@ package com.nanobase.specai.analysis.application;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.sql.Timestamp;
 import java.time.Clock;
 import java.util.List;
 import java.util.Map;
@@ -52,11 +53,11 @@ public class PromptSecurityService {
             insert into prompt_security_assessment (
                 id, organization_id, document_version_id, clause_id,
                 assessment_profile_id, signal_score, signals_json, review_status, created_at
-            ) values (?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?)
+            ) values (?, ?, ?, ?, ?, ?, cast(? as jsonb), ?, ?)
             """, UUID.randomUUID(), organizationId, documentVersionId, clauseId,
             analysisProfileId, assessment.signalScore(),
             json(Map.of("status", assessment.status(), "signals", assessment.signals())),
-            assessment.reviewStatus(), clock.instant());
+            assessment.reviewStatus(), Timestamp.from(clock.instant()));
         return assessment;
     }
 

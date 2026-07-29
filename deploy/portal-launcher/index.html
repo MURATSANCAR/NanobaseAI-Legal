@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0f766e" />
+    <title>NanobaseAI</title>
+    <link rel="icon" href="/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Sora:wght@500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg0: #f4fbf9;
+        --bg1: #e8f5f1;
+        --ink: #0f1f1c;
+        --muted: #5b6f6a;
+        --line: rgba(15, 118, 110, 0.14);
+        --card: rgba(255, 255, 255, 0.72);
+        --teal: #0f766e;
+        --teal-deep: #115e59;
+        --accent: #0d9488;
+        --shadow: 0 18px 50px rgba(15, 61, 56, 0.08);
+        --radius: 22px;
+        --font: "DM Sans", sans-serif;
+        --display: "Sora", sans-serif;
+      }
+
+      * { box-sizing: border-box; }
+      html, body { height: 100%; }
+      body {
+        margin: 0;
+        font-family: var(--font);
+        color: var(--ink);
+        background:
+          radial-gradient(900px 480px at 12% -10%, rgba(45, 212, 191, 0.28), transparent 60%),
+          radial-gradient(700px 420px at 88% 8%, rgba(13, 148, 136, 0.18), transparent 55%),
+          linear-gradient(180deg, var(--bg0), var(--bg1) 55%, #eef7f4);
+        min-height: 100dvh;
+      }
+
+      .shell {
+        width: min(1120px, calc(100% - 2rem));
+        margin: 0 auto;
+        padding: max(2rem, env(safe-area-inset-top)) 0 max(2.5rem, env(safe-area-inset-bottom));
+      }
+
+      .brand {
+        display: grid;
+        gap: 0.75rem;
+        padding: 1.25rem 0 2rem;
+        animation: rise 0.55s ease both;
+      }
+
+      .brand-mark {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.7rem;
+      }
+
+      .logo {
+        width: 2.75rem;
+        height: 2.75rem;
+        border-radius: 0.95rem;
+        display: grid;
+        place-items: center;
+        color: white;
+        background: linear-gradient(145deg, #14b8a6, var(--teal-deep));
+        box-shadow: 0 10px 28px rgba(15, 118, 110, 0.28);
+      }
+
+      .brand h1 {
+        margin: 0;
+        font-family: var(--display);
+        font-size: clamp(1.85rem, 4vw, 2.6rem);
+        letter-spacing: -0.03em;
+        line-height: 1.1;
+      }
+
+      .brand p {
+        margin: 0;
+        max-width: 36rem;
+        color: var(--muted);
+        font-size: 1.02rem;
+        line-height: 1.5;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(12, 1fr);
+        gap: 1rem;
+      }
+
+      .tile {
+        grid-column: span 6;
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        min-height: 11.5rem;
+        padding: 1.35rem 1.4rem 1.25rem;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: var(--card);
+        backdrop-filter: blur(10px);
+        box-shadow: var(--shadow);
+        text-decoration: none;
+        color: inherit;
+        overflow: hidden;
+        transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        animation: rise 0.6s ease both;
+      }
+
+      .tile:nth-child(1) { animation-delay: 0.05s; }
+      .tile:nth-child(2) { animation-delay: 0.1s; }
+      .tile:nth-child(3) { animation-delay: 0.15s; }
+      .tile:nth-child(4) { animation-delay: 0.2s; }
+      .tile:nth-child(5) { animation-delay: 0.25s; }
+      .tile:nth-child(6) { animation-delay: 0.3s; }
+
+      .tile:hover,
+      .tile:focus-visible {
+        transform: translateY(-3px);
+        border-color: rgba(15, 118, 110, 0.35);
+        box-shadow: 0 22px 55px rgba(15, 61, 56, 0.12);
+        outline: none;
+      }
+
+      .tile.featured {
+        grid-column: span 12;
+        min-height: 10.5rem;
+        background:
+          linear-gradient(120deg, rgba(20, 184, 166, 0.14), transparent 45%),
+          var(--card);
+      }
+
+      .tile-top {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 1rem;
+      }
+
+      .icon {
+        width: 2.6rem;
+        height: 2.6rem;
+        border-radius: 0.9rem;
+        display: grid;
+        place-items: center;
+        flex-shrink: 0;
+      }
+
+      .icon svg { width: 1.25rem; height: 1.25rem; }
+
+      .tone-teal { background: #ccfbf1; color: #0f766e; }
+      .tone-violet { background: #ede9fe; color: #6d28d9; }
+      .tone-sky { background: #e0f2fe; color: #0369a1; }
+      .tone-emerald { background: #d1fae5; color: #047857; }
+      .tone-amber { background: #ffedd5; color: #c2410c; }
+      .tone-slate { background: #e2e8f0; color: #334155; }
+
+      .tile h2 {
+        margin: 0;
+        font-family: var(--display);
+        font-size: 1.2rem;
+        letter-spacing: -0.02em;
+      }
+
+      .tile p {
+        margin: 0.35rem 0 0;
+        color: var(--muted);
+        font-size: 0.95rem;
+        line-height: 1.45;
+      }
+
+      .cta {
+        margin-top: auto;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        font-size: 0.92rem;
+        font-weight: 600;
+        color: var(--teal-deep);
+      }
+
+      .cta svg {
+        width: 1rem;
+        height: 1rem;
+        transition: transform 0.2s ease;
+      }
+
+      .tile:hover .cta svg { transform: translateX(3px); }
+
+      .glow {
+        position: absolute;
+        right: -2rem;
+        top: -2rem;
+        width: 8rem;
+        height: 8rem;
+        border-radius: 999px;
+        filter: blur(28px);
+        opacity: 0.45;
+        pointer-events: none;
+      }
+
+      .foot {
+        margin-top: 1.75rem;
+        color: var(--muted);
+        font-size: 0.85rem;
+        animation: rise 0.7s ease both;
+      }
+
+      @keyframes rise {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+
+      @media (max-width: 780px) {
+        .tile, .tile.featured { grid-column: span 12; }
+        .shell { width: min(1120px, calc(100% - 1.25rem)); }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="shell">
+      <header class="brand">
+        <div class="brand-mark">
+          <div class="logo" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22">
+              <path d="M12 3l2.1 4.9L19 10l-4.9 2.1L12 17l-2.1-4.9L5 10l4.9-2.1L12 3z" />
+              <path d="M19 16l.8 1.8L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8L19 16z" />
+            </svg>
+          </div>
+          <h1>NanobaseAI</h1>
+        </div>
+        <p>Ürün portalına girmek için bir kart seçin. Bu ekran bağımsızdır; yalnızca yönlendirme yapar.</p>
+      </header>
+
+      <section class="grid" aria-label="Portallar">
+        <a class="tile featured" href="/easymeeting/">
+          <span class="glow" style="background:#2dd4bf"></span>
+          <div class="tile-top">
+            <div>
+              <h2>EasyMeeting</h2>
+              <p>Teams toplantı zekâsı, notlar ve kontrollü teslimat.</p>
+            </div>
+            <div class="icon tone-teal" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="23"/></svg>
+            </div>
+          </div>
+          <span class="cta">Modüle gir <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></span>
+        </a>
+
+        <a class="tile" href="/legal/">
+          <span class="glow" style="background:#34d399"></span>
+          <div class="tile-top">
+            <div>
+              <h2>Şartname AI</h2>
+              <p>Şartname ve sözleşme yükleme, yapı inceleme, kanıtlı bulgular.</p>
+            </div>
+            <div class="icon tone-emerald" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="m9 15 2 2 4-4"/></svg>
+            </div>
+          </div>
+          <span class="cta">Modüle gir <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></span>
+        </a>
+
+        <a class="tile" href="/fatura/">
+          <span class="glow" style="background:#fb923c"></span>
+          <div class="tile-top">
+            <div>
+              <h2>FaturaAI</h2>
+              <p>e-Arşiv / e-Fatura PDF okuma ve alan çıkarımı.</p>
+            </div>
+            <div class="icon tone-amber" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 17.5v-11"/></svg>
+            </div>
+          </div>
+          <span class="cta">Aç <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></span>
+        </a>
+
+        <a class="tile" href="/bi/">
+          <span class="glow" style="background:#38bdf8"></span>
+          <div class="tile-top">
+            <div>
+              <h2>AI Reports</h2>
+              <p>Doğal dil iş zekâsı, dashboard ve yönetici analitikleri.</p>
+            </div>
+            <div class="icon tone-sky" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M7 16v-5"/><path d="M12 16V8"/><path d="M17 16v-9"/></svg>
+            </div>
+          </div>
+          <span class="cta">Modüle gir <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></span>
+        </a>
+
+        <a class="tile" href="/QA/">
+          <span class="glow" style="background:#a78bfa"></span>
+          <div class="tile-top">
+            <div>
+              <h2>NanobaseAI QA</h2>
+              <p>Proje analizi, CAM, pipeline ve kalite kapıları.</p>
+            </div>
+            <div class="icon tone-violet" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m10.1 2.2-1.8 4.4-4.4 1.8 4.4 1.8 1.8 4.4 1.8-4.4 4.4-1.8-4.4-1.8z"/><path d="M20 14.5 18.8 17l-2.5 1.2 2.5 1.2 1.2 2.5 1.2-2.5 2.5-1.2-2.5-1.2z"/></svg>
+            </div>
+          </div>
+          <span class="cta">QA’yı aç <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></span>
+        </a>
+
+        <a class="tile" href="/analytics/">
+          <span class="glow" style="background:#94a3b8"></span>
+          <div class="tile-top">
+            <div>
+              <h2>Analytics</h2>
+              <p>Superset tabanlı raporlama ve gömülü analitik.</p>
+            </div>
+            <div class="icon tone-slate" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+            </div>
+          </div>
+          <span class="cta">Aç <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></span>
+        </a>
+      </section>
+
+      <p class="foot">www.nanobase.ai</p>
+    </main>
+  </body>
+</html>

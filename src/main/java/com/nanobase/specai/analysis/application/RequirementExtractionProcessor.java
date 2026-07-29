@@ -162,7 +162,9 @@ public class RequirementExtractionProcessor {
                             percent(processed, sourceClauses.size()),
                             "Clause extraction requires manual review",
                             Map.of("clauseId", clause.id(),
-                                "errorCode", safeCode(clauseFailure)), clock.instant());
+                                "errorCode", safeCode(clauseFailure),
+                                "errorMessage", truncateMessage(clauseFailure)),
+                            clock.instant());
                     }
                 } else if ("MANUAL_REVIEW".equals(signal.recommendedAction())) {
                     reviews++;
@@ -554,6 +556,15 @@ public class RequirementExtractionProcessor {
         String value = failure.getClass().getSimpleName()
             .replaceAll("([a-z])([A-Z])", "$1_$2").toUpperCase(Locale.ROOT);
         return value.substring(0, Math.min(160, value.length()));
+    }
+
+    private String truncateMessage(Throwable failure) {
+        Throwable root = failure;
+        while (root.getCause() != null && root.getCause() != root) {
+            root = root.getCause();
+        }
+        String message = root.getMessage() == null ? failure.toString() : root.getMessage();
+        return message.substring(0, Math.min(500, message.length()));
     }
 
     private record ClauseOutcome(int extracted, int reviews) {

@@ -97,9 +97,9 @@ public class ClauseSignalFeatureExtractor {
             return 0d;
         }
         if (hits == 1) {
-            return 0.7d;
+            return 0.85d;
         }
-        return 0.9d;
+        return 1d;
     }
 
     private List<UUID> terminologyIds(String value) {

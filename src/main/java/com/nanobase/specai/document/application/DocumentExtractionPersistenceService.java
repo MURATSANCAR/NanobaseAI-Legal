@@ -74,6 +74,14 @@ public class DocumentExtractionPersistenceService {
             version.id(), organizationId);
         tables.deleteAllByDocumentVersionIdAndOrganizationId(
             version.id(), organizationId);
+        warnings.deleteAllByDocumentVersionIdAndOrganizationId(
+            version.id(), organizationId);
+        // Flush deletes before inserts so unique (version, page_number) constraints
+        // do not collide with still-pending removals in the persistence context.
+        pages.flush();
+        clauses.flush();
+        tables.flush();
+        warnings.flush();
         Instant now = clock.instant();
         pages.saveAll(result.pages().stream().map(page -> new DocumentPage(
             UUID.randomUUID(), organizationId, version.id(), page.pageNumber(),

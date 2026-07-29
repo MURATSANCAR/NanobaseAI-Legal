@@ -1,5 +1,8 @@
 package com.nanobase.specai.document.domain;
 
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -12,6 +15,10 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "clause")
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+@JsonAutoDetect(fieldVisibility = JsonAutoDetect.Visibility.ANY,
+    getterVisibility = JsonAutoDetect.Visibility.NONE,
+    isGetterVisibility = JsonAutoDetect.Visibility.NONE)
 public class Clause {
     @Id
     private UUID id;
@@ -26,8 +33,10 @@ public class Clause {
     @Column(length = 500)
     private String title;
     @Column(name = "raw_text", nullable = false, columnDefinition = "text")
+    @JsonProperty("rawText")
     private String rawText;
     @Column(name = "normalized_text", nullable = false, columnDefinition = "text")
+    @JsonProperty("normalizedText")
     private String normalizedText;
     @Column(name = "clause_type", length = 80)
     private String clauseType;

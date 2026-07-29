@@ -271,10 +271,9 @@ def main() -> None:
     count = reqs.get("totalElements") or 0
     log(f"[state] requirement_count={count} llm_ok={llm_ok} req_status={(req_result or {}).get('status')}")
     if count == 0:
-        used_seed = True
-        seed_analyst(tok)
-        # seed script already ran compliance; still re-run for a fresh job after AI path
-        tok = token()
+        raise SystemExit(
+            "No requirements produced from real documents (refusing ANALYST_SEED fallback)"
+        )
 
     summary, tok = run_compliance(tok)
     out = {
