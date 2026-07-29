@@ -12,6 +12,9 @@ Processor akışı:
 3. Candidate yoksa açıklanabilir missing-evidence sonucu.
 4. Strategy catalog eşleşirse deterministic karşılaştırma.
 5. Çözülemeyen alanlarda yalnız top-K evidence ile local orchestrator semantic çağrısı.
+   Routing mode (`BALANCED_ONLY` | `SHADOW` | `LIVE_FAST`) `ComplianceSemanticRouter`
+   ile uygulanır. Shadow canlı kararı değiştirmez; LIVE_FAST düşük güven / çelişki /
+   çok kanıt / FAST failure durumunda BALANCED’a escalate eder.
 6. Dynamic decision concept çözümü ve confidence.
 7. Supporting/contradicting `compliance_evidence_link` kayıtları.
 8. Review-required outbox eventi ve job progress/SSE.

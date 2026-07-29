@@ -40,7 +40,7 @@ INSERT INTO model_profile (
     '40000000-0000-0000-0000-000000000052',
     TRUE, now(), now()
 )
-ON CONFLICT DO NOTHING;
+ON CONFLICT (organization_id, profile_code) DO NOTHING;
 
 UPDATE model_profile
 SET selection_policy_json = selection_policy_json
