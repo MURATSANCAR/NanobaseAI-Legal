@@ -29,6 +29,14 @@ services:
       S3_SECRET_KEY: ${MINIO_SECRET_KEY}
       S3_SOURCE_BUCKET: specai-original
       TEMPORARY_DIRECTORY: /var/lib/specai/tmp
+      WORKER_THREADS: "1"
+      PROCESSING_TIMEOUT_SECONDS: "1200"
+    deploy:
+      resources:
+        limits:
+          memory: 12G
+        reservations:
+          memory: 1G
     networks:
       - specai
       - actenora-data
@@ -36,7 +44,7 @@ services:
     # Avoid read-only /tmp permission issues with nested TEMPORARY_DIRECTORY.
     read_only: false
     tmpfs: !override
-      - /tmp:size=1g,mode=1777
+      - /tmp:size=2g,mode=1777
 
   opencontracts:
     environment:
