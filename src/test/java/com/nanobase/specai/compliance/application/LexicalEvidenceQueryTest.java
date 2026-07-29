@@ -107,7 +107,7 @@ class LexicalEvidenceQueryTest {
             "Hizmet seviyesi anlaşmasında aylık uptime ve kritik müdahale süresi "
                 + "tanımlanmalıdır.");
         LexicalEvidenceQuery yapim = LexicalEvidenceQuery.from(
-            "Bu şartnamede belirtilen işlerin anahtar teslimi olarak tamamlanması esastır.");
+            "Yüklenici anahtar teslimi olarak işi tamamlayacak ve fiyat farkı talep etmeyecektir.");
 
         assertThat(iso.matches(ISO_EVIDENCE)).isTrue();
         assertThat(sla.matches(SLA_EVIDENCE)).isTrue();

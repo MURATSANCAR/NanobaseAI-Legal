@@ -108,10 +108,10 @@ public final class LexicalEvidenceQuery {
         if (isEmpty() || fragmentText == null || fragmentText.isBlank()) {
             return 0;
         }
-        String haystack = " " + fold(fragmentText) + " ";
+        String[] words = fold(fragmentText).split("\\s+");
         int hits = 0;
         for (String token : tokens) {
-            if (haystack.contains(token)) {
+            if (tokenHits(token, words)) {
                 hits++;
             }
         }
@@ -120,6 +120,26 @@ public final class LexicalEvidenceQuery {
 
     public boolean matches(String fragmentText) {
         return hitCount(fragmentText) >= minimumHits;
+    }
+
+    static boolean tokenHits(String token, String[] words) {
+        for (String word : words) {
+            if (word.isEmpty()) {
+                continue;
+            }
+            if (word.equals(token)) {
+                return true;
+            }
+            int shared = 0;
+            int limit = Math.min(word.length(), token.length());
+            while (shared < limit && word.charAt(shared) == token.charAt(shared)) {
+                shared++;
+            }
+            if (shared >= Math.min(5, token.length())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     static int minimumHits(int tokenCount) {
