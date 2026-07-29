@@ -42,7 +42,17 @@ class HttpComplianceAiGatewayTest {
         assertThat(HttpComplianceAiGateway.retryable(
             SemanticEvaluationFailureCode.LLM_INVALID_RESPONSE)).isFalse();
         assertThat(HttpComplianceAiGateway.retryable(
-            SemanticEvaluationFailureCode.CONTEXT_OVERFLOW)).isFalse();
+            SemanticEvaluationFailureCode.LLM_CONTEXT_OVERFLOW)).isFalse();
+        assertThat(HttpComplianceAiGateway.retryable(
+            SemanticEvaluationFailureCode.LLM_GENERATION_TIMEOUT)).isFalse();
+        assertThat(HttpComplianceAiGateway.retryable(
+            SemanticEvaluationFailureCode.LLM_TIMEOUT, true, true)).isTrue();
+        assertThat(HttpComplianceAiGateway.retryable(
+            SemanticEvaluationFailureCode.LLM_TIMEOUT, false, true)).isFalse();
+        assertThat(HttpComplianceAiGateway.deploymentAlias("FAST"))
+            .isEqualTo("nanobase-fast");
+        assertThat(HttpComplianceAiGateway.deploymentAlias("BALANCED"))
+            .isEqualTo("nanobase-balanced");
     }
 
     @Test

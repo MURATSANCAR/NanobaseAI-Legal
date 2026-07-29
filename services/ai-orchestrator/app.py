@@ -1,16 +1,17 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
 import time
 import uuid
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Request
 from jsonschema import Draft202012Validator
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -46,6 +47,95 @@ class Deployment:
     top_p: float | None = None
     reasoning: bool | None = None
     default_max_tokens: int | None = None
+    # External/audit alias only — never log product model names to customers.
+    deployment_alias: str = ""
+    max_concurrency: int = 1
+    max_queue_depth: int = 20
+    queue_wait_timeout_seconds: float = 120.0
+
+
+def _default_alias(profile: str) -> str:
+    normalized = profile.strip().upper()
+    if normalized == "FAST":
+        return "nanobase-fast"
+    if normalized == "BALANCED":
+        return "nanobase-balanced"
+    return f"nanobase-{normalized.lower()}"
+
+
+def _default_concurrency(profile: str) -> int:
+    return 2 if profile.strip().upper() == "FAST" else 1
+
+
+def _default_queue_depth(profile: str) -> int:
+    return 50 if profile.strip().upper() == "FAST" else 20
+
+
+def _default_queue_wait(profile: str) -> float:
+    return 60.0 if profile.strip().upper() == "FAST" else 120.0
+
+
+@dataclass
+class ProfileSlotManager:
+    """Per-profile semaphore + bounded wait queue (FAST and BALANCED stay isolated)."""
+
+    max_concurrency: int
+    max_queue_depth: int
+    queue_wait_timeout_seconds: float
+    deployment_alias: str
+    _semaphore: asyncio.Semaphore = field(init=False, repr=False)
+    _waiting: int = field(default=0, init=False, repr=False)
+    _lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        self._semaphore = asyncio.Semaphore(max(1, self.max_concurrency))
+
+    async def acquire(self, correlation_id: str | None) -> float:
+        async with self._lock:
+            if self._waiting >= self.max_queue_depth:
+                LOG.warning(
+                    "llm_overloaded alias=%s waiting=%s maxQueue=%s correlation_id=%s",
+                    self.deployment_alias,
+                    self._waiting,
+                    self.max_queue_depth,
+                    correlation_id,
+                )
+                raise HTTPException(
+                    status_code=503,
+                    detail={"code": "LLM_OVERLOADED", "deploymentAlias": self.deployment_alias},
+                )
+            self._waiting += 1
+        started = time.monotonic()
+        try:
+            await asyncio.wait_for(
+                self._semaphore.acquire(),
+                timeout=self.queue_wait_timeout_seconds,
+            )
+        except TimeoutError as exc:
+            async with self._lock:
+                self._waiting = max(0, self._waiting - 1)
+            LOG.warning(
+                "llm_queue_timeout alias=%s waitTimeout=%.1f correlation_id=%s",
+                self.deployment_alias,
+                self.queue_wait_timeout_seconds,
+                correlation_id,
+            )
+            raise HTTPException(
+                status_code=504,
+                detail={
+                    "code": "LLM_QUEUE_TIMEOUT",
+                    "deploymentAlias": self.deployment_alias,
+                },
+            ) from exc
+        async with self._lock:
+            self._waiting = max(0, self._waiting - 1)
+        return (time.monotonic() - started) * 1000.0
+
+    def release(self) -> None:
+        self._semaphore.release()
+
+
+PROFILE_SLOTS: dict[str, ProfileSlotManager] = {}
 
 
 class ExtractionRequest(BaseModel):
@@ -136,9 +226,10 @@ def load_deployments() -> tuple[Deployment, ...]:
                 raise RuntimeError("Model API key file must be inside the secrets directory")
             with open(path, encoding="utf-8") as secret_file:
                 api_key = secret_file.read().strip()
+        profile = str(item["profile"])
         deployments.append(
             Deployment(
-                profile=str(item["profile"]),
+                profile=profile,
                 base_url=str(item["baseUrl"]).rstrip("/"),
                 runtime_model=str(item["runtimeModel"]),
                 api_key=api_key,
@@ -159,12 +250,45 @@ def load_deployments() -> tuple[Deployment, ...]:
                     if item.get("maxTokens") is not None
                     else None
                 ),
+                deployment_alias=str(
+                    item.get("alias") or item.get("deploymentAlias") or _default_alias(profile)
+                ),
+                max_concurrency=int(
+                    item.get("maxConcurrency", _default_concurrency(profile))
+                ),
+                max_queue_depth=int(
+                    item.get("maxQueueDepth", _default_queue_depth(profile))
+                ),
+                queue_wait_timeout_seconds=float(
+                    item.get(
+                        "queueWaitTimeoutSeconds",
+                        _default_queue_wait(profile),
+                    )
+                ),
             )
         )
     return tuple(deployments)
 
 
 DEPLOYMENTS = load_deployments()
+for _deployment_cfg in DEPLOYMENTS:
+    if _deployment_cfg.profile not in PROFILE_SLOTS:
+        PROFILE_SLOTS[_deployment_cfg.profile] = ProfileSlotManager(
+            max_concurrency=_deployment_cfg.max_concurrency,
+            max_queue_depth=_deployment_cfg.max_queue_depth,
+            queue_wait_timeout_seconds=_deployment_cfg.queue_wait_timeout_seconds,
+            deployment_alias=_deployment_cfg.deployment_alias,
+        )
+        LOG.info(
+            "model_slot_policy profile=%s alias=%s maxConcurrency=%s "
+            "maxQueueDepth=%s queueWaitTimeout=%.1fs generationTimeout=%.1fs",
+            _deployment_cfg.profile,
+            _deployment_cfg.deployment_alias,
+            _deployment_cfg.max_concurrency,
+            _deployment_cfg.max_queue_depth,
+            _deployment_cfg.queue_wait_timeout_seconds,
+            _deployment_cfg.timeout_seconds,
+        )
 app = FastAPI(title="NANObaseAI Local AI Orchestrator", version="1.0.0")
 
 
@@ -350,6 +474,7 @@ async def _structured_runtime_call(
     untrusted_context: dict[str, Any],
     maximum_output_tokens: int,
     correlation_id: str | None,
+    http_request: Request | None = None,
 ) -> ExtractionResponse:
     validator = Draft202012Validator(output_schema)
     assessment = assess_prompt_security(untrusted_context)
@@ -405,29 +530,155 @@ async def _structured_runtime_call(
     headers = {"Content-Type": "application/json"}
     if deployment.api_key:
         headers["Authorization"] = f"Bearer {deployment.api_key}"
+
+    slot = PROFILE_SLOTS.get(deployment.profile)
+    if slot is None:
+        slot = ProfileSlotManager(
+            max_concurrency=deployment.max_concurrency,
+            max_queue_depth=deployment.max_queue_depth,
+            queue_wait_timeout_seconds=deployment.queue_wait_timeout_seconds,
+            deployment_alias=deployment.deployment_alias,
+        )
+        PROFILE_SLOTS[deployment.profile] = slot
+
+    queue_wait_ms = await slot.acquire(correlation_id)
     started = time.monotonic()
+    cancellation_requested = False
+    cancellation_completed = False
+    result_code = "COMPLETED"
+    failure_code: str | None = None
     try:
-        async with httpx.AsyncClient(timeout=deployment.timeout_seconds) as client:
-            response = await client.post(
-                f"{deployment.base_url}/v1/chat/completions",
-                headers=headers,
-                json=body,
+        timeout = httpx.Timeout(
+            connect=5.0,
+            read=deployment.timeout_seconds,
+            write=30.0,
+            pool=5.0,
+        )
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            request_task = asyncio.create_task(
+                client.post(
+                    f"{deployment.base_url}/v1/chat/completions",
+                    headers=headers,
+                    json=body,
+                )
             )
-            response.raise_for_status()
+            disconnect_watcher: asyncio.Task[None] | None = None
+            if http_request is not None:
+
+                async def _watch_disconnect() -> None:
+                    while True:
+                        if await http_request.is_disconnected():
+                            request_task.cancel()
+                            return
+                        await asyncio.sleep(0.25)
+
+                disconnect_watcher = asyncio.create_task(_watch_disconnect())
+            try:
+                response = await request_task
+            except asyncio.CancelledError:
+                cancellation_requested = True
+                cancellation_completed = True
+                result_code = "CANCELLED"
+                failure_code = "LLM_CANCELLED"
+                raise HTTPException(
+                    status_code=499,
+                    detail={
+                        "code": "LLM_CANCELLED",
+                        "deploymentAlias": deployment.deployment_alias,
+                        "cancellationCompleted": True,
+                    },
+                ) from None
+            finally:
+                if disconnect_watcher is not None:
+                    disconnect_watcher.cancel()
+                    try:
+                        await disconnect_watcher
+                    except asyncio.CancelledError:
+                        pass
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                result_code = "ERROR"
+                failure_code = "LLM_UNAVAILABLE"
+                raise HTTPException(
+                    status_code=502,
+                    detail={
+                        "code": "LLM_UNAVAILABLE",
+                        "deploymentAlias": deployment.deployment_alias,
+                    },
+                ) from exc
+    except HTTPException:
+        raise
+    except httpx.ConnectTimeout as exc:
+        result_code = "ERROR"
+        failure_code = "LLM_CONNECT_TIMEOUT"
+        raise HTTPException(
+            status_code=504,
+            detail={
+                "code": "LLM_CONNECT_TIMEOUT",
+                "deploymentAlias": deployment.deployment_alias,
+            },
+        ) from exc
+    except httpx.ReadTimeout as exc:
+        result_code = "ERROR"
+        failure_code = "LLM_GENERATION_TIMEOUT"
+        # Best-effort: abandon in-flight generation so the slot is not held forever.
+        cancellation_requested = True
+        cancellation_completed = True
+        raise HTTPException(
+            status_code=504,
+            detail={
+                "code": "LLM_GENERATION_TIMEOUT",
+                "deploymentAlias": deployment.deployment_alias,
+                "cancellationCompleted": True,
+            },
+        ) from exc
     except httpx.HTTPError as exc:
+        result_code = "ERROR"
+        failure_code = "LLM_UNAVAILABLE"
         LOG.warning(
-            "runtime_request_failed correlation_id=%s profile=%s error_type=%s",
+            "runtime_request_failed correlation_id=%s profile=%s alias=%s error_type=%s",
             correlation_id,
             deployment.profile,
+            deployment.deployment_alias,
             type(exc).__name__,
         )
-        raise HTTPException(status_code=502, detail="Local model runtime unavailable") from exc
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "code": "LLM_UNAVAILABLE",
+                "deploymentAlias": deployment.deployment_alias,
+            },
+        ) from exc
+    finally:
+        slot.release()
+        LOG.info(
+            "model_call_trace correlation_id=%s requestedProfile=%s "
+            "deploymentAlias=%s queueWaitMs=%.0f generationMs=%.0f "
+            "cancellationRequested=%s cancellationCompleted=%s result=%s failureCode=%s",
+            correlation_id,
+            deployment.profile,
+            deployment.deployment_alias,
+            queue_wait_ms,
+            (time.monotonic() - started) * 1000.0,
+            cancellation_requested,
+            cancellation_completed,
+            result_code,
+            failure_code,
+        )
+
     runtime_response = response.json()
     try:
         content = runtime_response["choices"][0]["message"]["content"]
         output = content if isinstance(content, dict) else json.loads(content)
     except (KeyError, IndexError, TypeError, json.JSONDecodeError) as exc:
-        raise HTTPException(status_code=502, detail="Runtime returned invalid JSON") from exc
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "code": "LLM_INVALID_RESPONSE",
+                "deploymentAlias": deployment.deployment_alias,
+            },
+        ) from exc
     errors = sorted(validator.iter_errors(output), key=lambda item: list(item.path))
     if errors:
         raise HTTPException(
@@ -473,6 +724,7 @@ async def _structured_runtime_call_with_fallback(
     untrusted_context: dict[str, Any],
     maximum_output_tokens: int,
     correlation_id: str | None,
+    http_request: Request | None = None,
 ) -> ExtractionResponse:
     attempts = max(1, int(os.getenv("MODEL_RUNTIME_RETRY_ATTEMPTS", "2")))
     last_failure: HTTPException | None = None
@@ -488,18 +740,28 @@ async def _structured_runtime_call_with_fallback(
                     untrusted_context=untrusted_context,
                     maximum_output_tokens=maximum_output_tokens,
                     correlation_id=correlation_id,
+                    http_request=http_request,
                 )
             except HTTPException as failure:
-                if failure.status_code != 502:
+                detail = failure.detail if isinstance(failure.detail, dict) else {}
+                code = detail.get("code") if isinstance(detail, dict) else None
+                # Never blind-retry a full generation timeout — slot must stay free.
+                if failure.status_code not in {502, 503} or code in {
+                    "LLM_GENERATION_TIMEOUT",
+                    "LLM_QUEUE_TIMEOUT",
+                    "LLM_CANCELLED",
+                    "LLM_OVERLOADED",
+                }:
                     raise
                 last_failure = failure
                 LOG.warning(
                     "runtime_attempt_failed correlation_id=%s profile=%s "
-                    "runtime_model=%s attempt=%s",
+                    "alias=%s attempt=%s code=%s",
                     correlation_id,
                     deployment.profile,
-                    deployment.runtime_model,
+                    deployment.deployment_alias,
                     attempt,
+                    code,
                 )
     if last_failure is not None:
         raise last_failure
@@ -735,6 +997,7 @@ async def _governed_analysis(
 @app.post("/v1/compliance-evaluations", response_model=ExtractionResponse)
 async def evaluate_compliance(
     request: ComplianceEvaluationRequest,
+    http_request: Request,
     x_correlation_id: str | None = Header(default=None),
 ) -> ExtractionResponse:
     deployments = _deployments(request.model, request.profile)
@@ -752,6 +1015,7 @@ async def evaluate_compliance(
         },
         maximum_output_tokens=request.maximumOutputTokens,
         correlation_id=x_correlation_id,
+        http_request=http_request,
     )
     output = response.output
     if output.get("recommendedDecisionConcept") not in request.allowedDecisionConcepts:

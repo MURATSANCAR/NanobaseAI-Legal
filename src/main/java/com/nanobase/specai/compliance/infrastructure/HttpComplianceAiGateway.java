@@ -7,6 +7,7 @@ import com.nanobase.specai.compliance.application.SemanticEvaluationException;
 import com.nanobase.specai.compliance.application.SemanticEvaluationFailureCode;
 import java.net.http.HttpClient;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -26,8 +27,8 @@ import org.springframework.web.client.RestClientResponseException;
 /**
  * Compliance semantic evaluation HTTP client with dedicated timeouts.
  *
- * <p>Must not inherit {@code DOCUMENT_PROVIDER_READ_TIMEOUT} (PT180S). Host llama-server is
- * single-slot and often needs the same budget as knowledge extraction (PT600S).
+ * <p>Must not inherit {@code DOCUMENT_PROVIDER_READ_TIMEOUT} (PT180S). Backend read timeout
+ * must exceed orchestrator queueWait + generation + network margin.
  */
 @Component
 public class HttpComplianceAiGateway implements ComplianceAiGateway {
@@ -37,6 +38,7 @@ public class HttpComplianceAiGateway implements ComplianceAiGateway {
     private final ObjectMapper mapper;
     private final Duration connectTimeout;
     private final Duration readTimeout;
+    private final Duration globalDeadline;
     private final int retryAttempts;
     private final Duration retryBackoff;
     private final String endpointAlias;
@@ -45,13 +47,16 @@ public class HttpComplianceAiGateway implements ComplianceAiGateway {
         ObjectMapper mapper,
         @Value("${specai.ai-orchestrator.base-url:http://localhost:8092}") String baseUrl,
         @Value("${specai.ai-orchestrator.connect-timeout:PT5S}") Duration connectTimeout,
-        @Value("${specai.ai-orchestrator.compliance-read-timeout:PT600S}") Duration readTimeout,
+        @Value("${specai.ai-orchestrator.compliance-read-timeout:PT660S}") Duration readTimeout,
+        @Value("${specai.ai-orchestrator.compliance-global-deadline:PT700S}")
+            Duration globalDeadline,
         @Value("${specai.ai-orchestrator.compliance-retry-attempts:1}") int retryAttempts,
         @Value("${specai.ai-orchestrator.compliance-retry-backoff:PT2S}") Duration retryBackoff
     ) {
         this.mapper = mapper;
         this.connectTimeout = connectTimeout;
         this.readTimeout = readTimeout;
+        this.globalDeadline = globalDeadline == null ? readTimeout.plusSeconds(40) : globalDeadline;
         this.retryAttempts = Math.max(0, retryAttempts);
         this.retryBackoff = retryBackoff == null ? Duration.ofSeconds(2) : retryBackoff;
         this.endpointAlias = "ai-orchestrator/compliance-evaluations";
@@ -67,22 +72,31 @@ public class HttpComplianceAiGateway implements ComplianceAiGateway {
             .build();
         log.info(
             "compliance_llm_timeout_policy connectTimeout={} readTimeout={} "
-                + "retryAttempts={} retryBackoff={} endpoint={}",
-            connectTimeout, readTimeout, this.retryAttempts, this.retryBackoff, baseUrl);
+                + "globalDeadline={} retryAttempts={} retryBackoff={} endpoint={}",
+            connectTimeout, readTimeout, this.globalDeadline, this.retryAttempts,
+            this.retryBackoff, baseUrl);
     }
 
     @Override
     public SemanticResponse evaluate(SemanticRequest request) {
+        Instant deadline = Instant.now().plus(globalDeadline);
+        String idempotencyKey = idempotencyKey(request);
         int attempt = 0;
         SemanticEvaluationException lastFailure = null;
         long totalStarted = System.nanoTime();
         while (attempt <= retryAttempts) {
+            if (Instant.now().isAfter(deadline)) {
+                throw new SemanticEvaluationException(
+                    SemanticEvaluationFailureCode.LLM_GENERATION_TIMEOUT,
+                    "Compliance evaluation exceeded global request deadline", attempt);
+            }
             long attemptStarted = System.nanoTime();
             try {
                 GatewayResponse response = client.post()
                     .uri("/v1/compliance-evaluations")
                     .contentType(MediaType.APPLICATION_JSON)
                     .header("X-Correlation-ID", request.correlationId().toString())
+                    .header("Idempotency-Key", idempotencyKey)
                     .body(new GatewayRequest(request.logicalModel(), request.modelProfile(),
                         request.promptComponents(), request.outputSchema(), request.requirement(),
                         request.ontologyConcepts(), request.evidence(),
@@ -96,7 +110,8 @@ public class HttpComplianceAiGateway implements ComplianceAiGateway {
                         "AI orchestrator returned an empty compliance response", attempt);
                 }
                 trace(request, attempt, totalMs, elapsedMs(attemptStarted), "COMPLETED", null,
-                    response.inputTokens(), response.outputTokens(), response.latencyMs());
+                    response.inputTokens(), response.outputTokens(), response.latencyMs(),
+                    false, false);
                 return new SemanticResponse(
                     response.modelRunId() == null ? UUID.randomUUID() : response.modelRunId(),
                     response.output(), response.latencyMs(), response.inputTokens(),
@@ -105,11 +120,16 @@ public class HttpComplianceAiGateway implements ComplianceAiGateway {
                 throw failure;
             } catch (RuntimeException failure) {
                 SemanticEvaluationFailureCode code = classify(failure);
+                boolean cancellationCompleted = responseSignalsCancellation(failure);
                 lastFailure = new SemanticEvaluationException(code,
                     truncate(failure.getMessage()), failure, attempt);
                 trace(request, attempt, elapsedMs(totalStarted), elapsedMs(attemptStarted),
-                    "ERROR", code.name(), 0, 0, null);
-                if (!retryable(code) || attempt >= retryAttempts) {
+                    "ERROR", code.name(), 0, 0, null,
+                    code == SemanticEvaluationFailureCode.LLM_CANCELLED
+                        || code == SemanticEvaluationFailureCode.LLM_GENERATION_TIMEOUT,
+                    cancellationCompleted);
+                if (!retryable(code, cancellationCompleted, Instant.now().isBefore(deadline))
+                    || attempt >= retryAttempts) {
                     throw lastFailure;
                 }
                 sleepBackoff(attempt);
@@ -127,10 +147,34 @@ public class HttpComplianceAiGateway implements ComplianceAiGateway {
         while (root.getCause() != null && root.getCause() != root) {
             root = root.getCause();
         }
+        String body = responseBody(failure);
         String message = (failure.getMessage() == null ? "" : failure.getMessage())
             + " " + root.getClass().getSimpleName() + " "
-            + (root.getMessage() == null ? "" : root.getMessage());
+            + (root.getMessage() == null ? "" : root.getMessage())
+            + " " + body;
         String lower = message.toLowerCase();
+        if (lower.contains("llm_queue_timeout")) {
+            return SemanticEvaluationFailureCode.LLM_QUEUE_TIMEOUT;
+        }
+        if (lower.contains("llm_connect_timeout")) {
+            return SemanticEvaluationFailureCode.LLM_CONNECT_TIMEOUT;
+        }
+        if (lower.contains("llm_generation_timeout")) {
+            return SemanticEvaluationFailureCode.LLM_GENERATION_TIMEOUT;
+        }
+        if (lower.contains("llm_cancelled") || lower.contains("\"code\":\"llm_cancelled\"")) {
+            return SemanticEvaluationFailureCode.LLM_CANCELLED;
+        }
+        if (lower.contains("llm_overloaded")) {
+            return SemanticEvaluationFailureCode.LLM_OVERLOADED;
+        }
+        if (lower.contains("llm_circuit_open") || lower.contains("circuit")) {
+            return SemanticEvaluationFailureCode.LLM_CIRCUIT_OPEN;
+        }
+        if (lower.contains("context_overflow") || lower.contains("context overflow")
+            || lower.contains("llm_context_overflow")) {
+            return SemanticEvaluationFailureCode.LLM_CONTEXT_OVERFLOW;
+        }
         if (failure instanceof ResourceAccessException
             || lower.contains("timed out")
             || lower.contains("timeout")
@@ -146,7 +190,7 @@ public class HttpComplianceAiGateway implements ComplianceAiGateway {
         if (failure instanceof RestClientResponseException response
             && response.getStatusCode().value() == 422
             && lower.contains("context")) {
-            return SemanticEvaluationFailureCode.CONTEXT_OVERFLOW;
+            return SemanticEvaluationFailureCode.LLM_CONTEXT_OVERFLOW;
         }
         if (failure instanceof RestClientResponseException response
             && response.getStatusCode().is4xxClientError()) {
@@ -154,15 +198,46 @@ public class HttpComplianceAiGateway implements ComplianceAiGateway {
         }
         if (lower.contains("connection reset")
             || lower.contains("connection refused")
-            || lower.contains("unavailable")) {
+            || lower.contains("unavailable")
+            || lower.contains("model busy")) {
             return SemanticEvaluationFailureCode.LLM_UNAVAILABLE;
         }
         return SemanticEvaluationFailureCode.EVALUATION_ERROR;
     }
 
     static boolean retryable(SemanticEvaluationFailureCode code) {
-        return code == SemanticEvaluationFailureCode.LLM_TIMEOUT
-            || code == SemanticEvaluationFailureCode.LLM_UNAVAILABLE;
+        return retryable(code, false, true);
+    }
+
+    static boolean retryable(SemanticEvaluationFailureCode code, boolean cancellationCompleted,
+                             boolean withinGlobalDeadline) {
+        if (!withinGlobalDeadline) {
+            return false;
+        }
+        return switch (code) {
+            case LLM_UNAVAILABLE, LLM_CONNECT_TIMEOUT -> true;
+            // Retry transient overload / queue wait only when the prior call released its slot.
+            case LLM_OVERLOADED, LLM_TIMEOUT, LLM_QUEUE_TIMEOUT -> cancellationCompleted;
+            // Never blind-retry a full generation timeout or cancelled call.
+            case LLM_GENERATION_TIMEOUT, LLM_CANCELLED, LLM_INVALID_RESPONSE,
+                 LLM_CONTEXT_OVERFLOW, LLM_CIRCUIT_OPEN, CONTEXT_OVERFLOW, EVALUATION_ERROR ->
+                false;
+        };
+    }
+
+    private static boolean responseSignalsCancellation(Throwable failure) {
+        String body = responseBody(failure).toLowerCase();
+        return body.contains("cancellationcompleted\":true")
+            || body.contains("llm_cancelled")
+            || body.contains("llm_generation_timeout");
+    }
+
+    private static String responseBody(Throwable failure) {
+        if (failure instanceof RestClientResponseException response) {
+            String body = response.getResponseBodyAsString();
+            return body == null ? "" : body;
+        }
+        return "";
     }
 
     private void sleepBackoff(int attempt) {
@@ -180,13 +255,19 @@ public class HttpComplianceAiGateway implements ComplianceAiGateway {
 
     private void trace(SemanticRequest request, int attempt, long totalMs, long generationMs,
                        String result, String failureCode, int inputTokens, int outputTokens,
-                       Long modelLatencyMs) {
+                       Long modelLatencyMs, boolean cancellationRequested,
+                       boolean cancellationCompleted) {
         Map<String, Object> trace = new LinkedHashMap<>();
         trace.put("requirementId", request.requirement() == null
             ? null : request.requirement().get("id"));
+        trace.put("taskType", "MULTI_EVIDENCE_COMPLIANCE_FINAL");
+        trace.put("requestedProfile", request.modelProfile());
+        trace.put("resolvedProfile", request.modelProfile());
+        trace.put("deploymentAlias", deploymentAlias(request.modelProfile()));
         trace.put("candidateCount", request.evidence() == null ? 0 : request.evidence().size());
         trace.put("promptTokenEstimate", estimateTokens(request));
         trace.put("queueWaitMs", null);
+        trace.put("slotAcquireMs", null);
         trace.put("connectMs", connectTimeout.toMillis());
         trace.put("timeToFirstTokenMs", null);
         trace.put("generationMs", generationMs);
@@ -195,8 +276,11 @@ public class HttpComplianceAiGateway implements ComplianceAiGateway {
         trace.put("outputTokens", outputTokens);
         trace.put("modelLatencyMs", modelLatencyMs);
         trace.put("retryAttempt", attempt);
+        trace.put("cancellationRequested", cancellationRequested);
+        trace.put("cancellationCompleted", cancellationCompleted);
         trace.put("llmEndpoint", endpointAlias);
-        trace.put("llmModelAlias", request.modelProfile());
+        // External alias only — never emit product model names.
+        trace.put("llmModelAlias", deploymentAlias(request.modelProfile()));
         trace.put("streaming", false);
         trace.put("readTimeoutMs", readTimeout.toMillis());
         trace.put("result", result);
@@ -206,6 +290,25 @@ public class HttpComplianceAiGateway implements ComplianceAiGateway {
         } catch (Exception ignored) {
             log.info("semantic_evaluation {}", trace);
         }
+    }
+
+    static String deploymentAlias(String profile) {
+        if (profile == null || profile.isBlank()) {
+            return "nanobase-balanced";
+        }
+        return switch (profile.trim().toUpperCase()) {
+            case "FAST" -> "nanobase-fast";
+            case "BALANCED" -> "nanobase-balanced";
+            default -> "nanobase-" + profile.trim().toLowerCase();
+        };
+    }
+
+    private static String idempotencyKey(SemanticRequest request) {
+        Object requirementId = request.requirement() == null
+            ? null : request.requirement().get("id");
+        return String.valueOf(request.correlationId()) + ":"
+            + String.valueOf(requirementId) + ":"
+            + request.modelProfile() + ":v1";
     }
 
     private static int estimateTokens(SemanticRequest request) {

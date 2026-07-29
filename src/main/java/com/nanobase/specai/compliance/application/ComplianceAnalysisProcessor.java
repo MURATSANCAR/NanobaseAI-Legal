@@ -365,25 +365,21 @@ public class ComplianceAnalysisProcessor {
                 SemanticEvaluationFailureCode.LLM_INVALID_RESPONSE,
                 "Semantic evaluator returned an unsupported decision concept: " + decisionCode,
                 0));
-        // Positive decisions require grounded evidence IDs from the candidate set.
-        boolean positive = "COMPLIANT".equals(decisionCode)
-            || "PARTIALLY_COMPLIANT".equals(decisionCode);
-        if (positive) {
-            Set<String> allowed = evidence.stream()
-                .map(item -> String.valueOf(item.get("id")))
-                .collect(Collectors.toSet());
-            Set<String> used = new LinkedHashSet<>();
-            for (JsonNode evaluation : response.output().path("conditionEvaluations")) {
-                for (JsonNode id : evaluation.path("supportingEvidenceIds")) {
-                    used.add(id.asText());
-                }
-            }
-            if (used.isEmpty() || !allowed.containsAll(used)) {
-                throw new SemanticEvaluationException(
-                    SemanticEvaluationFailureCode.LLM_INVALID_RESPONSE,
-                    "Semantic evaluator returned an ungrounded or invalid evidence reference",
-                    0);
-            }
+        Set<String> allowed = evidence.stream()
+            .map(item -> String.valueOf(item.get("id")))
+            .collect(Collectors.toCollection(LinkedHashSet::new));
+        Set<String> allowedDecisions = decisions.stream()
+            .map(Decision::code)
+            .collect(Collectors.toCollection(LinkedHashSet::new));
+        StructuredComplianceResponseValidator.ValidationResult validation =
+            new StructuredComplianceResponseValidator()
+                .validate(response.output(), allowed, allowedDecisions);
+        if (!validation.valid()) {
+            throw new SemanticEvaluationException(
+                validation.failureCode() == null
+                    ? SemanticEvaluationFailureCode.LLM_INVALID_RESPONSE
+                    : validation.failureCode(),
+                validation.message(), 0);
         }
         ConfidenceResult confidence = confidenceEngine.evaluate(new ConfidenceContext(
             Map.of("relevance", averageScore(ranked.ranked()),

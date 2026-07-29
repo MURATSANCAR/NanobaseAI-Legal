@@ -185,16 +185,20 @@ specai:
     knowledge-read-timeout: ${AI_ORCHESTRATOR_KNOWLEDGE_READ_TIMEOUT:PT60S}
     # Compliance must not inherit DOCUMENT_PROVIDER_READ_TIMEOUT (PT180S). Align with
     # host llama-server timeoutSeconds and knowledge extraction budget.
-    compliance-read-timeout: ${AI_ORCHESTRATOR_COMPLIANCE_READ_TIMEOUT:PT600S}
+    # Must exceed BALANCED queueWait(120s)+generation(600s)+margin.
+    compliance-read-timeout: ${AI_ORCHESTRATOR_COMPLIANCE_READ_TIMEOUT:PT660S}
+    compliance-global-deadline: ${AI_ORCHESTRATOR_COMPLIANCE_GLOBAL_DEADLINE:PT700S}
     compliance-retry-attempts: ${AI_ORCHESTRATOR_COMPLIANCE_RETRY_ATTEMPTS:1}
     compliance-retry-backoff: ${AI_ORCHESTRATOR_COMPLIANCE_RETRY_BACKOFF:PT2S}
     compliance-max-output-tokens: ${AI_ORCHESTRATOR_COMPLIANCE_MAX_OUTPUT_TOKENS:1024}
   compliance:
     routing:
       # BALANCED_ONLY | SHADOW | LIVE_FAST
-      mode: ${COMPLIANCE_ROUTING_MODE:BALANCED_ONLY}
+      mode: ${COMPLIANCE_ROUTING_MODE:SHADOW}
       live-profile: ${COMPLIANCE_LIVE_PROFILE:BALANCED}
       fast-profile: ${COMPLIANCE_FAST_PROFILE:FAST}
-      fast-max-output-tokens: ${COMPLIANCE_FAST_MAX_OUTPUT_TOKENS:512}
-      escalate-confidence-below: ${COMPLIANCE_ESCALATE_CONFIDENCE_BELOW:0.70}
+      fast-max-output-tokens: ${COMPLIANCE_FAST_MAX_OUTPUT_TOKENS:768}
+      escalate-confidence-below: ${COMPLIANCE_ESCALATE_CONFIDENCE_BELOW:0.80}
       escalate-evidence-above: ${COMPLIANCE_ESCALATE_EVIDENCE_ABOVE:2}
+      fast-relevance-threshold: ${COMPLIANCE_FAST_RELEVANCE_THRESHOLD:0.80}
+      fast-final-decision-threshold: ${COMPLIANCE_FAST_FINAL_DECISION_THRESHOLD:0.95}
