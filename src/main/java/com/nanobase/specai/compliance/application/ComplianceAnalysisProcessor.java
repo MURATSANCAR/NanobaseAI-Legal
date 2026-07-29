@@ -22,9 +22,12 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -34,6 +37,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class ComplianceAnalysisProcessor {
     private static final Logger log = LoggerFactory.getLogger(ComplianceAnalysisProcessor.class);
+    private static final int DEFAULT_MAX_OUTPUT_TOKENS = 1024;
+
     private final TenantDatabaseContext tenantDatabase;
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
@@ -45,6 +50,7 @@ public class ComplianceAnalysisProcessor {
     private final ComplianceJobService jobs;
     private final OutboxService outbox;
     private final PlatformMetrics metrics;
+    private final int maxOutputTokens;
 
     public ComplianceAnalysisProcessor(
         TenantDatabaseContext tenantDatabase,
@@ -57,7 +63,9 @@ public class ComplianceAnalysisProcessor {
         ComplianceAiGateway aiGateway,
         ComplianceJobService jobs,
         OutboxService outbox,
-        PlatformMetrics metrics
+        PlatformMetrics metrics,
+        @org.springframework.beans.factory.annotation.Value(
+            "${specai.ai-orchestrator.compliance-max-output-tokens:1024}") int maxOutputTokens
     ) {
         this.tenantDatabase = tenantDatabase;
         this.jdbc = jdbc;
@@ -70,6 +78,7 @@ public class ComplianceAnalysisProcessor {
         this.jobs = jobs;
         this.outbox = outbox;
         this.metrics = metrics;
+        this.maxOutputTokens = maxOutputTokens > 0 ? maxOutputTokens : DEFAULT_MAX_OUTPUT_TOKENS;
     }
 
     @Transactional
@@ -104,12 +113,27 @@ public class ComplianceAnalysisProcessor {
                 if (result.requiresReview()) {
                     reviews++;
                 }
+            } catch (SemanticEvaluationException failure) {
+                failed++;
+                jdbc.update("""
+                    update requirement_matching_task
+                    set status = 'FAILED', error_code = ?, error_message = ?,
+                        completed_at = clock_timestamp(), updated_at = clock_timestamp(),
+                        version = version + 1
+                    where id = ? and organization_id = ?
+                    """, failure.failureCode().name(),
+                    truncate(failure.getMessage()), task.id(), organizationId);
+                log.warn(
+                    "semantic_evaluation_failed complianceRunId={} requirementId={} "
+                        + "failureCode={} retryAttempt={}",
+                    jobId, task.requirementId(), failure.failureCode(), failure.retryAttempt());
             } catch (RuntimeException failure) {
                 failed++;
                 jdbc.update("""
                     update requirement_matching_task
                     set status = 'FAILED', error_code = ?, error_message = ?,
-                        completed_at = now(), updated_at = now(), version = version + 1
+                        completed_at = clock_timestamp(), updated_at = clock_timestamp(),
+                        version = version + 1
                     where id = ? and organization_id = ?
                     """, failure.getClass().getSimpleName(),
                     truncate(failure.getMessage()), task.id(), organizationId);
@@ -321,14 +345,41 @@ public class ComplianceAnalysisProcessor {
             Map.of("id", requirement.id(), "text", requirement.text(),
                 "attributes", requirement.attributes()),
             ontology(organizationId, job.analysisProfileId()), evidence,
-            decisions.stream().map(Decision::code).toList(), 3072, correlationId));
+            decisions.stream().map(Decision::code).toList(), maxOutputTokens, correlationId));
         String decisionCode = response.output()
             .path("recommendedDecisionConcept").asText();
+        if (decisionCode == null || decisionCode.isBlank()) {
+            throw new SemanticEvaluationException(
+                SemanticEvaluationFailureCode.LLM_INVALID_RESPONSE,
+                "Semantic evaluator returned an empty decision concept", 0);
+        }
         UUID decisionId = decisions.stream()
             .filter(item -> item.code().equals(decisionCode))
             .map(Decision::id).findFirst()
-            .orElseThrow(() -> new IllegalArgumentException(
-                "Semantic evaluator returned an unsupported decision concept"));
+            .orElseThrow(() -> new SemanticEvaluationException(
+                SemanticEvaluationFailureCode.LLM_INVALID_RESPONSE,
+                "Semantic evaluator returned an unsupported decision concept: " + decisionCode,
+                0));
+        // Positive decisions require grounded evidence IDs from the candidate set.
+        boolean positive = "COMPLIANT".equals(decisionCode)
+            || "PARTIALLY_COMPLIANT".equals(decisionCode);
+        if (positive) {
+            Set<String> allowed = evidence.stream()
+                .map(item -> String.valueOf(item.get("id")))
+                .collect(Collectors.toSet());
+            Set<String> used = new LinkedHashSet<>();
+            for (JsonNode evaluation : response.output().path("conditionEvaluations")) {
+                for (JsonNode id : evaluation.path("supportingEvidenceIds")) {
+                    used.add(id.asText());
+                }
+            }
+            if (used.isEmpty() || !allowed.containsAll(used)) {
+                throw new SemanticEvaluationException(
+                    SemanticEvaluationFailureCode.LLM_INVALID_RESPONSE,
+                    "Semantic evaluator returned an ungrounded or invalid evidence reference",
+                    0);
+            }
+        }
         boolean contradiction = evidence.stream().anyMatch(item ->
             number(item.get("contradictionStrength")) > 0);
         ConfidenceResult confidence = confidenceEngine.evaluate(new ConfidenceContext(

@@ -183,3 +183,9 @@ specai:
     base-url: ${AI_ORCHESTRATOR_BASE_URL:${SPECAI_AI_ORCHESTRATOR_BASE_URL:http://localhost:8090}}
     connect-timeout: ${AI_ORCHESTRATOR_CONNECT_TIMEOUT:PT5S}
     knowledge-read-timeout: ${AI_ORCHESTRATOR_KNOWLEDGE_READ_TIMEOUT:PT60S}
+    # Compliance must not inherit DOCUMENT_PROVIDER_READ_TIMEOUT (PT180S). Align with
+    # host llama-server timeoutSeconds and knowledge extraction budget.
+    compliance-read-timeout: ${AI_ORCHESTRATOR_COMPLIANCE_READ_TIMEOUT:PT600S}
+    compliance-retry-attempts: ${AI_ORCHESTRATOR_COMPLIANCE_RETRY_ATTEMPTS:1}
+    compliance-retry-backoff: ${AI_ORCHESTRATOR_COMPLIANCE_RETRY_BACKOFF:PT2S}
+    compliance-max-output-tokens: ${AI_ORCHESTRATOR_COMPLIANCE_MAX_OUTPUT_TOKENS:1024}
