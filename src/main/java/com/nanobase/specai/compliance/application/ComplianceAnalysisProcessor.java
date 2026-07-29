@@ -203,6 +203,14 @@ public class ComplianceAnalysisProcessor {
         } finally {
             metrics.rerankingCompleted(rerankingTimer);
         }
+        // Persist retrieval counts before LLM comparison so timeouts do not hide
+        // successful candidate discovery.
+        jdbc.update("""
+            update requirement_matching_task
+            set candidate_count = ?, reranked_candidate_count = ?, updated_at = now(),
+                version = version + 1
+            where id = ? and organization_id = ?
+            """, candidates.size(), ranked.ranked().size(), task.id(), organizationId);
         Requirement requirement = requirement(organizationId, task.requirementId());
         EvaluationOutcome outcome;
         if (ranked.ranked().isEmpty()) {
