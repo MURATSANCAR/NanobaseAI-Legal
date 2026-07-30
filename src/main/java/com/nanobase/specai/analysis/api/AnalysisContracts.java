@@ -72,6 +72,10 @@ public final class AnalysisContracts {
         String reviewStatus, String groundingStatus, double groundingCoverage,
         UUID analysisProfileId, UUID ontologyVersionId, UUID policyVersionId,
         UUID promptVersionId, double combinedConfidence,
+        String requirementType, String obligationLevel, String lifecycleStage,
+        String criticality, String evaluationMethod, String consequenceType,
+        String remediability, boolean requiresClarification, boolean closedWorldRequired,
+        String classificationStatus,
         Instant createdAt, Instant updatedAt, long version
     ) {
         public static RequirementResponse from(Requirement requirement,
@@ -89,8 +93,23 @@ public final class AnalysisContracts {
                 requirement.groundingStatus(), requirement.groundingCoverage(),
                 requirement.analysisProfileId(), requirement.ontologyVersionId(),
                 requirement.policyVersionId(), requirement.promptVersionId(),
-                requirement.combinedConfidence(), requirement.createdAt(),
-                requirement.updatedAt(), requirement.version());
+                requirement.combinedConfidence(),
+                requirement.requirementType() == null ? null
+                    : requirement.requirementType().name(),
+                requirement.obligationLevel() == null ? null
+                    : requirement.obligationLevel().name(),
+                requirement.lifecycleStage() == null ? null
+                    : requirement.lifecycleStage().name(),
+                requirement.criticality() == null ? null : requirement.criticality().name(),
+                requirement.evaluationMethod() == null ? null
+                    : requirement.evaluationMethod().name(),
+                requirement.consequenceType() == null ? null
+                    : requirement.consequenceType().name(),
+                requirement.remediability() == null ? null
+                    : requirement.remediability().name(),
+                requirement.requiresClarification(), requirement.closedWorldRequired(),
+                requirement.classificationStatus(),
+                requirement.createdAt(), requirement.updatedAt(), requirement.version());
         }
     }
 

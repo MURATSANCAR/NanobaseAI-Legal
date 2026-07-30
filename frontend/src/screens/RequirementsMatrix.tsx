@@ -160,6 +160,7 @@ export function RequirementsMatrix({ project, documents, token, canWrite, onProb
     documents.find((document) => document.status === "READY" && document.includedInAnalysis)?.id ?? "",
   );
   const [explanation, setExplanation] = useState<Record<string, unknown>>();
+  const [selectedDetail, setSelectedDetail] = useState<Requirement>();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -249,8 +250,12 @@ export function RequirementsMatrix({ project, documents, token, canWrite, onProb
         <tbody>{requirements.map((requirement) => <tr key={requirement.id}>
           {columns.map((column) => <td key={column.key}>
             {formatRequirementValue(requirement, column)}</td>)}
-          <td><button className="icon-button" aria-label="Açıklamayı göster"
-            onClick={() => showExplanation(requirement)}><Eye /></button></td>
+          <td>
+            <button className="icon-button" aria-label="Açıklamayı göster"
+              onClick={() => showExplanation(requirement)}><Eye /></button>
+            <button className="icon-button" aria-label="Detayı göster"
+              onClick={() => setSelectedDetail(requirement)}>Detay</button>
+          </td>
         </tr>)}</tbody>
       </table>{!requirements.length &&
         <Empty text="Henüz çıkarılmış gereksinim bulunmuyor." />}</ScrollTable>}
@@ -259,5 +264,23 @@ export function RequirementsMatrix({ project, documents, token, canWrite, onProb
         aria-label="Açıklamayı kapat"><X /></button></div>
       <pre>{JSON.stringify(explanation, null, 2)}</pre>
     </div>}
+    {selectedDetail && (
+      <div className="explanation-drawer">
+        <div>
+          <b>Requirement detay</b>
+          <button type="button" onClick={() => setSelectedDetail(undefined)}
+            aria-label="Detayı kapat"><X /></button>
+        </div>
+        <dl className="grid gap-2 text-sm">
+          <div><dt>Obligation</dt><dd>{selectedDetail.obligationLevel || "—"}</dd></div>
+          <div><dt>Lifecycle</dt><dd>{selectedDetail.lifecycleStage || "—"}</dd></div>
+          <div><dt>Criticality</dt><dd>{selectedDetail.criticality || "—"}</dd></div>
+          <div><dt>Evaluation method</dt><dd>{selectedDetail.evaluationMethod || "—"}</dd></div>
+          <div><dt>Classification</dt><dd>{selectedDetail.classificationStatus || "—"}</dd></div>
+          <div><dt>Review</dt><dd>{selectedDetail.reviewStatus}</dd></div>
+          <div><dt>Grounding</dt><dd>{selectedDetail.groundingStatus}</dd></div>
+        </dl>
+      </div>
+    )}
   </section>;
 }

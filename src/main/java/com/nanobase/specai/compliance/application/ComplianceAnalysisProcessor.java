@@ -14,7 +14,11 @@ import com.nanobase.specai.compliance.application.ComplianceModels.EvidenceReran
 import com.nanobase.specai.compliance.application.ComplianceModels.PolicyVersion;
 import com.nanobase.specai.compliance.application.ComplianceModels.RankedEvidence;
 import com.nanobase.specai.compliance.application.ComplianceModels.RankedEvidenceResult;
+import com.nanobase.specai.audit.application.AuditService;
+import com.nanobase.specai.decision.application.TenderSummaryService;
 import com.nanobase.specai.integration.outbox.OutboxService;
+import com.nanobase.specai.operations.application.FeatureFlagService;
+import com.nanobase.specai.operations.application.TenderIntelligenceFlags;
 import com.nanobase.specai.shared.observability.PlatformMetrics;
 import com.nanobase.specai.shared.security.TenantDatabaseContext;
 import java.math.BigDecimal;
@@ -51,6 +55,11 @@ public class ComplianceAnalysisProcessor {
     private final ComplianceJobService jobs;
     private final OutboxService outbox;
     private final PlatformMetrics metrics;
+    private final FeatureFlagService featureFlags;
+    private final DeterministicComplianceEvaluator deterministicEvaluator;
+    private final CompliancePostAssessmentHooks postAssessmentHooks;
+    private final TenderSummaryService tenderSummaryService;
+    private final AuditService audit;
     private final int maxOutputTokens;
     private final int evaluationParallelism;
 
@@ -66,6 +75,11 @@ public class ComplianceAnalysisProcessor {
         ComplianceJobService jobs,
         OutboxService outbox,
         PlatformMetrics metrics,
+        FeatureFlagService featureFlags,
+        DeterministicComplianceEvaluator deterministicEvaluator,
+        CompliancePostAssessmentHooks postAssessmentHooks,
+        TenderSummaryService tenderSummaryService,
+        AuditService audit,
         @org.springframework.beans.factory.annotation.Value(
             "${specai.ai-orchestrator.compliance-max-output-tokens:1024}") int maxOutputTokens,
         @org.springframework.beans.factory.annotation.Value(
@@ -83,6 +97,11 @@ public class ComplianceAnalysisProcessor {
         this.jobs = jobs;
         this.outbox = outbox;
         this.metrics = metrics;
+        this.featureFlags = featureFlags;
+        this.deterministicEvaluator = deterministicEvaluator;
+        this.postAssessmentHooks = postAssessmentHooks;
+        this.tenderSummaryService = tenderSummaryService;
+        this.audit = audit;
         this.maxOutputTokens = maxOutputTokens > 0 ? maxOutputTokens : DEFAULT_MAX_OUTPUT_TOKENS;
         this.evaluationParallelism = evaluationParallelism <= 0 ? 1 : evaluationParallelism;
         if (this.evaluationParallelism != 1) {
@@ -172,7 +191,8 @@ public class ComplianceAnalysisProcessor {
                     "processed", processed, "completed", completed,
                     "manualReview", reviews, "failed", failed), correlationId);
         }
-        String terminal = completed == 0 && failed > 0 ? "FAILED" : "COMPLETED";
+        String terminal = completed == 0 && failed > 0 ? "FAILED"
+            : (failed > 0 ? "PARTIALLY_COMPLETED" : "COMPLETED");
         jdbc.update("""
             update compliance_analysis_job
             set status = ?, completed_at = now(), updated_at = now(), version = version + 1
@@ -182,12 +202,30 @@ public class ComplianceAnalysisProcessor {
             "Compliance analysis finished",
             Map.of("completed", completed, "manualReview", reviews, "failed", failed));
         outbox.publish(organizationId, "ComplianceAnalysis", jobId,
-            "COMPLETED".equals(terminal)
-                ? "ComplianceAnalysisCompleted" : "ComplianceAnalysisFailed",
-            "COMPLETED".equals(terminal)
-                ? "compliance.analysis.completed.v1" : "compliance.analysis.failed.v1",
+            "FAILED".equals(terminal)
+                ? "ComplianceAnalysisFailed" : "ComplianceAnalysisCompleted",
+            "FAILED".equals(terminal)
+                ? "compliance.analysis.failed.v1" : "compliance.analysis.completed.v1",
             Map.of("jobId", jobId, "completed", completed,
-                "manualReview", reviews, "failed", failed), correlationId);
+                "manualReview", reviews, "failed", failed, "status", terminal), correlationId);
+        if (!"FAILED".equals(terminal)
+            && featureFlags.enabled(organizationId, job.projectId(),
+            TenderIntelligenceFlags.TENDER_DOMAIN_V2)) {
+            try {
+                Map<String, Object> summary = tenderSummaryService.rebuild(
+                    organizationId, job.projectId());
+                audit.recordSystem(organizationId, "system", "TENDER_SUMMARY_REBUILT",
+                    "TenderAssessmentSummary", job.projectId(), null,
+                    Map.of("jobId", jobId, "status", summary.getOrDefault(
+                        "overall_compliance_status", "REVIEW_REQUIRED")));
+            } catch (RuntimeException summaryFailure) {
+                log.warn("tender_summary_rebuild_failed jobId={} projectId={} error={}",
+                    jobId, job.projectId(), summaryFailure.toString());
+                jobs.event(organizationId, jobId, "SUMMARY_FAILED", 100,
+                    "Tender summary rebuild failed",
+                    Map.of("error", truncate(summaryFailure.getMessage())));
+            }
+        }
     }
 
     private TaskResult evaluate(UUID organizationId, Job job, Task task,
@@ -252,23 +290,63 @@ public class ComplianceAnalysisProcessor {
         Requirement requirement = requirement(organizationId, task.requirementId());
         EvaluationOutcome outcome;
         if (ranked.ranked().isEmpty()) {
-            outcome = missingOutcome(organizationId, job, requirement);
-            metrics.complianceMissingEvidence();
-        } else {
-            String provider = comparisonProvider(organizationId, requirement.attributes());
-            if (provider == null || "manual-only".equals(provider)) {
-                outcome = semanticOutcome(
-                    organizationId, job, requirement, ranked, correlationId);
-                metrics.complianceLlm();
-            } else {
-                outcome = deterministicOutcome(
-                    organizationId, job, requirement, ranked, provider);
+            // Still allow deterministic capability matching when no lexical evidence exists.
+            EvaluationOutcome deterministic = tryDeterministic(organizationId, job, requirement,
+                List.of());
+            if (deterministic != null) {
+                outcome = deterministic;
                 metrics.complianceDeterministic();
-                metrics.comparisonStrategy(provider);
+            } else {
+                outcome = missingOutcome(organizationId, job, requirement);
+                metrics.complianceMissingEvidence();
+            }
+        } else {
+            EvaluationOutcome deterministic = tryDeterministic(organizationId, job, requirement,
+                selectedEvidencePayload(organizationId, ranked.ranked()));
+            if (deterministic != null) {
+                outcome = deterministic;
+                metrics.complianceDeterministic();
+            } else {
+                String provider = comparisonProvider(organizationId, requirement.attributes());
+                if (provider == null || "manual-only".equals(provider)) {
+                    outcome = semanticOutcome(
+                        organizationId, job, requirement, ranked, correlationId);
+                    metrics.complianceLlm();
+                } else {
+                    outcome = deterministicOutcome(
+                        organizationId, job, requirement, ranked, provider);
+                    metrics.complianceDeterministic();
+                    metrics.comparisonStrategy(provider);
+                }
             }
         }
         UUID evaluationId = persistEvaluation(organizationId, job, task, requirement,
             ranked, outcome);
+        try {
+            postAssessmentHooks.afterAssessment(organizationId, job.projectId(),
+                requirement.id(), evaluationId, outcome.decisionCode(),
+                outcome.gapHint(), outcome.missingElements(),
+                outcome.ambiguousRequirement(), "system");
+        } catch (RuntimeException hookFailure) {
+            log.warn("post_assessment_hook_failed evaluationId={} error={}",
+                evaluationId, hookFailure.toString());
+        }
+        if (outcome.evaluationSource() != null) {
+            jdbc.update("""
+                update compliance_evaluation
+                   set evaluation_source = ?,
+                       missing_requirement_elements_json = ?::jsonb,
+                       explicit_contradiction = ?,
+                       reasoning_summary = ?,
+                       assessment_status = 'COMPLETED',
+                       updated_at = now()
+                 where id = ? and organization_id = ?
+                """, outcome.evaluationSource(),
+                json(outcome.missingElements() == null ? List.of() : outcome.missingElements()),
+                outcome.contradiction(),
+                outcome.summary().path("reasonCode").asText(null),
+                evaluationId, organizationId);
+        }
         jdbc.update("""
             update requirement_matching_task
             set status = 'COMPLETED', candidate_count = ?,
@@ -290,6 +368,41 @@ public class ComplianceAnalysisProcessor {
         }
         metrics.complianceEvaluation();
         return new TaskResult(outcome.requiresReview());
+    }
+
+    private EvaluationOutcome tryDeterministic(UUID organizationId, Job job,
+                                               Requirement requirement,
+                                               List<Map<String, Object>> evidencePayload) {
+        var decision = deterministicEvaluator.evaluate(organizationId, job.projectId(),
+            requirement.id(), requirement.text(), requirement.evaluationMethod(),
+            evidencePayload);
+        if (decision == null) {
+            return null;
+        }
+        UUID decisionId = decisionByCode(organizationId, decision.decisionCode());
+        if (decisionId == null) {
+            return null;
+        }
+        ObjectNode summary = decision.summary();
+        summary.put("decisionCode", decision.decisionCode());
+        audit.recordSystem(organizationId, "system", "DETERMINISTIC_ASSESSMENT_COMPLETED",
+            "Requirement", requirement.id(), null,
+            Map.of("projectId", job.projectId(), "decision", decision.decisionCode(),
+                "evaluationSource", "DETERMINISTIC"));
+        String gapHint = null;
+        if ("NON_COMPLIANT".equals(decision.decisionCode())
+            && decision.missingElements() != null
+            && decision.missingElements().stream().anyMatch(item ->
+            item.toUpperCase().contains("NUMERIC"))) {
+            gapHint = "NUMERIC_SHORTFALL";
+        } else if ("NON_COMPLIANT".equals(decision.decisionCode())) {
+            gapHint = "MISSING_CAPABILITY";
+        } else if ("INSUFFICIENT_INFORMATION".equals(decision.decisionCode())) {
+            gapHint = "INSUFFICIENT_EVIDENCE";
+        }
+        return new EvaluationOutcome(decisionId, decision.decisionCode(), summary, 0.95,
+            decision.requiresReview(), null, List.of(), decision.contradiction(), null,
+            "DETERMINISTIC", decision.missingElements(), false, gapHint);
     }
 
     private EvaluationOutcome deterministicOutcome(
@@ -341,8 +454,15 @@ public class ComplianceAnalysisProcessor {
         summary.put("strategyProvider", provider);
         summary.put("status", comparison.status());
         summary.set("confidence", mapper.valueToTree(confidence));
-        return new EvaluationOutcome(decision, summary, confidence.score(),
-            confidence.requiresReview(), null, List.of(best), contradiction, null);
+        String decisionCode = switch (outcome) {
+            case "SATISFIED" -> "COMPLIANT";
+            case "NOT_SATISFIED" -> "NON_COMPLIANT";
+            default -> "INSUFFICIENT_INFORMATION";
+        };
+        return new EvaluationOutcome(decision, decisionCode, summary, confidence.score(),
+            confidence.requiresReview(), null, List.of(best), contradiction, null,
+            "DETERMINISTIC", List.of(), false,
+            "NOT_SATISFIED".equals(comparison.status()) ? "NUMERIC_SHORTFALL" : null);
     }
 
     private EvaluationOutcome semanticOutcome(
@@ -422,8 +542,9 @@ public class ComplianceAnalysisProcessor {
         summary.set("semanticEvaluation", safeOutput);
         summary.set("confidence", mapper.valueToTree(confidence));
         summary.set("modelRouting", mapper.valueToTree(routed.routing()));
-        return new EvaluationOutcome(decisionId, summary, combined, review,
-            response.modelRunId(), ranked.ranked(), contradiction, routed.routing());
+        return new EvaluationOutcome(decisionId, decisionCode, summary, combined, review,
+            response.modelRunId(), ranked.ranked(), contradiction, routed.routing(),
+            "LLM", List.of(), false, null);
     }
 
     private EvaluationOutcome missingOutcome(UUID organizationId, Job job,
@@ -436,8 +557,9 @@ public class ComplianceAnalysisProcessor {
         summary.put("status", "MISSING_EVIDENCE");
         summary.put("requirementId", requirement.id().toString());
         summary.set("confidence", mapper.valueToTree(confidence));
-        return new EvaluationOutcome(decision, summary, confidence.score(),
-            true, null, List.of(), false, null);
+        return new EvaluationOutcome(decision, "INSUFFICIENT_INFORMATION", summary,
+            confidence.score(), true, null, List.of(), false, null, "HYBRID",
+            List.of("MISSING_EVIDENCE"), false, "INSUFFICIENT_EVIDENCE");
     }
 
     private UUID persistEvaluation(
@@ -576,14 +698,16 @@ public class ComplianceAnalysisProcessor {
 
     private Requirement requirement(UUID organizationId, UUID id) {
         return jdbc.query("""
-            select id, requirement_code, requirement_text, attributes_json::text
+            select id, requirement_code, requirement_text, attributes_json::text,
+                   evaluation_method
             from requirement where id = ? and organization_id = ?
             """, result -> {
                 if (!result.next()) {
                     throw new IllegalArgumentException("Requirement not found");
                 }
                 return new Requirement(result.getObject(1, UUID.class),
-                    result.getString(2), result.getString(3), tree(result.getString(4)));
+                    result.getString(2), result.getString(3), tree(result.getString(4)),
+                    result.getString(5));
             }, id, organizationId);
     }
 
@@ -638,9 +762,20 @@ public class ComplianceAnalysisProcessor {
             order by (organization_id is not null) desc, sort_order limit 1
             """, (result, row) -> result.getObject(1, UUID.class), outcome, organizationId);
         if (ids.isEmpty()) {
-            throw new IllegalStateException("Decision outcome is not configured: " + outcome);
+            throw new IllegalStateException("Decision concept missing for outcome " + outcome);
         }
         return ids.getFirst();
+    }
+
+    private UUID decisionByCode(UUID organizationId, String code) {
+        List<UUID> ids = jdbc.query("""
+            select id from ontology_concept
+            where concept_type = 'DECISION' and active = true
+              and concept_code = ?
+              and (organization_id = ? or organization_id is null)
+            order by (organization_id is not null) desc, sort_order limit 1
+            """, (result, row) -> result.getObject(1, UUID.class), code, organizationId);
+        return ids.isEmpty() ? null : ids.getFirst();
     }
 
     private UUID conceptByMetadata(UUID organizationId, String key, Object value) {
@@ -802,7 +937,8 @@ public class ComplianceAnalysisProcessor {
     private record Snapshot(Instant entityCutoff, Instant evidenceCutoff) {
     }
 
-    private record Requirement(UUID id, String code, String text, JsonNode attributes) {
+    private record Requirement(UUID id, String code, String text, JsonNode attributes,
+                               String evaluationMethod) {
     }
 
     private record Decision(UUID id, String code) {
@@ -813,13 +949,18 @@ public class ComplianceAnalysisProcessor {
 
     private record EvaluationOutcome(
         UUID decisionConceptId,
+        String decisionCode,
         JsonNode summary,
         double confidence,
         boolean requiresReview,
         UUID modelRunId,
         List<RankedEvidence> selectedEvidence,
         boolean contradiction,
-        ComplianceSemanticRouter.RoutingTrace routing
+        ComplianceSemanticRouter.RoutingTrace routing,
+        String evaluationSource,
+        List<String> missingElements,
+        boolean ambiguousRequirement,
+        String gapHint
     ) {
     }
 

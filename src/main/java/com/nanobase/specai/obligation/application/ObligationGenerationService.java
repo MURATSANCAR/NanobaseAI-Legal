@@ -33,7 +33,8 @@ public class ObligationGenerationService {
     public UUID generateFromAward(UUID organizationId, UUID projectId, String actor) {
         if (!flags.enabled(organizationId, projectId,
             TenderIntelligenceFlags.OBLIGATION_MANAGEMENT)) {
-            throw new IllegalStateException("OBLIGATION_MANAGEMENT_ENABLED is off");
+            throw new com.nanobase.specai.operations.application.FeatureDisabledException(
+                TenderIntelligenceFlags.OBLIGATION_MANAGEMENT);
         }
         Instant now = clock.instant();
         UUID contractId = UUID.randomUUID();

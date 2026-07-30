@@ -96,6 +96,9 @@ public class TenderSummaryService {
 
         String overallCompliance = overallCompliance(mandatory, compliantMandatory,
             nonCompliantMandatory, unknownMandatory, hardBlockers);
+        if (failedTasks(organizationId, projectId) > 0) {
+            overallCompliance = "REVIEW_REQUIRED";
+        }
         String overallRisk = criticalRisks > 0 ? "CRITICAL" : hardBlockers > 0 ? "HIGH" : "MEDIUM";
 
         UUID existing = jdbc.query("""
@@ -151,6 +154,17 @@ public class TenderSummaryService {
 
     private int count(UUID organizationId, UUID projectId, String sql) {
         Integer value = jdbc.queryForObject(sql, Integer.class, organizationId, projectId);
+        return value == null ? 0 : value;
+    }
+
+    private int failedTasks(UUID organizationId, UUID projectId) {
+        Integer value = jdbc.queryForObject("""
+            select count(*) from requirement_matching_task task
+            join compliance_analysis_job job on job.id = task.compliance_job_id
+             and job.organization_id = task.organization_id
+             where task.organization_id = ? and job.project_id = ?
+               and task.status = 'FAILED'
+            """, Integer.class, organizationId, projectId);
         return value == null ? 0 : value;
     }
 

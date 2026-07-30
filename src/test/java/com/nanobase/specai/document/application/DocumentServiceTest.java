@@ -69,6 +69,7 @@ class DocumentServiceTest {
         when(fileTypeInspector.inspect(any(InputStream.class), eq("sartname.pdf")))
             .thenReturn("application/pdf");
         when(versions.existsDuplicate(eq(PROJECT), eq(ORGANIZATION), any())).thenReturn(false);
+        when(documents.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         when(processingJobs.create(eq(ORGANIZATION), eq(PROJECT), any(), any(), any(), any()))
             .thenAnswer(invocation -> DocumentProcessingJob.queued(
                 UUID.randomUUID(), ORGANIZATION, PROJECT, invocation.getArgument(2),
@@ -89,7 +90,7 @@ class DocumentServiceTest {
         verify(fileSecurity).requireSafe(eq(ORGANIZATION), eq(PROJECT), any(),
             eq("application/pdf"), eq(file), any());
         verify(storage).finalizeObject(any(), any(), eq(file.getSize()), any());
-        verify(documents).save(any());
+        verify(documents, org.mockito.Mockito.times(2)).save(any());
         verify(versions).save(any());
         verify(outbox).documentUploaded(eq(ORGANIZATION), any());
         verify(audit).record(eq("DOCUMENT_UPLOADED"), eq("Document"), any(), eq(null), any());

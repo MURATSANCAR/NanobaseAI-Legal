@@ -28,6 +28,16 @@ export type Requirement = {
   policyVersionId: string;
   promptVersionId: string;
   combinedConfidence: number;
+  requirementType?: string;
+  obligationLevel?: string;
+  lifecycleStage?: string;
+  criticality?: string;
+  evaluationMethod?: string;
+  consequenceType?: string;
+  remediability?: string;
+  requiresClarification?: boolean;
+  closedWorldRequired?: boolean;
+  classificationStatus?: string;
   createdAt: string;
   updatedAt: string;
   version: number;

@@ -282,7 +282,7 @@ public class RequirementExtractionProcessor {
             store.event(profile.organizationId(), job.id(), "SCHEMA_REJECTED", 0,
                 "Model output rejected by active output schema",
                 Map.of("clauseId", clause.id(), "errors", schemaErrors), clock.instant());
-            return new ClauseOutcome(0, 1);
+            return new ClauseOutcome(0, 1, 0);
         }
 
         int extracted = 0;
@@ -319,7 +319,7 @@ public class RequirementExtractionProcessor {
                 "Ungrounded requirement candidate rejected",
                 Map.of("clauseId", clause.id(),
                     "unsupportedFields", grounding.unsupportedFields()), clock.instant());
-            return new PersistOutcome(false, true);
+            return new PersistOutcome(false, true, false);
         }
 
         String conceptCode = text(candidate, "primaryConceptCode");
@@ -666,10 +666,11 @@ public class RequirementExtractionProcessor {
         return message.substring(0, Math.min(500, message.length()));
     }
 
-    private record ClauseOutcome(int extracted, int reviews) {
+    private record ClauseOutcome(int extracted, int reviews, int classificationFailures) {
     }
 
-    private record PersistOutcome(boolean persisted, boolean requiresReview) {
+    private record PersistOutcome(boolean persisted, boolean requiresReview,
+                                  boolean classificationFailed) {
     }
 
     private record UnitResolution(int configuredCount,

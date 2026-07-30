@@ -20,3 +20,7 @@ ALTER TABLE clarification_request
 CREATE UNIQUE INDEX IF NOT EXISTS uq_clarification_request_normalized
     ON clarification_request (organization_id, project_id, requirement_id, normalized_question)
     WHERE requirement_id IS NOT NULL AND normalized_question IS NOT NULL;
+
+-- Soft-drop noop: there is no historical CHECK blocking PARTIALLY_COMPLETED on jobs.
+ALTER TABLE compliance_analysis_job
+    DROP CONSTRAINT IF EXISTS ck_compliance_job_status;
