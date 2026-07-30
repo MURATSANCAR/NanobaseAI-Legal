@@ -383,7 +383,7 @@ def live() -> dict[str, str]:
     return {"status": "UP"}
 
 
-@app.get("/health/ready")
+@app.get("/health/ready", response_model=None)
 def ready() -> dict[str, Any] | JSONResponse:
     """Readiness includes capacity lease health — not Redis PING alone."""
     required_provider = os.getenv("MODEL_CAPACITY_PROVIDER", "redis").strip().lower()
