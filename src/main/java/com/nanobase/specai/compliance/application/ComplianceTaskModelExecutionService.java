@@ -150,13 +150,23 @@ public class ComplianceTaskModelExecutionService {
             metrics.complianceExecuteDuration(
                 java.time.Duration.ofNanos(System.nanoTime() - started));
             return ComplianceExecutionResult.failure(
-                failure.failureCode().name(), failure.getMessage());
+                domainErrorCode(failure.failureCode()), failure.getMessage());
         } catch (RuntimeException failure) {
             metrics.complianceExecuteDuration(
                 java.time.Duration.ofNanos(System.nanoTime() - started));
             String code = mapTimeoutCode(failure);
             return ComplianceExecutionResult.failure(code, failure.getMessage());
         }
+    }
+
+    private static String domainErrorCode(SemanticEvaluationFailureCode code) {
+        return switch (code) {
+            case LLM_TIMEOUT, LLM_GENERATION_TIMEOUT -> "MODEL_TIMEOUT";
+            case LLM_UNAVAILABLE, LLM_CONNECT_TIMEOUT -> "MODEL_UNAVAILABLE";
+            case LLM_OVERLOADED, LLM_QUEUE_TIMEOUT -> "SLOT_WAIT_TIMEOUT";
+            case LLM_CANCELLED -> "CANCEL_REQUESTED";
+            default -> code.name();
+        };
     }
 
     private static String mapTimeoutCode(RuntimeException failure) {

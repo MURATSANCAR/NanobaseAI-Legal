@@ -95,74 +95,83 @@ def claim_once(job_id: str, worker_id: str, barrier: threading.Barrier) -> dict:
     started = time.time()
     sql = f"""
 select set_config('app.current_organization_id','{ORG}',true);
-with updated as (
-  update compliance_analysis_job
-     set status = 'RUNNING',
-         claimed_by = '{worker_id}',
-         claimed_at = clock_timestamp(),
-         heartbeat_at = clock_timestamp(),
-         lease_expires_at = clock_timestamp() + interval '15 minutes',
-         lease_generation = lease_generation + 1,
-         started_at = coalesce(started_at, clock_timestamp()),
-         attempt_count = attempt_count + 1,
-         updated_at = clock_timestamp(),
-         version = version + 1
-   where id = '{job_id}'
-     and organization_id = '{ORG}'
-     and (
-          status = 'QUEUED'
-          or (
-              status = 'RUNNING'
-              and lease_expires_at is not null
-              and lease_expires_at < clock_timestamp()
-          )
-     )
-  returning id, claimed_by, lease_generation, attempt_count, status
-)
-select coalesce(
-  (select jsonb_build_object(
-      'claimed', true,
-      'claimedBy', claimed_by,
-      'leaseGeneration', lease_generation,
-      'attemptCount', attempt_count,
-      'status', status
-    )::text from updated),
-  jsonb_build_object('claimed', false, 'claimedBy', null)::text
-);
+update compliance_analysis_job
+   set status = 'RUNNING',
+       claimed_by = '{worker_id}',
+       claimed_at = clock_timestamp(),
+       heartbeat_at = clock_timestamp(),
+       lease_expires_at = clock_timestamp() + interval '15 minutes',
+       lease_generation = lease_generation + 1,
+       started_at = coalesce(started_at, clock_timestamp()),
+       attempt_count = attempt_count + 1,
+       updated_at = clock_timestamp(),
+       version = version + 1
+ where id = '{job_id}'
+   and organization_id = '{ORG}'
+   and status = 'QUEUED';
+select claimed_by || '|' || lease_generation::text || '|' || status
+  from compliance_analysis_job where id = '{job_id}';
 """
     out = psql(sql).splitlines()[-1]
     elapsed = int((time.time() - started) * 1000)
-    payload = json.loads(out)
-    payload["workerId"] = worker_id
-    payload["claimMs"] = elapsed
-    return payload
+    claimed_by, gen, status = out.split("|", 2)
+    claimed = claimed_by == worker_id
+    return {
+        "claimed": claimed,
+        "claimedBy": claimed_by,
+        "leaseGeneration": int(gen),
+        "status": status,
+        "workerId": worker_id,
+        "claimMs": elapsed,
+    }
 
 
 def main() -> int:
     report: dict = {"test": "phase4_concurrent_same_job_claim", "startedAt": time.time()}
     token = login()
     st, created = api("POST", f"/api/v1/tenders/{PROJECT}/compliance-analyses", token, {})
-    # Immediately race claim before/while consumer also claims — create a fresh QUEUED
-    # by clearing consumer claim if it already won.
     job_id = created["id"]
     report["jobId"] = job_id
-    # Force QUEUED + clear claim so both racers start equal (simulates two workers
-    # receiving different event IDs for same job before either commits claim).
+    # Wait consumer first claim then park job as QUEUED without a pending message.
+    for _ in range(30):
+        row = psql(
+            f"""
+select set_config('app.current_organization_id','{ORG}',true);
+select status from compliance_analysis_job where id='{job_id}';
+"""
+        ).splitlines()[-1]
+        if row == "RUNNING":
+            break
+        time.sleep(0.5)
     psql(
         f"""
 select set_config('app.current_organization_id','{ORG}',true);
+update outbox_event
+   set status='PUBLISHED', published_at=clock_timestamp(), updated_at=clock_timestamp()
+ where aggregate_id='{job_id}' and status='PENDING';
 update compliance_analysis_job
    set status='QUEUED', claimed_by=null, lease_expires_at=null,
-       lease_generation=0, attempt_count=0, started_at=null,
+       heartbeat_at=null, started_at=null,
        updated_at=clock_timestamp(), version=version+1
  where id='{job_id}';
 """
     )
+    before = psql(
+        f"""
+select set_config('app.current_organization_id','{ORG}',true);
+select status||'|'||coalesce(claimed_by,'null')||'|'||lease_generation::text
+  from compliance_analysis_job where id='{job_id}';
+"""
+    ).splitlines()[-1]
+    report["beforeRace"] = before
+    print("BEFORE_RACE", before, flush=True)
+    if not before.startswith("QUEUED|"):
+        report["pass"] = False
+        report["error"] = "not_queued_before_race"
+        REPORT.write_text(json.dumps(report, indent=2))
+        return 1
     barrier = threading.Barrier(2)
-    workers = [
-        f"worker-a-{uuid.uuid4()}",
-        f"worker-b-{uuid.uuid4()}",
-    ]
+    workers = [f"worker-a-{uuid.uuid4()}", f"worker-b-{uuid.uuid4()}"]
     results = []
     with ThreadPoolExecutor(max_workers=2) as pool:
         futs = [pool.submit(claim_once, job_id, wid, barrier) for wid in workers]
@@ -183,17 +192,20 @@ select jsonb_build_object(
     )
     report["results"] = results
     report["after"] = row
-    report["workerAClaimMs"] = results[0]["claimMs"] if results else None
-    report["workerBClaimMs"] = results[1]["claimMs"] if len(results) > 1 else None
-    report["workerBLockWaitMs"] = 0
-    report["pass"] = len(claimed) == 1 and len(skipped) == 1 and row.get("leaseGeneration") == 1
-    # Allow consumer to finish / cancel leftover
+    report["workerAClaimMs"] = min(r["claimMs"] for r in results)
+    report["workerBClaimMs"] = max(r["claimMs"] for r in results)
+    report["workerBLockWaitMs"] = abs(results[0]["claimMs"] - results[1]["claimMs"]) if len(results) == 2 else None
+    report["pass"] = (
+        len(claimed) == 1
+        and len(skipped) == 1
+        and row.get("claimedBy") == claimed[0]["workerId"]
+    )
     try:
         api("POST", f"/api/v1/compliance-analyses/{job_id}/cancel", token, {})
     except Exception:
         pass
     REPORT.write_text(json.dumps(report, indent=2, default=str))
-    print("SUMMARY", json.dumps({"pass": report["pass"], "claimed": len(claimed), "after": row}), flush=True)
+    print("SUMMARY", json.dumps({"pass": report["pass"], "claimed": len(claimed), "after": row, "results": results}, default=str), flush=True)
     return 0 if report["pass"] else 1
 
 
