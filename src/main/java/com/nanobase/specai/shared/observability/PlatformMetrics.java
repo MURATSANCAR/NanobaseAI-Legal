@@ -367,7 +367,58 @@ public class PlatformMetrics {
     public void complianceJobDuration(Duration duration) {
         if (duration != null) {
             registry.timer("compliance_job_duration_ms").record(duration);
+            registry.timer("compliance_job_duration_seconds").record(duration);
         }
+    }
+
+    public void complianceJobClaim(boolean claimed, long claimDurationMs) {
+        registry.counter("compliance_job_claim_total").increment();
+        if (!claimed) {
+            registry.counter("compliance_job_claim_failed_total").increment();
+        }
+        if (claimDurationMs >= 0) {
+            registry.timer("compliance_job_lock_wait_seconds")
+                .record(Duration.ofMillis(claimDurationMs));
+        }
+    }
+
+    public void complianceJobReclaimed() {
+        registry.counter("compliance_job_reclaimed_total").increment();
+    }
+
+    public void complianceJobRunning() {
+        registry.counter("compliance_job_running_total").increment();
+    }
+
+    public void complianceJobPartial() {
+        registry.counter("compliance_job_partial_total").increment();
+    }
+
+    public void complianceTaskRunning() {
+        registry.counter("compliance_task_running_total").increment();
+    }
+
+    public void complianceTaskDuration(Duration duration) {
+        if (duration != null) {
+            registry.timer("compliance_task_duration_seconds").record(duration);
+        }
+    }
+
+    public void complianceTaskTimeout() {
+        registry.counter("compliance_task_timeout_total").increment();
+    }
+
+    public void complianceTaskFailed(String errorCode) {
+        registry.counter("compliance_task_failed_total",
+            "error_code", errorCode == null ? "unknown" : errorCode).increment();
+    }
+
+    public void complianceHeartbeatFailure() {
+        registry.counter("compliance_heartbeat_failure_total").increment();
+    }
+
+    public void complianceCancelRequest() {
+        registry.counter("compliance_cancel_request_total").increment();
     }
 
     public void sprint7(String metricName) {

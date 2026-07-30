@@ -246,6 +246,12 @@ public class ComplianceAnalysisProcessor {
                             jobId, task.id(), task.requirementId(),
                             Duration.between(taskStarted, Instant.now()).toMillis());
                     } catch (SemanticEvaluationException failure) {
+                        if (failure.failureCode()
+                            == SemanticEvaluationFailureCode.LLM_CANCELLED) {
+                            transactionService.cancelRemainingTasks(organizationId, jobId);
+                            metrics.complianceCancelRequest();
+                            break;
+                        }
                         failed++;
                         failTask(organizationId, task.id(), failure.failureCode().name(),
                             failure.getMessage());
