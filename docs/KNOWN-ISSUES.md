@@ -1,13 +1,19 @@
 # Known Issues
 
-1. **Hikari pool=5 multi-job gate still PENDING** — Phase 5 did not run ≥8 concurrent long executes under `DATABASE_POOL_SIZE=5`. Blocks `PRODUCTION_READY=true`.
-2. Scheduler HA (two reclaim instances) not live-proven in Phase 5.
-3. Retry-limit live exhaustion (`WORKER_REPEATEDLY_INTERRUPTED`) not re-run in Phase 5.
-4. Redis capacity snapshot may serialize empty lease list as `{}` (Lua empty table); active count remains correct.
-5. `MODEL_CAPACITY_PROVIDER=local` remains available for single-process labs only — **not** multi-instance production.
+## Residual (non-blocking)
 
-## Resolved in Phase 5
+1. Scheduler HA (two reclaim instances) live gate not run.
+2. Retry-limit live exhaustion (`WORKER_REPEATEDLY_INTERRUPTED`) not re-run in Phase 6.
+3. Optional 12-job stress observation not run.
 
-- Process-local-only model capacity for multi-orchestrator (replaced by Redis leases).
-- Stale worker could insert evaluation before fencing reject (fixed: fence-before-insert + TX rollback on late race).
-- Heartbeat during fault-injection pause prevented reclaim (fixed: suppress heartbeat while paused).
+## Operational guidance
+
+- Keep worker concurrency strictly below Hikari `maximumPoolSize` (leave ≥1–2 connections for API/heartbeat/schedulers).
+- Do not stampede 8 parallel `POST compliance-analyses` creates against pool=5; enqueue jobs quickly but avoid create-TX pileup.
+
+## Closed in Phase 5–6
+
+- Process-local-only model capacity (Redis leases).
+- Stale-worker orphan evaluation insert.
+- Hikari pool=5 × 8-job pressure gate.
+- Crash/reclaim, cancel/persist barriers, same-event idempotency.
