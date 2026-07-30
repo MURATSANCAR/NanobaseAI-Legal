@@ -39,7 +39,7 @@ class ComplianceJobTransactionServiceTest {
         JobClaimResult expected = new JobClaimResult(
             ClaimOutcome.CLAIMED, jobId, projectId, "RUNNING", 1,
             UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
-            UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), Instant.now(), 1);
+            UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), Instant.now(), 1, 1L);
         when(jdbc.query(anyString(), any(RowMapper.class), any(), any(), any(), any()))
             .thenReturn(List.of(expected));
 

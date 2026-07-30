@@ -39,7 +39,7 @@ public record ComplianceExecutionResult(
             outcome.ambiguousRequirement(), outcome.gapHint());
     }
 
-    public static ComplianceExecutionResult cancelled() {
+    public static ComplianceExecutionResult cancelledResult() {
         return new ComplianceExecutionResult(
             false, true, false, "CANCEL_REQUESTED", "Cancel requested",
             null, null, null, 0, false, null, List.of(), false, null, null,

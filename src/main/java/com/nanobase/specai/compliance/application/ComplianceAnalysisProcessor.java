@@ -66,6 +66,9 @@ public class ComplianceAnalysisProcessor {
     private final ComplianceDecisionSafetyGuard decisionSafetyGuard;
     private final ComplianceJobService jobs;
     private final ComplianceJobTransactionService transactionService;
+    private final ComplianceTaskPreparationService preparationService;
+    private final ComplianceTaskModelExecutionService modelExecutionService;
+    private final ComplianceTaskPersistenceService persistenceService;
     private final OutboxService outbox;
     private final PlatformMetrics metrics;
     private final FeatureFlagService featureFlags;
@@ -89,6 +92,9 @@ public class ComplianceAnalysisProcessor {
         ComplianceSemanticRouter semanticRouter,
         ComplianceJobService jobs,
         ComplianceJobTransactionService transactionService,
+        ComplianceTaskPreparationService preparationService,
+        ComplianceTaskModelExecutionService modelExecutionService,
+        ComplianceTaskPersistenceService persistenceService,
         OutboxService outbox,
         PlatformMetrics metrics,
         FeatureFlagService featureFlags,
@@ -113,6 +119,9 @@ public class ComplianceAnalysisProcessor {
         this.decisionSafetyGuard = new ComplianceDecisionSafetyGuard(mapper);
         this.jobs = jobs;
         this.transactionService = transactionService;
+        this.preparationService = preparationService;
+        this.modelExecutionService = modelExecutionService;
+        this.persistenceService = persistenceService;
         this.outbox = outbox;
         this.metrics = metrics;
         this.featureFlags = featureFlags;
@@ -184,6 +193,7 @@ public class ComplianceAnalysisProcessor {
         });
 
         AtomicReference<UUID> activeTaskId = new AtomicReference<>();
+        AtomicReference<Long> activeLeaseGeneration = new AtomicReference<>(0L);
         ScheduledExecutorService heartbeatExecutor = Executors.newSingleThreadScheduledExecutor(
             runnable -> {
                 Thread thread = new Thread(runnable, "compliance-heartbeat-" + jobId);
@@ -192,9 +202,15 @@ public class ComplianceAnalysisProcessor {
             });
         ScheduledFuture<?> heartbeatFuture = heartbeatExecutor.scheduleAtFixedRate(() -> {
             try {
-                transactionService.heartbeat(
+                var outcome = transactionService.heartbeat(
                     organizationId, jobId, activeTaskId.get(), workerId,
+                    activeLeaseGeneration.get() == null ? 0L : activeLeaseGeneration.get(),
                     Instant.now().plus(ComplianceJobTransactionService.DEFAULT_LEASE));
+                if (outcome == ComplianceJobTransactionService.HeartbeatOutcome.LEASE_LOST) {
+                    metrics.complianceStaleWorkerResult();
+                    log.warn("event=COMPLIANCE_HEARTBEAT_LEASE_LOST jobId={} taskId={}",
+                        jobId, activeTaskId.get());
+                }
             } catch (RuntimeException heartbeatFailure) {
                 metrics.complianceHeartbeatFailure();
                 log.warn("event=COMPLIANCE_HEARTBEAT_FAILED jobId={} taskId={} error={}",
@@ -229,6 +245,7 @@ public class ComplianceAnalysisProcessor {
                         continue;
                     }
                     activeTaskId.set(task.id());
+                    activeLeaseGeneration.set(taskClaim.leaseGeneration());
                     Instant taskStarted = Instant.now();
                     metrics.complianceTaskRunning();
                     try {
@@ -239,11 +256,9 @@ public class ComplianceAnalysisProcessor {
                             break;
                         }
                         TaskResult result = evaluate(organizationId, job, task, correlationId,
-                            workerId);
+                            workerId, taskClaim.leaseGeneration());
                         if (transactionService.cancellationState(organizationId, jobId)
                             .cancelRequested()) {
-                            // Cooperative cancel after model: do not treat as success progress
-                            // if job was cancelled; remaining tasks are cancelled below.
                             transactionService.cancelRemainingTasks(organizationId, jobId);
                             metrics.complianceCancelRequest();
                             break;
@@ -279,6 +294,7 @@ public class ComplianceAnalysisProcessor {
                             jobId, task.id(), failure.getClass().getSimpleName());
                     } finally {
                         activeTaskId.set(null);
+                        activeLeaseGeneration.set(0L);
                         metrics.complianceTaskDuration(
                             Duration.between(taskStarted, Instant.now()));
                     }
@@ -395,185 +411,72 @@ public class ComplianceAnalysisProcessor {
         });
     }
 
-    private <T> T withoutTransaction(java.util.function.Supplier<T> work) {
-        TransactionTemplate suspended = new TransactionTemplate(transactionManager);
-        suspended.setPropagationBehavior(
-            org.springframework.transaction.TransactionDefinition.PROPAGATION_NOT_SUPPORTED);
-        return suspended.execute(status -> work.get());
-    }
-
     private TaskResult evaluate(UUID organizationId, Job job, Task task,
-                                UUID correlationId, String workerId) {
-        return inTenant(organizationId, () -> evaluateInTenant(
-            organizationId, job, task, correlationId, workerId));
-    }
-
-    private TaskResult evaluateInTenant(UUID organizationId, Job job, Task task,
-                                        UUID correlationId, String workerId) {
-        // Task is already claimed RUNNING by ComplianceJobTransactionService.claimTask.
-        jdbc.update("""
-            update requirement_matching_task
-            set heartbeat_at = clock_timestamp(),
-                updated_at = clock_timestamp(),
-                version = version + 1
-            where id = ? and organization_id = ? and claimed_by = ?
-            """, task.id(), organizationId, workerId);
-        PolicyVersion retrievalPolicy = retrievalPolicy(
-            organizationId, job.retrievalPolicyVersionId());
-        Snapshot snapshot = snapshot(organizationId, job.snapshotId());
-        var retrievalTimer = metrics.retrievalStarted();
-        List<CandidateEvidence> candidates;
-        try {
-            candidates = retriever.retrieve(
-                organizationId, task.requirementId(), task.targetEntityId(),
-                snapshot.entityCutoff(), snapshot.evidenceCutoff(), retrievalPolicy);
-        } finally {
-            metrics.retrievalCompleted(retrievalTimer);
+                                UUID correlationId, String workerId, long leaseGeneration) {
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            throw new IllegalStateException(
+                "Task evaluate orchestration must not run inside a transaction");
         }
-        metrics.retrievalCandidates(candidates.size());
-        Double topScore = candidates.stream()
-            .map(CandidateEvidence::lexicalScore)
-            .max(Double::compareTo)
-            .orElse(null);
-        Map<String, Object> retrievalTrace = new LinkedHashMap<>();
-        retrievalTrace.put("complianceRunId", job.id());
-        retrievalTrace.put("requirementId", task.requirementId());
-        retrievalTrace.put("organizationId", organizationId);
-        retrievalTrace.put("projectId", job.projectId());
-        retrievalTrace.put("targetEntityId", task.targetEntityId());
-        retrievalTrace.put("vectorCollection", null);
-        retrievalTrace.put("queryEmbeddingDimension", null);
-        retrievalTrace.put("keywordCandidateCount", candidates.size());
-        retrievalTrace.put("finalCandidateCount", candidates.size());
-        retrievalTrace.put("topScore", topScore);
-        retrievalTrace.put("documentScopeLocked", false);
-        try {
-            log.info("evidence_retrieval {}", mapper.writeValueAsString(retrievalTrace));
-        } catch (JsonProcessingException ignored) {
-            log.info("evidence_retrieval {}", retrievalTrace);
-        }
-        var rerankingTimer = metrics.rerankingStarted();
-        RankedEvidenceResult ranked;
-        try {
-            ranked = reranker.rerank(
-                new EvidenceRerankingContext(organizationId, task.requirementId(),
-                    task.targetEntityId(), candidates, Map.of()), retrievalPolicy);
-        } finally {
-            metrics.rerankingCompleted(rerankingTimer);
-        }
-        // Persist retrieval counts before LLM comparison so timeouts do not hide
-        // successful candidate discovery.
-        jdbc.update("""
-            update requirement_matching_task
-            set candidate_count = ?, reranked_candidate_count = ?,
-                updated_at = clock_timestamp(),
-                version = version + 1
-            where id = ? and organization_id = ?
-            """, candidates.size(), ranked.ranked().size(), task.id(), organizationId);
-        Requirement requirement = requirement(organizationId, task.requirementId());
-        EvaluationOutcome outcome;
-        if (ranked.ranked().isEmpty()) {
-            // Still allow deterministic capability matching when no lexical evidence exists.
-            EvaluationOutcome deterministic = tryDeterministic(organizationId, job, requirement,
-                List.of());
-            if (deterministic != null) {
-                outcome = deterministic;
-                metrics.complianceDeterministic();
-                metrics.deterministicEvaluation();
-            } else {
-                outcome = missingOutcome(organizationId, job, requirement);
-                metrics.complianceMissingEvidence();
-            }
-        } else {
-            EvaluationOutcome deterministic = tryDeterministic(organizationId, job, requirement,
-                selectedEvidencePayload(organizationId, ranked.ranked()));
-            if (deterministic != null) {
-                outcome = deterministic;
-                metrics.complianceDeterministic();
-                metrics.deterministicEvaluation();
-            } else {
-                String provider = comparisonProvider(organizationId, requirement.attributes());
-                if (provider == null || "manual-only".equals(provider)) {
-                    outcome = semanticOutcome(
-                        organizationId, job, requirement, ranked, correlationId);
-                    metrics.complianceLlm();
-                } else {
-                    outcome = deterministicOutcome(
-                        organizationId, job, requirement, ranked, provider);
-                    metrics.complianceDeterministic();
-                    metrics.comparisonStrategy(provider);
-                }
-            }
-        }
-        UUID evaluationId = persistEvaluation(organizationId, job, task, requirement,
-            ranked, outcome);
-        try {
-            postAssessmentHooks.afterAssessment(organizationId, job.projectId(),
-                requirement.id(), evaluationId, outcome.decisionCode(),
-                outcome.gapHint(), outcome.missingElements(),
-                outcome.ambiguousRequirement(), "system");
-        } catch (RuntimeException hookFailure) {
-            log.warn("post_assessment_hook_failed evaluationId={} error={}",
-                evaluationId, hookFailure.toString());
-        }
-        if (outcome.evaluationSource() != null) {
-            jdbc.update("""
-                update compliance_evaluation
-                   set evaluation_source = ?,
-                       missing_requirement_elements_json = ?::jsonb,
-                       explicit_contradiction = ?,
-                       reasoning_summary = ?,
-                       assessment_status = 'COMPLETED',
-                       updated_at = clock_timestamp()
-                 where id = ? and organization_id = ?
-                """, outcome.evaluationSource(),
-                json(outcome.missingElements() == null ? List.of() : outcome.missingElements()),
-                outcome.contradiction(),
-                outcome.summary().path("reasonCode").asText(null),
-                evaluationId, organizationId);
+        PreparedComplianceTask prepared = preparationService.prepare(
+            organizationId,
+            job.id(), job.projectId(),
+            job.analysisProfileId(), job.snapshotId(),
+            job.retrievalPolicyVersionId(), job.matchingPolicyVersionId(),
+            job.comparisonPolicyVersionId(), job.confidencePolicyVersionId(),
+            job.promptPackageVersionId(),
+            task.id(), task.requirementId(), task.targetEntityId(),
+            workerId, leaseGeneration, correlationId, maxOutputTokens);
+        // Prepare TX is committed; DB connection returned to pool before execute.
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            metrics.complianceConnectionHeldDuringModel();
+            throw new IllegalStateException(
+                "Active transaction remains after prepare commit");
         }
         if (transactionService.cancellationState(organizationId, job.id()).cancelRequested()) {
-            jdbc.update("""
-                update requirement_matching_task
-                set status = 'CANCELLED',
-                    candidate_count = ?,
-                    reranked_candidate_count = ?,
-                    completed_at = clock_timestamp(),
-                    updated_at = clock_timestamp(),
-                    version = version + 1
-                where id = ? and organization_id = ?
-                  and status = 'RUNNING'
-                """, candidates.size(), ranked.ranked().size(), task.id(), organizationId);
-            log.info("event=COMPLIANCE_TASK_CANCELLED jobId={} taskId={} "
-                    + "(late cancel after model, result not completed)",
-                job.id(), task.id());
+            transactionService.cancelRemainingTasks(organizationId, job.id());
             throw new SemanticEvaluationException(
-                SemanticEvaluationFailureCode.LLM_CANCELLED,
-                "Task cancelled after model response", 0);
+                SemanticEvaluationFailureCode.LLM_CANCELLED, "Cancel requested", 0);
         }
-        jdbc.update("""
-            update requirement_matching_task
-            set status = 'COMPLETED', candidate_count = ?,
-                reranked_candidate_count = ?, selected_evidence_count = ?,
-                evaluation_count = 1, model_run_id = ?,
-                completed_at = clock_timestamp(),
-                updated_at = clock_timestamp(), version = version + 1
-            where id = ? and organization_id = ?
-              and status = 'RUNNING'
-            """, candidates.size(), ranked.ranked().size(), outcome.selectedEvidence().size(),
-            outcome.modelRunId(), task.id(), organizationId);
-        if (outcome.requiresReview()) {
-            metrics.complianceManualReview();
-            outbox.publish(organizationId, "ComplianceEvaluation", evaluationId,
-                "ComplianceReviewRequired", "compliance.review.required.v1",
-                Map.of("evaluationId", evaluationId,
-                    "requirementId", task.requirementId()), correlationId);
+        ComplianceExecutionResult execution;
+        if (prepared.needsModelExecution()) {
+            Instant lease = Instant.now().plus(ComplianceJobTransactionService.DEFAULT_LEASE);
+            if (!transactionService.markTaskRunningForModel(
+                organizationId, task.id(), workerId, leaseGeneration, lease)) {
+                metrics.complianceStaleWorkerResult();
+                throw new SemanticEvaluationException(
+                    SemanticEvaluationFailureCode.EVALUATION_ERROR,
+                    "STALE_WORKER_RESULT", 0);
+            }
+            execution = modelExecutionService.execute(prepared);
+        } else {
+            execution = ComplianceExecutionResult.fromPrecomputed(prepared.precomputedOutcome());
         }
-        if (outcome.contradiction()) {
-            metrics.complianceContradictoryEvidence();
+        if (transactionService.cancellationState(organizationId, job.id()).cancelRequested()
+            && execution.success()) {
+            execution = ComplianceExecutionResult.cancelledResult();
         }
-        metrics.complianceEvaluation();
-        return new TaskResult(outcome.requiresReview());
+        var persist = persistenceService.persist(prepared, execution, correlationId);
+        if (persist.rejectedStale()) {
+            throw new SemanticEvaluationException(
+                SemanticEvaluationFailureCode.EVALUATION_ERROR, "STALE_WORKER_RESULT", 0);
+        }
+        if (persist.cancelled()) {
+            throw new SemanticEvaluationException(
+                SemanticEvaluationFailureCode.LLM_CANCELLED, "Task cancelled", 0);
+        }
+        if (!persist.persisted() && persist.errorCode() != null) {
+            throw new SemanticEvaluationException(
+                mapPersistFailure(persist.errorCode()), persist.errorCode(), 0);
+        }
+        return new TaskResult(persist.requiresReview());
+    }
+
+    private SemanticEvaluationFailureCode mapPersistFailure(String code) {
+        try {
+            return SemanticEvaluationFailureCode.valueOf(code);
+        } catch (RuntimeException ignored) {
+            return SemanticEvaluationFailureCode.EVALUATION_ERROR;
+        }
     }
 
     private EvaluationOutcome tryDeterministic(UUID organizationId, Job job,
@@ -669,101 +572,6 @@ public class ComplianceAnalysisProcessor {
             confidence.requiresReview(), null, List.of(best), contradiction, null,
             "DETERMINISTIC", List.of(), false,
             "NOT_SATISFIED".equals(comparison.status()) ? "NUMERIC_SHORTFALL" : null);
-    }
-
-    private EvaluationOutcome semanticOutcome(
-        UUID organizationId, Job job, Requirement requirement,
-        RankedEvidenceResult ranked, UUID correlationId
-    ) {
-        Prompt prompt = prompt(organizationId, job.promptPackageVersionId());
-        List<Map<String, Object>> evidence = selectedEvidencePayload(
-            organizationId, ranked.ranked());
-        List<Decision> decisions = decisions(organizationId);
-        boolean contradiction = evidence.stream().anyMatch(item ->
-            number(item.get("contradictionStrength")) > 0);
-        SemanticRequest request = new SemanticRequest(
-            organizationId, "nanobase-spec-ai", modelProfile(organizationId),
-            prompt.components(), prompt.schema(),
-            Map.of("id", requirement.id(), "text", requirement.text(),
-                "attributes", requirement.attributes(),
-                "evaluationVersion", "v1"),
-            ontology(organizationId, job.analysisProfileId()), evidence,
-            decisions.stream().map(Decision::code).toList(), maxOutputTokens, correlationId);
-        ComplianceSemanticRouter.RoutedEvaluation routed = withoutTransaction(() -> {
-            if (TransactionSynchronizationManager.isActualTransactionActive()) {
-                throw new IllegalStateException(
-                    "Model executor must not be called inside an active transaction");
-            }
-            log.info("event=COMPLIANCE_MODEL_REQUEST_STARTED jobId={} requirementId={} "
-                    + "correlationId={}",
-                job.id(), requirement.id(), correlationId);
-            ComplianceSemanticRouter.RoutedEvaluation result =
-                semanticRouter.evaluate(request, contradiction);
-            log.info("event=COMPLIANCE_MODEL_REQUEST_COMPLETED jobId={} requirementId={} "
-                    + "correlationId={}",
-                job.id(), requirement.id(), correlationId);
-            return result;
-        });
-        var response = routed.response();
-        ObjectNode safeOutput = decisionSafetyGuard.normalize(
-            response.output(), requirement.text(), evidence);
-        String rawDecision = safeOutput.path("recommendedDecisionConcept").asText();
-        if (rawDecision == null || rawDecision.isBlank()) {
-            rawDecision = safeOutput.path("decision").asText();
-        }
-        if (rawDecision == null || rawDecision.isBlank()) {
-            throw new SemanticEvaluationException(
-                SemanticEvaluationFailureCode.LLM_INVALID_RESPONSE,
-                "Semantic evaluator returned an empty decision concept", 0);
-        }
-        final String decisionCode = rawDecision;
-        UUID decisionId = decisions.stream()
-            .filter(item -> item.code().equals(decisionCode))
-            .map(Decision::id).findFirst()
-            .orElseThrow(() -> new SemanticEvaluationException(
-                SemanticEvaluationFailureCode.LLM_INVALID_RESPONSE,
-                "Semantic evaluator returned an unsupported decision concept: " + decisionCode,
-                0));
-        Set<String> allowed = evidence.stream()
-            .map(item -> String.valueOf(item.get("id")))
-            .collect(Collectors.toCollection(LinkedHashSet::new));
-        Set<String> allowedDecisions = decisions.stream()
-            .map(Decision::code)
-            .collect(Collectors.toCollection(LinkedHashSet::new));
-        StructuredComplianceResponseValidator.ValidationResult validation =
-            new StructuredComplianceResponseValidator()
-                .validate(safeOutput, allowed, allowedDecisions);
-        if (!validation.valid()) {
-            throw new SemanticEvaluationException(
-                validation.failureCode() == null
-                    ? SemanticEvaluationFailureCode.LLM_INVALID_RESPONSE
-                    : validation.failureCode(),
-                validation.message(), 0);
-        }
-        ConfidenceResult confidence = confidenceEngine.evaluate(new ConfidenceContext(
-            Map.of("relevance", averageScore(ranked.ranked()),
-                "validity", averageValidity(ranked.ranked()),
-                "authority", averageAuthority(ranked.ranked()),
-                "grounding", 1d, "deterministic", 0d,
-                "entityResolution", 0.8, "freshness", 0.7,
-                "historicalAcceptance", 0.5),
-            false, contradiction,
-            policyConfiguration(organizationId, job.confidencePolicyVersionId())));
-        double modelConfidence = safeOutput.path("confidence").asDouble(0);
-        double combined = (confidence.score() + modelConfidence) / 2d;
-        boolean review = safeOutput.path("requiresManualReview").asBoolean()
-            || confidence.requiresReview() || contradiction
-            || "NON_COMPLIANT".equals(decisionCode)
-            || "INSUFFICIENT_INFORMATION".equals(decisionCode);
-        ObjectNode summary = mapper.createObjectNode();
-        summary.put("strategyProvider", "llm-semantic-evaluation");
-        summary.put("resultLabel", "AI Ön Değerlendirmesi");
-        summary.set("semanticEvaluation", safeOutput);
-        summary.set("confidence", mapper.valueToTree(confidence));
-        summary.set("modelRouting", mapper.valueToTree(routed.routing()));
-        return new EvaluationOutcome(decisionId, decisionCode, summary, combined, review,
-            response.modelRunId(), ranked.ranked(), contradiction, routed.routing(),
-            "LLM", List.of(), false, null);
     }
 
     private EvaluationOutcome missingOutcome(UUID organizationId, Job job,

@@ -18,6 +18,8 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+import javax.sql.DataSource;
+
 /**
  * Transaction-free model execution. Must never open or join a database transaction
  * and must not access repositories / EntityManager.
@@ -32,28 +34,32 @@ public class ComplianceTaskModelExecutionService {
     private final PolicyComplianceConfidenceEngine confidenceEngine;
     private final ObjectMapper mapper;
     private final PlatformMetrics metrics;
+    private final DataSource dataSource;
 
     public ComplianceTaskModelExecutionService(ComplianceSemanticRouter semanticRouter,
                                                ObjectMapper mapper,
                                                PolicyComplianceConfidenceEngine confidenceEngine,
-                                               PlatformMetrics metrics) {
+                                               PlatformMetrics metrics,
+                                               DataSource dataSource) {
         this.semanticRouter = semanticRouter;
         this.mapper = mapper;
         this.decisionSafetyGuard = new ComplianceDecisionSafetyGuard(mapper);
         this.confidenceEngine = confidenceEngine;
         this.metrics = metrics;
+        this.dataSource = dataSource;
     }
 
     @Transactional(propagation = Propagation.NEVER)
     public ComplianceExecutionResult execute(PreparedComplianceTask prepared) {
         if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            metrics.complianceConnectionHeldDuringModel();
             throw new IllegalStateException(
                 "Compliance model execution must not run inside a transaction");
         }
-        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+        if (TransactionSynchronizationManager.hasResource(dataSource)) {
             metrics.complianceConnectionHeldDuringModel();
             throw new IllegalStateException(
-                "Compliance model execution must not run with active transaction synchronization");
+                "Compliance model execution must not hold a pooled database connection");
         }
         if (!prepared.needsModelExecution()) {
             return ComplianceExecutionResult.fromPrecomputed(prepared.precomputedOutcome());

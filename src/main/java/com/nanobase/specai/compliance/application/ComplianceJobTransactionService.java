@@ -374,7 +374,7 @@ public class ComplianceJobTransactionService {
                    version = version + 1
              where compliance_job_id = ?
                and organization_id = ?
-               and status in ('QUEUED', 'RUNNING')
+               and status in ('QUEUED', 'RUNNING', 'READY_FOR_MODEL')
                and exists (
                     select 1 from compliance_analysis_job job
                      where job.id = compliance_job_id
