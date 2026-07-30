@@ -11,6 +11,14 @@ public interface ObjectStorage {
     void delete(String objectKey);
     URI signedDownloadUrl(String objectKey, Duration validity);
 
+    default InputStream open(String objectKey) {
+        throw new UnsupportedOperationException("Object streaming is not supported");
+    }
+
+    default StoredObjectStat stat(String objectKey) {
+        throw new UnsupportedOperationException("Object stat is not supported");
+    }
+
     default void finalizeObject(String temporaryKey, String finalKey,
                                 long expectedSize, String expectedSha256) {
         throw new UnsupportedOperationException("Object finalization is not supported");
@@ -21,5 +29,8 @@ public interface ObjectStorage {
     }
 
     record StoredObject(String objectKey, long size, Instant lastModified) {
+    }
+
+    record StoredObjectStat(String objectKey, long size, String contentType) {
     }
 }

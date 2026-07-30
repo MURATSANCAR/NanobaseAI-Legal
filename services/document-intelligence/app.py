@@ -455,6 +455,18 @@ def provider_neutral_result(
                 "metadata": {},
             }
         )
+    if not clauses:
+        clauses = page_fallback_clauses(pages)
+        if clauses:
+            warnings.append(
+                {
+                    "warningCode": "CLAUSE_FALLBACK_USED",
+                    "severity": "INFO",
+                    "message": "Page-level clause fallback used because no headings were detected",
+                    "pageNumber": None,
+                    "metadata": {"clauseCount": len(clauses)},
+                }
+            )
     tables = extract_tables(exported, page_dimensions) if request.extractTables else []
     language = request.languageHint or str(exported.get("language") or "und")
     quality = sum(quality_values) / len(quality_values) if quality_values else 0.0
@@ -473,6 +485,10 @@ def provider_neutral_result(
         "metadata": {
             "ocrMode": request.ocrMode,
             "extractTables": request.extractTables,
+            "clauseFallback": bool(
+                clauses
+                and all((c.get("metadata") or {}).get("fallback") for c in clauses)
+            ),
         },
     }
 
@@ -645,6 +661,37 @@ def build_reflowed_clauses(
             }
         )
         index = cursor
+    return clauses
+
+
+def page_fallback_clauses(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    clauses: list[dict[str, Any]] = []
+    for page in pages:
+        raw = (page.get("normalizedText") or page.get("rawText") or "").strip()
+        if len(raw) < 80:
+            continue
+        body = raw if len(raw) <= 1600 else raw[:1600]
+        page_no = int(page.get("pageNumber") or 1)
+        clauses.append(
+            {
+                "sourceId": f"docling-page-{page_no}",
+                "parentSourceId": None,
+                "clauseNumber": f"P{page_no}",
+                "title": f"Page {page_no}",
+                "rawText": body,
+                "normalizedText": normalize_text(body),
+                "clauseType": "PAGE",
+                "pageStart": page_no,
+                "pageEnd": page_no,
+                "boundingBoxes": [],
+                "contentHash": hashlib.sha256(body.encode("utf-8")).hexdigest(),
+                "sortOrder": page_no - 1,
+                "metadata": {
+                    "fallback": True,
+                    "segmentationProvider": "DOCLING_PAGE_FALLBACK",
+                },
+            }
+        )
     return clauses
 
 

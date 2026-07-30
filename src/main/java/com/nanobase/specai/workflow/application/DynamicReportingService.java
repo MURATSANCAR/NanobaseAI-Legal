@@ -54,6 +54,7 @@ public class DynamicReportingService {
     private final AuditService audit;
     private final OutboxService outbox;
     private final PlatformMetrics metrics;
+    private final ReportIntegrityValidator integrityValidator;
 
     public DynamicReportingService(JdbcTemplate jdbc, ObjectMapper mapper,
                                    CurrentTenant currentTenant,
@@ -61,7 +62,8 @@ public class DynamicReportingService {
                                    List<ReportFormatRenderer> renderers,
                                    WorkflowConditionEngine conditions,
                                    ObjectStorage storage, AuditService audit,
-                                   OutboxService outbox, PlatformMetrics metrics) {
+                                   OutboxService outbox, PlatformMetrics metrics,
+                                   ReportIntegrityValidator integrityValidator) {
         this.jdbc = jdbc;
         this.mapper = mapper;
         this.currentTenant = currentTenant;
@@ -72,6 +74,7 @@ public class DynamicReportingService {
         this.audit = audit;
         this.outbox = outbox;
         this.metrics = metrics;
+        this.integrityValidator = integrityValidator;
     }
 
     @Transactional
@@ -199,6 +202,7 @@ public class DynamicReportingService {
              where v.id = ?
             """, String.class, request.reportDefinitionVersionId());
         int artifactIndex = 0;
+        UUID artifactId = null;
         for (UUID formatId : request.formatConceptIds()) {
             String formatCode = conceptCode(formatId, "REPORT_FORMAT");
             ReportFormatRenderer renderer = renderers.stream()
@@ -207,19 +211,61 @@ public class DynamicReportingService {
                     "No report renderer for format " + formatCode));
             RenderedReport rendered = renderer.render(reportName, report);
             byte[] bytes = rendered.content();
+            ReportIntegrityValidator.ReportValidationResult validation =
+                integrityValidator.validate(bytes, formatCode, reportName, report);
+            jdbc.update("""
+                insert into report_validation_result (
+                    id, organization_id, report_generation_job_id, report_artifact_id,
+                    status_code, error_code, page_count, file_size, sha256,
+                    required_sections_json, missing_sections_json, details_json, created_at
+                ) values (?, ?, ?, null, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?::jsonb, now())
+                """, UUID.randomUUID(), principal.tenantId(), jobId,
+                validation.ok() ? "PASS" : "FAIL",
+                validation.errorCode(),
+                validation.pageCount(),
+                validation.fileSize(),
+                sha256(bytes),
+                jsonArray(validation.requiredSections()),
+                jsonArray(validation.missingSections()),
+                "{\"detail\":" + quote(validation.detail()) + "}");
+            if (!validation.ok()) {
+                UUID failed = concept("REPORT_JOB_FAILED", "REPORT_JOB_STATUS");
+                jdbc.update("""
+                    update report_generation_job set status_concept_id = ?, progress = 100,
+                           completed_at = now(), error_code = ?, error_message = ?,
+                           updated_at = now(), version = version + 1
+                     where id = ?
+                    """, failed, validation.errorCode(), validation.detail(), jobId);
+                audit.record("report.generation.failed.v1", "ReportGenerationJob", jobId,
+                    null, Map.of("errorCode", validation.errorCode()));
+                return job(jobId);
+            }
             String hash = sha256(bytes);
             String fileName = safeFileName(reportName) + "-v1." + rendered.extension();
             String key = principal.tenantId() + "/reports/" + projectId + "/" + jobId
                 + "/" + formatCode.toLowerCase() + "/" + fileName;
             storage.put(key, new ByteArrayInputStream(bytes), bytes.length,
                 rendered.mimeType());
+            ObjectStorage.StoredObjectStat stored = storage.stat(key);
+            if (stored.size() != bytes.length) {
+                UUID failed = concept("REPORT_JOB_FAILED", "REPORT_JOB_STATUS");
+                jdbc.update("""
+                    update report_generation_job set status_concept_id = ?, progress = 100,
+                           completed_at = now(), error_code = ?, error_message = ?,
+                           updated_at = now(), version = version + 1
+                     where id = ?
+                    """, failed, "REPORT_STORAGE_FAILED",
+                    "Stored object size mismatch", jobId);
+                return job(jobId);
+            }
+            artifactId = UUID.randomUUID();
             jdbc.update("""
                 insert into report_artifact (
                     id, organization_id, report_generation_job_id, format_concept_id,
                     object_storage_key, file_name, mime_type, file_size, sha256,
                     version_number, created_at
                 ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, now())
-                """, UUID.randomUUID(), principal.tenantId(), jobId, formatId, key,
+                """, artifactId, principal.tenantId(), jobId, formatId, key,
                 fileName, rendered.mimeType(), bytes.length, hash);
             artifactIndex++;
             jdbc.update("""
@@ -300,12 +346,45 @@ public class DynamicReportingService {
 
     @Transactional(readOnly = true)
     public DownloadUrlResponse download(UUID artifactId) {
+        TenantPrincipal principal = currentTenant.require();
         String key = jdbc.queryForObject("""
-            select object_storage_key from report_artifact where id = ?
-            """, String.class, artifactId);
+            select object_storage_key from report_artifact
+             where id = ? and organization_id = ?
+            """, String.class, artifactId, principal.tenantId());
         Duration validity = Duration.ofMinutes(5);
         return new DownloadUrlResponse(storage.signedDownloadUrl(key, validity).toString(),
             Instant.now().plus(validity));
+    }
+
+    @Transactional(readOnly = true)
+    public DocumentServiceStreaming openDownload(UUID artifactId) {
+        TenantPrincipal principal = currentTenant.require();
+        Map<String, Object> row = jdbc.queryForMap("""
+            select object_storage_key, file_name, mime_type, file_size
+              from report_artifact
+             where id = ? and organization_id = ?
+            """, artifactId, principal.tenantId());
+        String key = String.valueOf(row.get("object_storage_key"));
+        return new StreamingDownload(
+            storage.open(key),
+            String.valueOf(row.get("file_name")),
+            String.valueOf(row.get("mime_type")),
+            ((Number) row.get("file_size")).longValue());
+    }
+
+    public record StreamingDownload(java.io.InputStream content, String fileName,
+                                    String mimeType, long size) {
+    }
+
+    private String jsonArray(List<String> values) {
+        return json(values == null ? List.of() : values);
+    }
+
+    private static String quote(String value) {
+        if (value == null) {
+            return "\"\"";
+        }
+        return "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
     }
 
     private Snapshot buildSnapshot(UUID projectId, UUID definitionVersionId,

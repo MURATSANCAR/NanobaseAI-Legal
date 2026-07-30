@@ -58,6 +58,7 @@ specai:
     enabled: false
   storage:
     endpoint: ${MINIO_ENDPOINT}
+    public-endpoint: ${MINIO_PUBLIC_ENDPOINT:${MINIO_ENDPOINT}}
     access-key: ${MINIO_ACCESS_KEY}
     secret-key: ${MINIO_SECRET_KEY}
     original-bucket: ${MINIO_ORIGINAL_BUCKET}

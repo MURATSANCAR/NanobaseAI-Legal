@@ -25,6 +25,7 @@ import com.nanobase.specai.analysis.application.AnalysisModels.UnitMatch;
 import com.nanobase.specai.analysis.domain.AnalysisProfile;
 import com.nanobase.specai.analysis.domain.AnalysisProfileRepository;
 import com.nanobase.specai.analysis.domain.Requirement;
+import com.nanobase.specai.analysis.domain.EmptyExtractionOutcome;
 import com.nanobase.specai.analysis.domain.RequirementExtractionJob;
 import com.nanobase.specai.analysis.domain.RequirementExtractionJobRepository;
 import com.nanobase.specai.analysis.domain.RequirementRepository;
@@ -50,6 +51,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -80,6 +82,7 @@ public class RequirementExtractionProcessor {
     private final RequirementClassificationValidator classificationValidator;
     private final RequirementConditionExtractor conditionExtractor;
     private final AuditService audit;
+    private final JdbcTemplate jdbc;
     private final Clock clock = Clock.systemUTC();
 
     public RequirementExtractionProcessor(
@@ -107,7 +110,8 @@ public class RequirementExtractionProcessor {
         FeatureFlagService featureFlags,
         RequirementClassificationValidator classificationValidator,
         RequirementConditionExtractor conditionExtractor,
-        AuditService audit) {
+        AuditService audit,
+        JdbcTemplate jdbc) {
         this.tenantDatabase = tenantDatabase;
         this.jobs = jobs;
         this.profiles = profiles;
@@ -133,6 +137,7 @@ public class RequirementExtractionProcessor {
         this.classificationValidator = classificationValidator;
         this.conditionExtractor = conditionExtractor;
         this.audit = audit;
+        this.jdbc = jdbc;
     }
 
     @Transactional
@@ -163,6 +168,10 @@ public class RequirementExtractionProcessor {
         int extracted = 0;
         int reviews = 0;
         int classificationFailures = 0;
+        int suspiciousEmpty = 0;
+        int timeoutEmpty = 0;
+        int schemaFailures = 0;
+        String dominantEmptyOutcome = null;
         try {
             for (Clause clause : sourceClauses) {
                 ClauseSignalResult signal = signalEvaluator.evaluate(
@@ -173,14 +182,44 @@ public class RequirementExtractionProcessor {
                         extracted += outcome.extracted();
                         reviews += outcome.reviews();
                         classificationFailures += outcome.classificationFailures();
+                        if (outcome.emptyOutcomeCode() != null) {
+                            dominantEmptyOutcome = outcome.emptyOutcomeCode();
+                            if (EmptyExtractionOutcome.SUSPICIOUS_EMPTY
+                                .equals(outcome.emptyOutcomeCode())) {
+                                suspiciousEmpty++;
+                                reviews++;
+                                store.event(organizationId, job.id(), "SUSPICIOUS_EMPTY",
+                                    percent(processed, sourceClauses.size()),
+                                    "High-signal clause produced empty extraction",
+                                    Map.of("clauseId", clause.id(),
+                                        "signalScore", signal.signalScore(),
+                                        "emptyOutcome", outcome.emptyOutcomeCode()),
+                                    clock.instant());
+                            } else if (EmptyExtractionOutcome.TIMEOUT_EMPTY
+                                .equals(outcome.emptyOutcomeCode())) {
+                                timeoutEmpty++;
+                            } else if (EmptyExtractionOutcome.SCHEMA_FAILURE
+                                .equals(outcome.emptyOutcomeCode())) {
+                                schemaFailures++;
+                            }
+                        }
                     } catch (RuntimeException clauseFailure) {
                         reviews++;
+                        boolean timedOut = String.valueOf(clauseFailure.getMessage())
+                            .toLowerCase(java.util.Locale.ROOT).contains("timeout");
+                        if (timedOut) {
+                            timeoutEmpty++;
+                            dominantEmptyOutcome = EmptyExtractionOutcome.TIMEOUT_EMPTY;
+                        }
                         store.event(organizationId, job.id(), "CLAUSE_REVIEW_REQUIRED",
                             percent(processed, sourceClauses.size()),
                             "Clause extraction requires manual review",
                             Map.of("clauseId", clause.id(),
                                 "errorCode", safeCode(clauseFailure),
-                                "errorMessage", truncateMessage(clauseFailure)),
+                                "errorMessage", truncateMessage(clauseFailure),
+                                "emptyOutcome", timedOut
+                                    ? EmptyExtractionOutcome.TIMEOUT_EMPTY
+                                    : EmptyExtractionOutcome.MODEL_FAILURE),
                             clock.instant());
                     }
                 } else if ("MANUAL_REVIEW".equals(signal.recommendedAction())) {
@@ -200,11 +239,31 @@ public class RequirementExtractionProcessor {
                     "RequirementExtractionProgress", RabbitConfiguration.REQUIREMENT_PROGRESS,
                     progressPayload(job), job.correlationId());
             }
-            if (classificationFailures > 0) {
+            if (extracted == 0 && suspiciousEmpty > 0) {
+                store.event(organizationId, job.id(), "SUSPICIOUS_EMPTY_JOB", 100,
+                    "Job completed with suspicious empty extractions",
+                    Map.of(
+                        "suspiciousEmpty", suspiciousEmpty,
+                        "timeoutEmpty", timeoutEmpty,
+                        "schemaFailures", schemaFailures,
+                        "emptyOutcome", dominantEmptyOutcome == null
+                            ? EmptyExtractionOutcome.SUSPICIOUS_EMPTY
+                            : dominantEmptyOutcome),
+                    clock.instant());
+            }
+            jdbc.update("""
+                update requirement_extraction_job
+                set empty_outcome_code = ?, suspicious_empty_count = ?,
+                    timeout_empty_count = ?, schema_failure_count = ?
+                where id = ? and organization_id = ?
+                """, dominantEmptyOutcome, suspiciousEmpty, timeoutEmpty, schemaFailures,
+                job.id(), organizationId);
+            if (classificationFailures > 0 || suspiciousEmpty > 0) {
                 job.partiallyComplete(clock.instant());
                 store.event(organizationId, job.id(), "PARTIALLY_COMPLETED", 100,
-                    "Requirement extraction completed with classification failures",
-                    Map.of("classificationFailures", classificationFailures), clock.instant());
+                    "Requirement extraction completed with review-required outcomes",
+                    Map.of("classificationFailures", classificationFailures,
+                        "suspiciousEmpty", suspiciousEmpty), clock.instant());
             } else {
                 job.complete(clock.instant());
                 store.event(organizationId, job.id(), "COMPLETED", 100,
@@ -233,12 +292,69 @@ public class RequirementExtractionProcessor {
 
     private ClauseOutcome extractClause(RequirementExtractionJob job, AnalysisProfile profile,
                                         Clause clause, ClauseSignalResult signal) {
+        List<String> chunks = ClauseChunker.chunk(
+            clause.rawText(), ClauseChunker.DEFAULT_MAX_CHARS, ClauseChunker.DEFAULT_OVERLAP_CHARS);
+        if (chunks.isEmpty()) {
+            return new ClauseOutcome(0, 0, 0, EmptyExtractionOutcome.LOW_SIGNAL_EMPTY);
+        }
+        for (int i = 0; i < chunks.size(); i++) {
+            String chunkText = chunks.get(i);
+            jdbc.update("""
+                insert into clause_chunk (
+                    id, organization_id, clause_id, chunk_index, text_content,
+                    token_count, context_header_json, source_block_ids_json, created_at
+                ) values (?, ?, ?, ?, ?, ?, '{}', '[]', now())
+                """, UUID.randomUUID(), job.organizationId(), clause.id(), i,
+                chunkText, chunkText.length() / 4);
+        }
+        int extracted = 0;
+        int reviews = 0;
+        int classificationFailures = 0;
+        boolean schemaFailed = false;
+        boolean timedOut = false;
+        boolean modelFailed = false;
+        for (int chunkIndex = 0; chunkIndex < chunks.size(); chunkIndex++) {
+            String chunkText = chunks.get(chunkIndex);
+            try {
+                ClauseOutcome chunkOutcome = extractClauseChunk(
+                    job, profile, clause, signal, chunkText, chunkIndex, chunks.size());
+                extracted += chunkOutcome.extracted();
+                reviews += chunkOutcome.reviews();
+                classificationFailures += chunkOutcome.classificationFailures();
+                if (EmptyExtractionOutcome.SCHEMA_FAILURE.equals(chunkOutcome.emptyOutcomeCode())) {
+                    schemaFailed = true;
+                }
+            } catch (RuntimeException failure) {
+                String message = String.valueOf(failure.getMessage()).toLowerCase(Locale.ROOT);
+                if (message.contains("timeout")) {
+                    timedOut = true;
+                } else {
+                    modelFailed = true;
+                }
+                throw failure;
+            }
+            // Stop early once we have grounded requirements from a chunk.
+            if (extracted > 0) {
+                break;
+            }
+        }
+        String empty = EmptyExtractionOutcome.classify(
+            signal.signalScore(), timedOut, schemaFailed, modelFailed, extracted);
+        return new ClauseOutcome(extracted, reviews, classificationFailures, empty);
+    }
+
+    private ClauseOutcome extractClauseChunk(
+        RequirementExtractionJob job, AnalysisProfile profile, Clause clause,
+        ClauseSignalResult signal, String chunkText, int chunkIndex, int chunkCount) {
         ClauseAnalysisContext context = contextBuilder.build(clause, profile);
         ExtractionStrategy strategy = strategyResolver.resolve(context, profile);
         PolicyDocument routingPolicy = catalog.policy(profile.organizationId(),
             profile.modelRoutingPolicyId());
         Map<String, Double> routingSignals = new HashMap<>();
         routingSignals.put("clauseSignal", signal.signalScore());
+        routingSignals.put("chunkIndex", (double) chunkIndex);
+        routingSignals.put("chunkCount", (double) chunkCount);
+        routingSignals.put("chunkChars", (double) chunkText.length());
         context.features().forEach((key, value) -> {
             if (value instanceof Number number) {
                 routingSignals.put(key, number.doubleValue());
@@ -255,12 +371,15 @@ public class RequirementExtractionProcessor {
             strategy.promptPackageVersionId());
         JsonNode schema = catalog.outputSchema(profile.organizationId(),
             profile.outputSchemaVersionId());
-        List<String> assembledPrompt = assemblePrompt(profile, clause, prompt);
+        List<String> assembledPrompt = new ArrayList<>(assemblePrompt(profile, clause, prompt));
+        assembledPrompt.add("Trusted clause chunk " + (chunkIndex + 1) + "/" + chunkCount
+            + " (untrusted document content follows between delimiters):\n"
+            + "<<<DOCUMENT_CHUNK>>>\n" + chunkText + "\n<<<END_DOCUMENT_CHUNK>>>");
         PromptSecurityService.Assessment promptAssessment = promptSecurity.assess(
             profile.organizationId(), job.documentVersionId(), clause.id(), profile.id(),
             job.correlationId(), Map.of(
                 "contentClassification", "UNTRUSTED_DOCUMENT",
-                "clauseText", clause.rawText(),
+                "clauseText", chunkText,
                 "selectedContext", context.selectedContext()));
         if ("PENDING".equals(promptAssessment.reviewStatus())) {
             store.event(profile.organizationId(), job.id(), "PROMPT_SECURITY_REVIEW_REQUIRED", 0,
@@ -271,7 +390,7 @@ public class RequirementExtractionProcessor {
         Instant modelStarted = clock.instant();
         ExtractionResponse response = aiGateway.extract(new ExtractionRequest(
             job.id(), profile.organizationId(), clause.id(), AiGateway.LOGICAL_MODEL,
-            routing.profileCode(), assembledPrompt, schema, context,
+            routing.profileCode(), List.copyOf(assembledPrompt), schema, context,
             strategy.maximumOutputTokens(), job.correlationId()));
         List<String> schemaErrors = schemaValidator.validate(schema, response.output());
         store.modelRun(profile.organizationId(), job.id(), clause, routingId,
@@ -281,8 +400,9 @@ public class RequirementExtractionProcessor {
         if (!schemaErrors.isEmpty()) {
             store.event(profile.organizationId(), job.id(), "SCHEMA_REJECTED", 0,
                 "Model output rejected by active output schema",
-                Map.of("clauseId", clause.id(), "errors", schemaErrors), clock.instant());
-            return new ClauseOutcome(0, 1, 0);
+                Map.of("clauseId", clause.id(), "errors", schemaErrors,
+                    "chunkIndex", chunkIndex), clock.instant());
+            return new ClauseOutcome(0, 1, 0, EmptyExtractionOutcome.SCHEMA_FAILURE);
         }
 
         int extracted = 0;
@@ -295,7 +415,7 @@ public class RequirementExtractionProcessor {
             reviews += outcome.requiresReview() ? 1 : 0;
             classificationFailures += outcome.classificationFailed() ? 1 : 0;
         }
-        return new ClauseOutcome(extracted, reviews, classificationFailures);
+        return new ClauseOutcome(extracted, reviews, classificationFailures, null);
     }
 
     private PersistOutcome persistCandidate(
@@ -666,7 +786,8 @@ public class RequirementExtractionProcessor {
         return message.substring(0, Math.min(500, message.length()));
     }
 
-    private record ClauseOutcome(int extracted, int reviews, int classificationFailures) {
+    private record ClauseOutcome(int extracted, int reviews, int classificationFailures,
+                                 String emptyOutcomeCode) {
     }
 
     private record PersistOutcome(boolean persisted, boolean requiresReview,

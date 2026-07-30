@@ -11,6 +11,7 @@ import com.nanobase.specai.document.integration.DocumentEvents.EventEnvelope;
 import com.nanobase.specai.document.integration.DocumentIntelligencePort.DocumentProcessingCommand;
 import com.nanobase.specai.document.integration.DocumentIntelligencePort.ExternalProcessingReference;
 import com.nanobase.specai.document.integration.DocumentIntelligencePort.ProcessingSubmission;
+import com.nanobase.specai.document.segmentation.ClauseSegmentationService;
 import com.nanobase.specai.integration.outbox.ConsumerIdempotencyService;
 import com.nanobase.specai.integration.outbox.RabbitConfiguration;
 import com.nanobase.specai.shared.observability.PlatformMetrics;
@@ -34,6 +35,7 @@ public class DocumentUploadedConsumer {
     private final DocumentIntelligencePort intelligence;
     private final ProcessingJobService processing;
     private final DocumentExtractionPersistenceService extraction;
+    private final ClauseSegmentationService clauseSegmentation;
     private final ConsumerIdempotencyService idempotency;
     private final RabbitTemplate rabbit;
     private final PlatformMetrics metrics;
@@ -45,6 +47,7 @@ public class DocumentUploadedConsumer {
         DocumentIntelligencePort intelligence,
         ProcessingJobService processing,
         DocumentExtractionPersistenceService extraction,
+        ClauseSegmentationService clauseSegmentation,
         ConsumerIdempotencyService idempotency,
         RabbitTemplate rabbit,
         PlatformMetrics metrics,
@@ -55,6 +58,7 @@ public class DocumentUploadedConsumer {
         this.intelligence = intelligence;
         this.processing = processing;
         this.extraction = extraction;
+        this.clauseSegmentation = clauseSegmentation;
         this.idempotency = idempotency;
         this.rabbit = rabbit;
         this.metrics = metrics;
@@ -141,8 +145,9 @@ public class DocumentUploadedConsumer {
         }
         ensureStage(event.organizationId(), job.id(), DocumentStatus.PARSING);
         ensureStage(event.organizationId(), job.id(), DocumentStatus.STRUCTURE_DETECTION);
-        var result = intelligence.getResult(reference);
-        extraction.persist(event.organizationId(), job.id(), result, payload.ocrRequired());
+        var enriched = clauseSegmentation.enrich(intelligence.getResult(reference));
+        extraction.persist(event.organizationId(), job.id(), enriched, payload.ocrRequired());
+        var result = enriched.result();
         if (result.textQualityScore() < minimumQualityScore) {
             processing.transition(event.organizationId(), job.id(),
                 DocumentStatus.MANUAL_REVIEW_REQUIRED,

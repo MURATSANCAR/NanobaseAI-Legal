@@ -19,37 +19,3 @@ record ClauseSegmentationContext(
     List<ExtractedClause> currentClauses
 ) {
 }
-
-record ClauseSegmentationResult(
-    String providerCode,
-    String providerVersion,
-    List<ExtractedClause> clauses,
-    List<LayoutBlockDraft> layoutBlocks,
-    List<RecurringElementDraft> recurringElements,
-    boolean usedFallback
-) {
-    static ClauseSegmentationResult empty(String providerCode) {
-        return new ClauseSegmentationResult(providerCode, "1.0", List.of(), List.of(),
-            List.of(), false);
-    }
-}
-
-record LayoutBlockDraft(
-    int blockIndex,
-    int pageNumber,
-    String blockTypeCode,
-    String textContent,
-    String normalizedText,
-    int readingOrder,
-    double confidence
-) {
-}
-
-record RecurringElementDraft(
-    String normalizedSignature,
-    String elementTypeCode,
-    int pageOccurrenceCount,
-    double pageRatio,
-    double confidence
-) {
-}

@@ -13,6 +13,9 @@ import com.nanobase.specai.document.domain.DocumentVersionRepository;
 import com.nanobase.specai.document.domain.ParserWarning;
 import com.nanobase.specai.document.domain.ParserWarningRepository;
 import com.nanobase.specai.document.integration.DocumentIntelligencePort.DocumentExtractionResult;
+import com.nanobase.specai.document.segmentation.EnrichedExtraction;
+import com.nanobase.specai.document.segmentation.LayoutBlockDraft;
+import com.nanobase.specai.document.segmentation.RecurringElementDraft;
 import com.nanobase.specai.shared.observability.PlatformMetrics;
 import com.nanobase.specai.shared.security.TenantDatabaseContext;
 import java.math.BigDecimal;
@@ -24,8 +27,10 @@ import java.time.Instant;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -39,6 +44,7 @@ public class DocumentExtractionPersistenceService {
     private final TenantDatabaseContext tenantContext;
     private final ObjectMapper objectMapper;
     private final PlatformMetrics metrics;
+    private final JdbcTemplate jdbc;
     private final Clock clock = Clock.systemUTC();
 
     public DocumentExtractionPersistenceService(
@@ -49,7 +55,8 @@ public class DocumentExtractionPersistenceService {
         ParserWarningRepository warnings,
         TenantDatabaseContext tenantContext,
         ObjectMapper objectMapper,
-        PlatformMetrics metrics) {
+        PlatformMetrics metrics,
+        JdbcTemplate jdbc) {
         this.versions = versions;
         this.pages = pages;
         this.clauses = clauses;
@@ -58,11 +65,22 @@ public class DocumentExtractionPersistenceService {
         this.tenantContext = tenantContext;
         this.objectMapper = objectMapper;
         this.metrics = metrics;
+        this.jdbc = jdbc;
     }
 
     @Transactional
     public void persist(UUID organizationId, UUID processingJobId,
                         DocumentExtractionResult result, boolean ocrRequired) {
+        persist(organizationId, processingJobId,
+            new EnrichedExtraction(result, result.provider(), result.providerVersion(),
+                List.of(), List.of(), false),
+            ocrRequired);
+    }
+
+    @Transactional
+    public void persist(UUID organizationId, UUID processingJobId,
+                        EnrichedExtraction enriched, boolean ocrRequired) {
+        DocumentExtractionResult result = enriched.result();
         tenantContext.apply(organizationId);
         DocumentVersion version = versions.findForUpdate(
             result.documentVersionId(), organizationId)
@@ -76,6 +94,10 @@ public class DocumentExtractionPersistenceService {
             version.id(), organizationId);
         warnings.deleteAllByDocumentVersionIdAndOrganizationId(
             version.id(), organizationId);
+        jdbc.update("delete from document_layout_block where document_version_id = ? and organization_id = ?",
+            version.id(), organizationId);
+        jdbc.update("delete from recurring_page_element where document_version_id = ? and organization_id = ?",
+            version.id(), organizationId);
         // Flush deletes before inserts so unique (version, page_number) constraints
         // do not collide with still-pending removals in the persistence context.
         pages.flush();
@@ -83,12 +105,16 @@ public class DocumentExtractionPersistenceService {
         tables.flush();
         warnings.flush();
         Instant now = clock.instant();
-        pages.saveAll(result.pages().stream().map(page -> new DocumentPage(
-            UUID.randomUUID(), organizationId, version.id(), page.pageNumber(),
-            BigDecimal.valueOf(page.width()), BigDecimal.valueOf(page.height()),
-            page.rotation(), nullToEmpty(page.rawText()), nullToEmpty(page.normalizedText()),
-            BigDecimal.valueOf(page.textQualityScore()), page.thumbnailObjectKey(), now
-        )).toList());
+        Map<Integer, UUID> pageIds = new HashMap<>();
+        pages.saveAll(result.pages().stream().map(page -> {
+            UUID pageId = UUID.randomUUID();
+            pageIds.put(page.pageNumber(), pageId);
+            return new DocumentPage(
+                pageId, organizationId, version.id(), page.pageNumber(),
+                BigDecimal.valueOf(page.width()), BigDecimal.valueOf(page.height()),
+                page.rotation(), nullToEmpty(page.rawText()), nullToEmpty(page.normalizedText()),
+                BigDecimal.valueOf(page.textQualityScore()), page.thumbnailObjectKey(), now);
+        }).toList());
         Map<String, UUID> sourceIds = new HashMap<>();
         result.clauses().stream()
             .sorted(Comparator.comparingInt(clause -> clause.sortOrder()))
@@ -108,10 +134,21 @@ public class DocumentExtractionPersistenceService {
                     clause.pageStart(), clause.pageEnd(), json(clause.boundingBoxes()),
                     hashOrCalculate(clause.contentHash(), clause.normalizedText()),
                     clause.sortOrder(), now));
+                jdbc.update("""
+                    update clause set segmentation_provider = ?,
+                           segmentation_profile_version = ?,
+                           structure_confidence = ?,
+                           source_block_ids_json = ?::jsonb
+                     where id = ? and organization_id = ?
+                    """, enriched.providerCode(), enriched.providerVersion(),
+                    BigDecimal.valueOf(0.8), "[]", id, organizationId);
                 if (clause.sourceId() != null) {
                     sourceIds.put(clause.sourceId(), id);
                 }
             });
+        persistLayout(organizationId, version.id(), enriched.providerCode(),
+            enriched.providerVersion(), enriched.layoutBlocks(), pageIds);
+        persistRecurring(organizationId, version.id(), enriched.recurringElements());
         tables.saveAll(result.tables().stream().map(table -> new DocumentTable(
             UUID.randomUUID(), organizationId, version.id(), table.pageStart(),
             table.pageEnd(), table.caption(), table.markdownContent(),
@@ -128,6 +165,49 @@ public class DocumentExtractionPersistenceService {
         metrics.pagesExtracted(result.pages().size());
         metrics.clausesExtracted(result.clauses().size());
         metrics.parserWarnings(result.warnings().size());
+    }
+
+    private void persistLayout(UUID organizationId, UUID versionId, String provider,
+                               String providerVersion, List<LayoutBlockDraft> blocks,
+                               Map<Integer, UUID> pageIds) {
+        for (LayoutBlockDraft block : blocks) {
+            jdbc.update("""
+                insert into document_layout_block (
+                    id, organization_id, document_version_id, page_id, block_index,
+                    block_type_code, text_content, normalized_text, bounding_box_json,
+                    font_metadata_json, list_metadata_json, table_metadata_json,
+                    reading_order, source_provider, provider_version, confidence, created_at
+                ) values (?, ?, ?, ?, ?, ?, ?, ?, '[]'::jsonb, '{}'::jsonb, '{}'::jsonb,
+                          '{}'::jsonb, ?, ?, ?, ?, now())
+                """, UUID.randomUUID(), organizationId, versionId,
+                pageIds.get(block.pageNumber()), block.blockIndex(),
+                nullToEmpty(block.blockTypeCode()), nullToEmpty(block.textContent()),
+                nullToEmpty(block.normalizedText()), block.readingOrder(),
+                nullToEmpty(provider), providerVersion,
+                BigDecimal.valueOf(block.confidence()));
+        }
+    }
+
+    private void persistRecurring(UUID organizationId, UUID versionId,
+                                  List<RecurringElementDraft> elements) {
+        for (RecurringElementDraft element : elements) {
+            jdbc.update("""
+                insert into recurring_page_element (
+                    id, organization_id, document_version_id, normalized_signature,
+                    element_type_code, page_occurrence_count, page_ratio,
+                    suppression_status, confidence, created_at
+                ) values (?, ?, ?, ?, ?, ?, ?, 'SUPPRESSED', ?, now())
+                """, UUID.randomUUID(), organizationId, versionId,
+                truncate(nullToEmpty(element.normalizedSignature()), 512),
+                nullToEmpty(element.elementTypeCode()),
+                element.pageOccurrenceCount(),
+                BigDecimal.valueOf(element.pageRatio()),
+                BigDecimal.valueOf(element.confidence()));
+        }
+    }
+
+    private static String truncate(String value, int max) {
+        return value.length() <= max ? value : value.substring(0, max);
     }
 
     private String hashOrCalculate(String hash, String content) {

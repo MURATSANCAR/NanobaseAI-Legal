@@ -105,6 +105,7 @@ specai:
     tenant-name: ${SPECAI_BOOTSTRAP_TENANT_NAME:Local Tenant}
   storage:
     endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+    public-endpoint: ${MINIO_PUBLIC_ENDPOINT:${MINIO_ENDPOINT:http://localhost:9000}}
     access-key: ${MINIO_ACCESS_KEY:specai}
     secret-key: ${MINIO_SECRET_KEY}
     original-bucket: specai-original

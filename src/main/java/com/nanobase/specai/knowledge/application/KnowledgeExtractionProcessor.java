@@ -52,6 +52,7 @@ public class KnowledgeExtractionProcessor {
     /**
      * Prepares evidence and marks the job RUNNING in its own transaction so the UI
      * can leave QUEUED before the (possibly long) AI call starts.
+     * Returns null when the job was reused from an existing extraction.
      */
     @Transactional
     public PreparedJob prepareRunning(UUID organizationId, UUID jobId) {
@@ -64,30 +65,107 @@ public class KnowledgeExtractionProcessor {
         UUID versionId = (UUID) job.get("document_version_id");
         UUID profileId = (UUID) job.get("profile_id");
         UUID correlationId = (UUID) job.get("correlation_id");
-        Profile profile = profile(organizationId, profileId);
-        List<Map<String, Object>> fragments = evidenceFragments(
-            organizationId, documentId, versionId);
-        evidencePolicies.assess(organizationId, versionId);
-        jdbc.update("""
-            update knowledge_extraction_job set status = 'RUNNING',
-                started_at = clock_timestamp(), total_fragment_count = ?,
-                updated_at = clock_timestamp(), version = version + 1
-            where id = ? and organization_id = ?
-            """, fragments.size(), jobId, organizationId);
-        jobs.event(organizationId, jobId, "STARTED", 0,
-            "Knowledge extraction started", Map.of("fragmentCount", fragments.size()));
-        jobs.event(organizationId, jobId, "PROGRESS", 25,
-            "Evidence fragments and validity assessments prepared",
-            Map.of("fragmentCount", fragments.size()));
-        outbox.publish(organizationId, "KnowledgeExtraction", jobId,
-            "KnowledgeExtractionStarted", "knowledge.extraction.started.v1",
-            Map.of("jobId", jobId, "fragmentCount", fragments.size()), correlationId);
-        outbox.publish(organizationId, "KnowledgeExtraction", jobId,
-            "KnowledgeExtractionProgress", "knowledge.extraction.progress.v1",
-            Map.of("jobId", jobId, "progress", 25,
-                "fragmentCount", fragments.size()), correlationId);
-        return new PreparedJob(organizationId, jobId, versionId, correlationId,
-            profile, fragments);
+
+        UUID prepareStageId = beginStage(organizationId, jobId, "PREPARE");
+        try {
+            // Resolve document purpose from document_type
+            String documentType = jdbc.queryForObject("""
+                select document_type from document
+                where id = ? and organization_id = ?
+                """, String.class, documentId, organizationId);
+            String purposeCode = "CERTIFICATE".equals(documentType) ? "CERTIFICATE" : "TENDER_SPEC";
+
+            // Purpose isolation: check if a completed job with entities already exists
+            List<UUID> existingJobs = jdbc.query("""
+                select id from knowledge_extraction_job
+                where organization_id = ? and document_version_id = ?
+                  and document_purpose_code = ? and status = 'COMPLETED'
+                  and id != ?
+                limit 1
+                """, (rs, row) -> rs.getObject(1, UUID.class),
+                organizationId, versionId, purposeCode, jobId);
+            if (!existingJobs.isEmpty()) {
+                Integer entityCount = jdbc.queryForObject("""
+                    select count(*) from knowledge_entity
+                    where organization_id = ? and source_reference_id in (
+                        select id from evidence_fragment
+                        where organization_id = ? and document_version_id = ?
+                    )
+                    """, Integer.class, organizationId, organizationId, versionId);
+                if (entityCount != null && entityCount > 0) {
+                    completeStage(organizationId, prepareStageId, "COMPLETED", null, null);
+                    jdbc.update("""
+                        update knowledge_extraction_job set status = 'COMPLETED',
+                            existing_knowledge_used = true, document_purpose_code = ?,
+                            completed_at = clock_timestamp(), updated_at = clock_timestamp(),
+                            version = version + 1
+                        where id = ? and organization_id = ?
+                        """, purposeCode, jobId, organizationId);
+                    jobs.event(organizationId, jobId, "COMPLETED", 100,
+                        "Knowledge reused from existing extraction",
+                        Map.of("purposeCode", purposeCode,
+                            "reusedFromJob", existingJobs.getFirst()));
+                    outbox.publish(organizationId, "KnowledgeExtraction", jobId,
+                        "KnowledgeExtractionCompleted", "knowledge.extraction.completed.v1",
+                        Map.of("jobId", jobId, "existingKnowledgeUsed", true), correlationId);
+                    return null;
+                }
+            }
+
+            Profile profile = profile(organizationId, profileId);
+            List<Map<String, Object>> fragments = evidenceFragments(
+                organizationId, documentId, versionId);
+            // Purpose isolation: cap fragments by purpose type
+            int fragmentCap = "CERTIFICATE".equals(purposeCode) ? 40 : 200;
+            if (fragments.size() > fragmentCap) {
+                fragments = List.copyOf(fragments.subList(0, fragmentCap));
+            }
+            evidencePolicies.assess(organizationId, versionId);
+
+            jdbc.update("""
+                update knowledge_extraction_job set status = 'RUNNING',
+                    started_at = clock_timestamp(), total_fragment_count = ?,
+                    document_purpose_code = ?,
+                    updated_at = clock_timestamp(), version = version + 1
+                where id = ? and organization_id = ?
+                """, fragments.size(), purposeCode, jobId, organizationId);
+            completeStage(organizationId, prepareStageId, "COMPLETED", null, null);
+            jobs.event(organizationId, jobId, "STARTED", 0,
+                "Knowledge extraction started",
+                Map.of("fragmentCount", fragments.size(), "purposeCode", purposeCode));
+            jobs.event(organizationId, jobId, "PROGRESS", 25,
+                "Evidence fragments and validity assessments prepared",
+                Map.of("fragmentCount", fragments.size()));
+            outbox.publish(organizationId, "KnowledgeExtraction", jobId,
+                "KnowledgeExtractionStarted", "knowledge.extraction.started.v1",
+                Map.of("jobId", jobId, "fragmentCount", fragments.size()), correlationId);
+            outbox.publish(organizationId, "KnowledgeExtraction", jobId,
+                "KnowledgeExtractionProgress", "knowledge.extraction.progress.v1",
+                Map.of("jobId", jobId, "progress", 25,
+                    "fragmentCount", fragments.size()), correlationId);
+            return new PreparedJob(organizationId, jobId, versionId, correlationId,
+                profile, fragments);
+        } catch (RuntimeException failure) {
+            String errorCode = errorCode(failure);
+            completeStage(organizationId, prepareStageId, "FAILED", errorCode,
+                truncate(friendlyMessage(failure)));
+            jdbc.update("""
+                update knowledge_extraction_job set status = 'FAILED',
+                    error_code = ?, error_message = ?,
+                    completed_at = clock_timestamp(), updated_at = clock_timestamp(),
+                    version = version + 1
+                where id = ? and organization_id = ?
+                  and status not in ('COMPLETED', 'FAILED', 'CANCELLED')
+                """, errorCode, truncate(friendlyMessage(failure)), jobId, organizationId);
+            jobs.event(organizationId, jobId, "FAILED", 100,
+                "Knowledge extraction preparation failed",
+                Map.of("errorCode", errorCode));
+            outbox.publish(organizationId, "KnowledgeExtraction", jobId,
+                "KnowledgeExtractionFailed", "knowledge.extraction.failed.v1",
+                Map.of("jobId", jobId, "errorCode", errorCode),
+                (UUID) job.get("correlation_id"));
+            return null;
+        }
     }
 
     /**
@@ -104,13 +182,24 @@ public class KnowledgeExtractionProcessor {
         UUID jobId = prepared.jobId();
         UUID correlationId = prepared.correlationId();
         Profile profile = prepared.profile();
+        UUID currentStageId = null;
+        String currentStageName = null;
         try {
+            currentStageName = "AI_EXTRACT";
+            currentStageId = beginStage(organizationId, jobId, currentStageName);
             var response = gateway.extract(new KnowledgeRequest(jobId, organizationId,
                 "nanobase-spec-ai", profile.modelProfile(), profile.promptComponents(),
                 profile.outputSchema(), profile.ontologyConcepts(), prepared.fragments(),
                 4096, correlationId));
+            completeStage(organizationId, currentStageId, "COMPLETED", null, null);
+
+            currentStageName = "PERSIST";
+            currentStageId = beginStage(organizationId, jobId, currentStageName);
             PersistResult persisted = persistOutput(organizationId, jobId,
                 prepared.versionId(), profile.ontologyVersionId(), response.output());
+            completeStage(organizationId, currentStageId, "COMPLETED", null, null);
+            currentStageId = null;
+
             jobs.event(organizationId, jobId, "PROGRESS", 80,
                 "Knowledge graph output validated and persisted",
                 Map.of("entityCount", persisted.entities()));
@@ -153,6 +242,9 @@ public class KnowledgeExtractionProcessor {
         } catch (RuntimeException failure) {
             String errorCode = errorCode(failure);
             String errorMessage = truncate(friendlyMessage(failure));
+            if (currentStageId != null) {
+                completeStage(organizationId, currentStageId, "FAILED", errorCode, errorMessage);
+            }
             jdbc.update("""
                 update knowledge_extraction_job set status = 'FAILED',
                     error_code = ?, error_message = ?,
@@ -171,6 +263,32 @@ public class KnowledgeExtractionProcessor {
             // Do not rethrow: that would roll back FAILED and leave the job RUNNING/QUEUED
             // while idempotency already marks the event consumed.
         }
+    }
+
+    private UUID beginStage(UUID organizationId, UUID jobId, String stageCode) {
+        UUID stageId = UUID.randomUUID();
+        jdbc.update("""
+            insert into knowledge_extraction_run_stage (
+                id, organization_id, knowledge_job_id, stage_code, status_code, started_at
+            ) values (?, ?, ?, ?, 'RUNNING', clock_timestamp())
+            """, stageId, organizationId, jobId, stageCode);
+        jdbc.update("""
+            update knowledge_extraction_job set current_stage_code = ?,
+                updated_at = clock_timestamp(), version = version + 1
+            where id = ? and organization_id = ?
+            """, stageCode, jobId, organizationId);
+        return stageId;
+    }
+
+    private void completeStage(UUID organizationId, UUID stageId, String statusCode,
+                               String errorCode, String detail) {
+        jdbc.update("""
+            update knowledge_extraction_run_stage
+            set status_code = ?, completed_at = clock_timestamp(),
+                duration_ms = extract(epoch from (clock_timestamp() - started_at)) * 1000,
+                error_code = ?, sanitized_error_detail = ?
+            where id = ? and organization_id = ?
+            """, statusCode, errorCode, detail, stageId, organizationId);
     }
 
     private static String errorCode(RuntimeException failure) {

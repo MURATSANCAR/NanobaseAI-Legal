@@ -19,6 +19,7 @@ import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Locale;
 import java.util.stream.StreamSupport;
 import io.minio.messages.Item;
 import org.springframework.beans.factory.annotation.Value;
@@ -27,12 +28,26 @@ import org.springframework.stereotype.Component;
 @Component
 public class MinioObjectStorage implements ObjectStorage {
     private final MinioClient client;
+    private final MinioClient publicClient;
     private final String bucket;
+    private final String internalEndpoint;
+    private final String publicEndpoint;
 
     public MinioObjectStorage(MinioClient client,
-                              @Value("${specai.storage.original-bucket}") String bucket) {
+                              @Value("${specai.storage.original-bucket}") String bucket,
+                              @Value("${specai.storage.endpoint}") String internalEndpoint,
+                              @Value("${specai.storage.public-endpoint:${specai.storage.endpoint}}")
+                              String publicEndpoint,
+                              @Value("${specai.storage.access-key}") String accessKey,
+                              @Value("${specai.storage.secret-key}") String secretKey) {
         this.client = client;
         this.bucket = bucket;
+        this.internalEndpoint = trimSlash(internalEndpoint);
+        this.publicEndpoint = trimSlash(publicEndpoint);
+        this.publicClient = MinioClient.builder()
+            .endpoint(this.publicEndpoint)
+            .credentials(accessKey, secretKey)
+            .build();
     }
 
     @Override
@@ -57,12 +72,35 @@ public class MinioObjectStorage implements ObjectStorage {
     @Override
     public URI signedDownloadUrl(String objectKey, Duration validity) {
         try {
-            String url = client.getPresignedObjectUrl(GetPresignedObjectUrlArgs.builder()
+            // Sign against the public endpoint so browsers never receive Docker-only hosts.
+            String url = publicClient.getPresignedObjectUrl(GetPresignedObjectUrlArgs.builder()
                 .method(Method.GET).bucket(bucket).object(objectKey)
                 .expiry(Math.toIntExact(validity.toSeconds())).build());
-            return URI.create(url);
+            URI signed = URI.create(url);
+            assertPublicHost(signed);
+            return signed;
         } catch (Exception exception) {
             throw new IllegalStateException("Signed URL creation failed", exception);
+        }
+    }
+
+    @Override
+    public InputStream open(String objectKey) {
+        try {
+            return client.getObject(GetObjectArgs.builder().bucket(bucket).object(objectKey).build());
+        } catch (Exception exception) {
+            throw new IllegalStateException("Object storage read failed", exception);
+        }
+    }
+
+    @Override
+    public StoredObjectStat stat(String objectKey) {
+        try {
+            StatObjectResponse response = client.statObject(StatObjectArgs.builder()
+                .bucket(bucket).object(objectKey).build());
+            return new StoredObjectStat(objectKey, response.size(), response.contentType());
+        } catch (Exception exception) {
+            throw new IllegalStateException("Object storage stat failed", exception);
         }
     }
 
@@ -125,5 +163,24 @@ public class MinioObjectStorage implements ObjectStorage {
         } catch (Exception exception) {
             throw new IllegalStateException("Object listing failed", exception);
         }
+    }
+
+    private void assertPublicHost(URI signed) {
+        String host = signed.getHost() == null ? "" : signed.getHost().toLowerCase(Locale.ROOT);
+        if (host.contains("docker") || host.endsWith(".internal")
+            || host.equals("minio") || host.contains("actenora-prodlike-minio")) {
+            // Allow only when public endpoint intentionally equals internal for local loops.
+            if (!publicEndpoint.equalsIgnoreCase(internalEndpoint)) {
+                throw new IllegalStateException(
+                    "Browser download URL must not use internal Docker hostname: " + host);
+            }
+        }
+    }
+
+    private static String trimSlash(String value) {
+        if (value == null || value.isBlank()) {
+            return "http://localhost:9000";
+        }
+        return value.endsWith("/") ? value.substring(0, value.length() - 1) : value;
     }
 }

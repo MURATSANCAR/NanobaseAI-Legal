@@ -84,4 +84,16 @@ public class ReportingController {
     DownloadUrlResponse download(@PathVariable UUID id) {
         return reports.download(id);
     }
+
+    @GetMapping("/report-artifacts/{id}/download")
+    org.springframework.http.ResponseEntity<org.springframework.core.io.InputStreamResource>
+    downloadProxy(@PathVariable UUID id) {
+        DynamicReportingService.StreamingDownload stream = reports.openDownload(id);
+        return org.springframework.http.ResponseEntity.ok()
+            .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION,
+                "attachment; filename=\"" + stream.fileName() + "\"")
+            .contentType(org.springframework.http.MediaType.parseMediaType(stream.mimeType()))
+            .contentLength(stream.size())
+            .body(new org.springframework.core.io.InputStreamResource(stream.content()));
+    }
 }

@@ -91,6 +91,18 @@ public class DocumentController {
         return new DownloadUrlResponse(url.toString(), 300);
     }
 
+    @GetMapping("/documents/{documentId}/download")
+    org.springframework.http.ResponseEntity<org.springframework.core.io.InputStreamResource>
+    download(@PathVariable UUID documentId) {
+        DocumentService.StreamingDownload stream = service.openDownload(documentId);
+        return org.springframework.http.ResponseEntity.ok()
+            .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION,
+                "attachment; filename=\"" + stream.fileName() + "\"")
+            .contentType(MediaType.parseMediaType(stream.mimeType()))
+            .contentLength(stream.size())
+            .body(new org.springframework.core.io.InputStreamResource(stream.content()));
+    }
+
     @GetMapping("/documents/{documentId}/pages")
     PageResponse<DocumentPageResponse> pages(
         @PathVariable UUID documentId,

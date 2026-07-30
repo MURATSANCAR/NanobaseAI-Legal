@@ -48,7 +48,8 @@ class DocumentExtractionPersistenceServiceTest {
         service = new DocumentExtractionPersistenceService(
             versions, pages, clauses, tables, warnings, tenant, new ObjectMapper(),
             new PlatformMetrics(new SimpleMeterRegistry(),
-                mock(OutboxEventRepository.class)));
+                mock(OutboxEventRepository.class)),
+            mock(org.springframework.jdbc.core.JdbcTemplate.class));
     }
 
     @Test

@@ -20,7 +20,7 @@ public class ClauseSegmentationService {
         this.providers = List.copyOf(providers);
     }
 
-    public DocumentExtractionResult enrich(DocumentExtractionResult extraction) {
+    public EnrichedExtraction enrich(DocumentExtractionResult extraction) {
         List<ExtractedClause> current = extraction.clauses() == null
             ? List.of() : extraction.clauses();
         ClauseSegmentationContext context = new ClauseSegmentationContext(extraction, current);
@@ -46,7 +46,7 @@ public class ClauseSegmentationService {
                 null,
                 Map.of("providers", providers.stream().map(ClauseSegmentationProvider::providerCode)
                     .toList())));
-            return new DocumentExtractionResult(
+            DocumentExtractionResult empty = new DocumentExtractionResult(
                 extraction.documentVersionId(),
                 extraction.provider(),
                 extraction.providerVersion(),
@@ -60,6 +60,7 @@ public class ClauseSegmentationService {
                 withMeta(extraction.metadata(), Map.of(
                     "clauseSegmentation", "EMPTY",
                     "clauseCount", 0)));
+            return new EnrichedExtraction(empty, "NONE", "1.0", List.of(), List.of(), false);
         }
         Map<String, Object> meta = withMeta(extraction.metadata(), Map.of(
             "clauseSegmentationProvider", chosen.providerCode(),
@@ -76,7 +77,7 @@ public class ClauseSegmentationService {
                 null,
                 Map.of("provider", chosen.providerCode())));
         }
-        return new DocumentExtractionResult(
+        DocumentExtractionResult enriched = new DocumentExtractionResult(
             extraction.documentVersionId(),
             extraction.provider(),
             extraction.providerVersion(),
@@ -88,6 +89,13 @@ public class ClauseSegmentationService {
             extraction.tables(),
             warnings,
             meta);
+        return new EnrichedExtraction(
+            enriched,
+            chosen.providerCode(),
+            chosen.providerVersion(),
+            chosen.layoutBlocks(),
+            chosen.recurringElements(),
+            chosen.usedFallback());
     }
 
     private static Map<String, Object> withMeta(Map<String, Object> base, Map<String, Object> extra) {

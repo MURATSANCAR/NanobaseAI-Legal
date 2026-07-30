@@ -38,6 +38,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -63,6 +64,7 @@ public class DocumentService {
     private final BackpressureService backpressure;
     private final ClauseRepository clauses;
     private final ProcessingJobService processingJobs;
+    private final JdbcTemplate jdbc;
     private final long maximumFileSize;
     private final Clock clock;
 
@@ -73,11 +75,12 @@ public class DocumentService {
                            FileTypeInspector fileTypeInspector, ClauseRepository clauses,
                            ProcessingJobService processingJobs, FileSecurityService fileSecurity,
                            QuotaService quotas, BackpressureService backpressure,
+                           JdbcTemplate jdbc,
                            @Value("${specai.documents.max-file-size-bytes:104857600}")
                            long maximumFileSize) {
         this(documents, versions, access, audit, outbox, storage, currentTenant,
             fileTypeInspector, clauses, processingJobs, fileSecurity, quotas, backpressure,
-            maximumFileSize, Clock.systemUTC());
+            jdbc, maximumFileSize, Clock.systemUTC());
     }
 
     DocumentService(DocumentRepository documents, DocumentVersionRepository versions,
@@ -86,7 +89,7 @@ public class DocumentService {
                     FileTypeInspector fileTypeInspector, ClauseRepository clauses,
                     ProcessingJobService processingJobs, FileSecurityService fileSecurity,
                     QuotaService quotas, BackpressureService backpressure,
-                    long maximumFileSize, Clock clock) {
+                    JdbcTemplate jdbc, long maximumFileSize, Clock clock) {
         this.documents = documents;
         this.versions = versions;
         this.access = access;
@@ -100,6 +103,7 @@ public class DocumentService {
         this.backpressure = backpressure;
         this.clauses = clauses;
         this.processingJobs = processingJobs;
+        this.jdbc = jdbc;
         this.maximumFileSize = maximumFileSize;
         this.clock = clock;
     }
@@ -251,8 +255,29 @@ public class DocumentService {
         DocumentVersion version = currentVersion(document, principal.tenantId());
         URI url = storage.signedDownloadUrl(version.objectStorageKey(), Duration.ofMinutes(5));
         audit.record("DOCUMENT_DOWNLOADED", "Document", documentId, null,
-            Map.of("documentVersionId", version.id(), "expiresInSeconds", 300));
+            Map.of("documentVersionId", version.id(), "expiresInSeconds", 300,
+                "accessMode", "PRESIGNED"));
         return url;
+    }
+
+    @Transactional(readOnly = true)
+    public StreamingDownload openDownload(UUID documentId) {
+        TenantPrincipal principal = currentTenant.require();
+        Document document = requireDocument(documentId, principal);
+        access.requireDocumentView(document.projectId(), principal);
+        DocumentVersion version = currentVersion(document, principal.tenantId());
+        ObjectStorage.StoredObjectStat stat = storage.stat(version.objectStorageKey());
+        audit.record("DOCUMENT_PROXY_DOWNLOADED", "Document", documentId, null,
+            Map.of("documentVersionId", version.id(), "accessMode", "PROXY"));
+        return new StreamingDownload(
+            storage.open(version.objectStorageKey()),
+            version.originalFileName() == null ? "document.bin" : version.originalFileName(),
+            version.mimeType() == null ? "application/octet-stream" : version.mimeType(),
+            stat.size());
+    }
+
+    public record StreamingDownload(InputStream content, String fileName, String mimeType,
+                                    long size) {
     }
 
     @Transactional(readOnly = true)
