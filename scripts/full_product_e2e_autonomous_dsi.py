@@ -111,12 +111,17 @@ def api(method: str, path: str, tok: str, data=None, timeout: int = 180):
             raw = r.read()
             return r.status, (json.loads(raw) if raw else {})
     except urllib.error.HTTPError as exc:
-        raw = exc.read().decode(errors="replace")
+        try:
+            raw = exc.read().decode(errors="replace")
+        except Exception:  # noqa: BLE001
+            raw = ""
         try:
             parsed = json.loads(raw) if raw else {}
         except json.JSONDecodeError:
             parsed = {"raw": raw[:2000]}
         return exc.code, parsed
+    except Exception as exc:  # noqa: BLE001
+        return 599, {"error": str(exc)}
 
 
 def upload(tok: str, project_id: str, pdf: Path) -> dict:
@@ -260,10 +265,16 @@ def main() -> int:
     step("3_upload", documentId=doc_id, versionId=version_id, bytes=PDF_PATH.stat().st_size)
 
     dcode, dl = api("GET", f"/api/v1/documents/{doc_id}/download-url", tok)
+    if dcode >= 400:
+        # Retry once after short delay (backend may still be warming MinIO client).
+        time.sleep(3)
+        dcode, dl = api("GET", f"/api/v1/documents/{doc_id}/download-url", tok)
     url = dl.get("url") or ""
     host = urlparse(url).hostname if url else None
     step("4_presign", http=dcode, host=host)
-    if host and ("actenora" in host or host == "minio"):
+    if dcode >= 400:
+        step("4_presign_fallback", detail="presign failed; proxy download is authoritative")
+    elif host and ("actenora" in host or host == "minio"):
         fail(f"presign host is Docker-internal: {host}", "OBJECT_DOWNLOAD")
 
     http, size = proxy_download(tok, f"/api/v1/documents/{doc_id}/download", SRC_DL)
