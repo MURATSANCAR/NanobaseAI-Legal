@@ -2,6 +2,7 @@ package com.nanobase.specai.shared.api;
 
 import com.nanobase.specai.document.application.InvalidDocumentException;
 import com.nanobase.specai.identity.application.InvalidCredentialsException;
+import com.nanobase.specai.operations.application.FeatureDisabledException;
 import com.nanobase.specai.operations.application.ResourceQuotaExceededException;
 import com.nanobase.specai.operations.application.WorkloadCapacityException;
 import com.nanobase.specai.shared.security.MissingTenantException;
@@ -79,6 +80,15 @@ public class ApiExceptionHandler {
             exception instanceof InvalidDocumentException
                 ? "DOCUMENT_UPLOAD_FAILED" : "BUSINESS_RULE_VIOLATION",
             exception.getMessage(), request, List.of());
+    }
+
+    @ExceptionHandler(FeatureDisabledException.class)
+    ProblemDetail featureDisabled(FeatureDisabledException exception, HttpServletRequest request) {
+        ProblemDetail detail = problem(HttpStatus.CONFLICT, "Feature disabled",
+            "FEATURE_DISABLED", exception.getMessage(), request, List.of());
+        detail.setProperty("featureCode", exception.featureCode());
+        detail.setProperty("errorCode", exception.errorCode());
+        return detail;
     }
 
     @ExceptionHandler(IllegalStateException.class)

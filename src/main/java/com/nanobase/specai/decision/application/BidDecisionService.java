@@ -1,6 +1,7 @@
 package com.nanobase.specai.decision.application;
 
 import com.nanobase.specai.operations.application.FeatureFlagService;
+import com.nanobase.specai.operations.application.FeatureDisabledException;
 import com.nanobase.specai.operations.application.TenderIntelligenceFlags;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Clock;
@@ -122,7 +123,7 @@ public class BidDecisionService {
 
     private void requireEnabled(UUID organizationId, UUID projectId) {
         if (!flags.enabled(organizationId, projectId, TenderIntelligenceFlags.BID_DECISION)) {
-            throw new IllegalStateException("BID_DECISION_ENABLED is off");
+            throw new FeatureDisabledException(TenderIntelligenceFlags.BID_DECISION);
         }
     }
 

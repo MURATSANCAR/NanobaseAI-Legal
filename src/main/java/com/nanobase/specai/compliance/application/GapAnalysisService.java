@@ -53,6 +53,39 @@ public class GapAnalysisService {
         if (!flags.enabled(organizationId, projectId, TenderIntelligenceFlags.GAP_ANALYSIS)) {
             throw new IllegalStateException("GAP_ANALYSIS_ENABLED is off");
         }
+        return createGapIdempotent(organizationId, projectId, draft, actor);
+    }
+
+    /**
+     * Creates a gap unless an open gap of the same type already exists for the requirement.
+     * Returns null when an open duplicate already exists.
+     */
+    @Transactional
+    public UUID createGapIdempotent(UUID organizationId, UUID projectId, GapDraft draft,
+                                    String actor) {
+        if (!flags.enabled(organizationId, projectId, TenderIntelligenceFlags.GAP_ANALYSIS)) {
+            return null;
+        }
+        UUID existing = jdbc.query("""
+            select id from compliance_gap
+             where organization_id = ? and project_id = ? and requirement_id = ?
+               and gap_type = ?
+               and status in ('OPEN', 'PLANNED', 'IN_PROGRESS')
+             limit 1
+            """, rs -> rs.next() ? rs.getObject(1, UUID.class) : null,
+            organizationId, projectId, draft.requirementId(), draft.gapType());
+        if (existing != null) {
+            jdbc.update("""
+                update compliance_gap
+                   set assessment_id = coalesce(?, assessment_id),
+                       description = ?,
+                       missing_elements_json = ?::jsonb,
+                       updated_at = ?
+                 where id = ? and organization_id = ?
+                """, draft.assessmentId(), draft.description(),
+                toJsonArray(draft.missingElements()), clock.instant(), existing, organizationId);
+            return null;
+        }
         UUID id = UUID.randomUUID();
         Instant now = clock.instant();
         jdbc.update("""

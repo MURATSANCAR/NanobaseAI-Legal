@@ -32,10 +32,13 @@ import com.nanobase.specai.analysis.domain.RequirementRevision;
 import com.nanobase.specai.analysis.domain.RequirementRevisionRepository;
 import com.nanobase.specai.analysis.infrastructure.AnalysisPersistenceStore;
 import com.nanobase.specai.analysis.integration.AnalysisEvents.AnalysisProgress;
+import com.nanobase.specai.audit.application.AuditService;
 import com.nanobase.specai.document.domain.Clause;
 import com.nanobase.specai.document.domain.ClauseRepository;
 import com.nanobase.specai.integration.outbox.OutboxService;
 import com.nanobase.specai.integration.outbox.RabbitConfiguration;
+import com.nanobase.specai.operations.application.FeatureFlagService;
+import com.nanobase.specai.operations.application.TenderIntelligenceFlags;
 import com.nanobase.specai.shared.security.TenantDatabaseContext;
 import java.text.Normalizer;
 import java.time.Clock;
@@ -73,6 +76,10 @@ public class RequirementExtractionProcessor {
     private final AnalysisPersistenceStore store;
     private final OutboxService outbox;
     private final ObjectMapper mapper;
+    private final FeatureFlagService featureFlags;
+    private final RequirementClassificationValidator classificationValidator;
+    private final RequirementConditionExtractor conditionExtractor;
+    private final AuditService audit;
     private final Clock clock = Clock.systemUTC();
 
     public RequirementExtractionProcessor(
@@ -96,7 +103,11 @@ public class RequirementExtractionProcessor {
         RequirementRevisionRepository revisions,
         AnalysisPersistenceStore store,
         OutboxService outbox,
-        ObjectMapper mapper) {
+        ObjectMapper mapper,
+        FeatureFlagService featureFlags,
+        RequirementClassificationValidator classificationValidator,
+        RequirementConditionExtractor conditionExtractor,
+        AuditService audit) {
         this.tenantDatabase = tenantDatabase;
         this.jobs = jobs;
         this.profiles = profiles;
@@ -118,6 +129,10 @@ public class RequirementExtractionProcessor {
         this.store = store;
         this.outbox = outbox;
         this.mapper = mapper;
+        this.featureFlags = featureFlags;
+        this.classificationValidator = classificationValidator;
+        this.conditionExtractor = conditionExtractor;
+        this.audit = audit;
     }
 
     @Transactional
@@ -147,6 +162,7 @@ public class RequirementExtractionProcessor {
         int processed = 0;
         int extracted = 0;
         int reviews = 0;
+        int classificationFailures = 0;
         try {
             for (Clause clause : sourceClauses) {
                 ClauseSignalResult signal = signalEvaluator.evaluate(
@@ -156,6 +172,7 @@ public class RequirementExtractionProcessor {
                         ClauseOutcome outcome = extractClause(job, profile, clause, signal);
                         extracted += outcome.extracted();
                         reviews += outcome.reviews();
+                        classificationFailures += outcome.classificationFailures();
                     } catch (RuntimeException clauseFailure) {
                         reviews++;
                         store.event(organizationId, job.id(), "CLAUSE_REVIEW_REQUIRED",
@@ -183,9 +200,16 @@ public class RequirementExtractionProcessor {
                     "RequirementExtractionProgress", RabbitConfiguration.REQUIREMENT_PROGRESS,
                     progressPayload(job), job.correlationId());
             }
-            job.complete(clock.instant());
-            store.event(organizationId, job.id(), "COMPLETED", 100,
-                "Requirement extraction completed", progressPayload(job), clock.instant());
+            if (classificationFailures > 0) {
+                job.partiallyComplete(clock.instant());
+                store.event(organizationId, job.id(), "PARTIALLY_COMPLETED", 100,
+                    "Requirement extraction completed with classification failures",
+                    Map.of("classificationFailures", classificationFailures), clock.instant());
+            } else {
+                job.complete(clock.instant());
+                store.event(organizationId, job.id(), "COMPLETED", 100,
+                    "Requirement extraction completed", progressPayload(job), clock.instant());
+            }
             outbox.publish(organizationId, "RequirementExtraction", job.id(),
                 "RequirementExtractionCompleted", RabbitConfiguration.REQUIREMENT_COMPLETED,
                 progressPayload(job), job.correlationId());
