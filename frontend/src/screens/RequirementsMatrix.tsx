@@ -221,6 +221,22 @@ export function RequirementsMatrix({ project, documents, token, canWrite, onProb
     }
   }
 
+  async function reviewRequirement(reviewStatus: string) {
+    if (!selectedDetail) return;
+    try {
+      const updated = await requirementApi.review(token, selectedDetail.id, {
+        reviewStatus,
+        reason: `UI review: ${reviewStatus}`,
+        approvedForLearning: reviewStatus === "APPROVED",
+      });
+      setSelectedDetail(updated);
+      await load();
+      onNotify(`Gereksinim ${reviewStatus === "APPROVED" ? "onaylandı" : "incelendi"}`);
+    } catch (error) {
+      onProblem(error);
+    }
+  }
+
   return <section className="panel requirement-matrix card-static">
     <div className="panel-head mobile-toolbar"><div><b>Dinamik gereksinim matrisi</b>
       <span>Kolonlar aktif ontology ve attributes şemasından yüklenir</span></div>
@@ -279,7 +295,19 @@ export function RequirementsMatrix({ project, documents, token, canWrite, onProb
           <div><dt>Classification</dt><dd>{selectedDetail.classificationStatus || "—"}</dd></div>
           <div><dt>Review</dt><dd>{selectedDetail.reviewStatus}</dd></div>
           <div><dt>Grounding</dt><dd>{selectedDetail.groundingStatus}</dd></div>
+          <div><dt>Kaynak metin</dt><dd className="whitespace-pre-wrap">
+            {selectedDetail.requirementText}</dd></div>
         </dl>
+        {canWrite && (
+          <div className="requirement-actions mobile-toolbar" style={{ marginTop: 12 }}>
+            <button type="button" className="btn-primary"
+              onClick={() => void reviewRequirement("APPROVED")}>Onayla</button>
+            <button type="button"
+              onClick={() => void reviewRequirement("NEEDS_EDIT")}>Düzenleme gerekli</button>
+            <button type="button" className="danger"
+              onClick={() => void reviewRequirement("REJECTED")}>Reddet</button>
+          </div>
+        )}
       </div>
     )}
   </section>;

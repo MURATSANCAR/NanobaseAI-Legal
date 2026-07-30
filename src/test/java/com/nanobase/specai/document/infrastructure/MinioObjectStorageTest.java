@@ -28,7 +28,8 @@ class MinioObjectStorageTest {
         when(client.getObject(any())).thenReturn(new GetObjectResponse(
             new Headers.Builder().build(), "specai-original", "us-east-1",
             "temp", new ByteArrayInputStream(content)));
-        MinioObjectStorage storage = new MinioObjectStorage(client, "specai-original");
+        MinioObjectStorage storage = new MinioObjectStorage(client, "specai-original",
+            "http://localhost:9000", "http://localhost:9000", "minioadmin", "minioadmin");
 
         storage.finalizeObject("specai-temp/org/upload/spec.pdf",
             "specai-original/org/project/document/version/spec.pdf",
@@ -48,7 +49,8 @@ class MinioObjectStorageTest {
         when(client.getObject(any())).thenReturn(new GetObjectResponse(
             new Headers.Builder().build(), "specai-original", "us-east-1",
             "temp", new ByteArrayInputStream(content)));
-        MinioObjectStorage storage = new MinioObjectStorage(client, "specai-original");
+        MinioObjectStorage storage = new MinioObjectStorage(client, "specai-original",
+            "http://localhost:9000", "http://localhost:9000", "minioadmin", "minioadmin");
 
         assertThatThrownBy(() -> storage.finalizeObject("temporary", "final",
             content.length, "0".repeat(64)))

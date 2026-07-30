@@ -101,9 +101,39 @@ export const requirementApi = {
       `/api/v1/requirement-extractions/${jobId}`,
       token,
     ),
-  explanation: (token: string, requirementId: string) =>
-    apiRequest<Record<string, unknown>>(
-      `/api/v1/requirements/${requirementId}/explanation`,
+  review: (
+    token: string,
+    requirementId: string,
+    body: {
+      reviewStatus: string;
+      feedbackType?: string;
+      reason?: string;
+      approvedForLearning?: boolean;
+    },
+  ) =>
+    apiRequest<Requirement>(
+      `/api/v1/requirements/${requirementId}/review`,
       token,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
+  split: (
+    token: string,
+    requirementId: string,
+    body: Record<string, unknown>,
+  ) =>
+    apiRequest<Requirement[]>(
+      `/api/v1/requirements/${requirementId}/split`,
+      token,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
+  merge: (
+    token: string,
+    requirementId: string,
+    body: Record<string, unknown>,
+  ) =>
+    apiRequest<Requirement>(
+      `/api/v1/requirements/${requirementId}/merge`,
+      token,
+      { method: "POST", body: JSON.stringify(body) },
     ),
 };

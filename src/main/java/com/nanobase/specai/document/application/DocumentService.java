@@ -253,14 +253,24 @@ public class DocumentService {
         Document document = requireDocument(documentId, principal);
         access.requireDocumentView(document.projectId(), principal);
         DocumentVersion version = currentVersion(document, principal.tenantId());
-        URI url = storage.signedDownloadUrl(version.objectStorageKey(), Duration.ofMinutes(5));
+        Duration validity = Duration.ofMinutes(5);
+        URI url = storage.signedDownloadUrl(version.objectStorageKey(), validity);
         audit.record("DOCUMENT_DOWNLOADED", "Document", documentId, null,
             Map.of("documentVersionId", version.id(), "expiresInSeconds", 300,
                 "accessMode", "PRESIGNED"));
+        Instant expiresAt = clock.instant().plus(validity);
+        jdbc.update("""
+            insert into document_access_url_audit (
+                id, organization_id, subject_type, subject_id, access_mode,
+                public_host, expires_at, requested_by, correlation_id, created_at
+            ) values (?, ?, 'DOCUMENT', ?, 'PRESIGNED', ?, ?, ?, ?, now())
+            """, UUID.randomUUID(), principal.tenantId(), documentId,
+            url.getHost(), expiresAt, principal.subject(),
+            RequestContext.current().correlationId());
         return url;
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public StreamingDownload openDownload(UUID documentId) {
         TenantPrincipal principal = currentTenant.require();
         Document document = requireDocument(documentId, principal);
@@ -269,6 +279,13 @@ public class DocumentService {
         ObjectStorage.StoredObjectStat stat = storage.stat(version.objectStorageKey());
         audit.record("DOCUMENT_PROXY_DOWNLOADED", "Document", documentId, null,
             Map.of("documentVersionId", version.id(), "accessMode", "PROXY"));
+        jdbc.update("""
+            insert into document_access_url_audit (
+                id, organization_id, subject_type, subject_id, access_mode,
+                public_host, expires_at, requested_by, correlation_id, created_at
+            ) values (?, ?, 'DOCUMENT', ?, 'PROXY', 'proxy', null, ?, ?, now())
+            """, UUID.randomUUID(), principal.tenantId(), documentId,
+            principal.subject(), RequestContext.current().correlationId());
         return new StreamingDownload(
             storage.open(version.objectStorageKey()),
             version.originalFileName() == null ? "document.bin" : version.originalFileName(),

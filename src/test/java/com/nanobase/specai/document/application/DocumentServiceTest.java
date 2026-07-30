@@ -31,6 +31,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockMultipartFile;
 
 @ExtendWith(MockitoExtension.class)
@@ -52,6 +53,7 @@ class DocumentServiceTest {
     @Mock FileSecurityService fileSecurity;
     @Mock QuotaService quotas;
     @Mock BackpressureService backpressure;
+    @Mock JdbcTemplate jdbc;
     private DocumentService service;
 
     @BeforeEach
@@ -60,7 +62,7 @@ class DocumentServiceTest {
             new TenantPrincipal(ORGANIZATION, "manager-1", Set.of("TENDER_MANAGER")));
         service = new DocumentService(documents, versions, access, audit, outbox, storage,
             currentTenant, fileTypeInspector, clauses, processingJobs, fileSecurity, quotas,
-            backpressure, 10_000_000,
+            backpressure, jdbc, 10_000_000,
             Clock.fixed(Instant.parse("2026-07-27T12:00:00Z"), ZoneOffset.UTC));
     }
 

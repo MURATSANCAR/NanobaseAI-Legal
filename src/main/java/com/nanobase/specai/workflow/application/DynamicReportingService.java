@@ -357,7 +357,7 @@ public class DynamicReportingService {
     }
 
     @Transactional(readOnly = true)
-    public DocumentServiceStreaming openDownload(UUID artifactId) {
+    public StreamingDownload openDownload(UUID artifactId) {
         TenantPrincipal principal = currentTenant.require();
         Map<String, Object> row = jdbc.queryForMap("""
             select object_storage_key, file_name, mime_type, file_size
