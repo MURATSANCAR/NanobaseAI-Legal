@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import os
+import socket
 import time
 import uuid
 import re
@@ -15,12 +16,23 @@ from fastapi import FastAPI, Header, HTTPException, Request
 from jsonschema import Draft202012Validator
 from pydantic import BaseModel, ConfigDict, Field
 
+from capacity import CapacityLease, build_capacity_manager_from_env
+
 LOG = logging.getLogger("specai.ai_orchestrator")
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 FAULT_INJECTION_ENABLED = os.getenv("FAULT_INJECTION_ENABLED", "false").lower() == "true"
 FAULT_INJECTION_TOKEN = os.getenv("FAULT_INJECTION_TOKEN", "").strip()
+ORCHESTRATOR_INSTANCE_ID = os.getenv(
+    "ORCHESTRATOR_INSTANCE_ID",
+    f"{socket.gethostname()}-{os.getpid()}",
+)
 _FAULT_RULES: list[dict[str, Any]] = []
 _FAULT_EXECUTIONS: dict[str, int] = {}
+GLOBAL_CAPACITY = build_capacity_manager_from_env()
+CAPACITY_LEASE_TTL_MS = int(os.getenv("MODEL_CAPACITY_LEASE_TTL_MS", "120000"))
+CAPACITY_HEARTBEAT_INTERVAL_SECONDS = float(
+    os.getenv("MODEL_CAPACITY_HEARTBEAT_INTERVAL_SECONDS", "30")
+)
 LOGICAL_MODEL = "nanobase-spec-ai"
 PROMPT_SIGNAL_PATTERNS: tuple[tuple[str, re.Pattern[str], float], ...] = (
     ("authority_override", re.compile(
@@ -140,6 +152,19 @@ class ProfileSlotManager:
 
 
 PROFILE_SLOTS: dict[str, ProfileSlotManager] = {}
+if GLOBAL_CAPACITY is None:
+    LOG.warning(
+        "event=MODEL_CAPACITY_USING_PROCESS_LOCAL "
+        "instanceId=%s note=multi_orchestrator_capacity_not_enforced",
+        ORCHESTRATOR_INSTANCE_ID,
+    )
+else:
+    LOG.info(
+        "event=MODEL_CAPACITY_USING_GLOBAL provider=%s instanceId=%s leaseTtlMs=%s",
+        type(GLOBAL_CAPACITY).__name__,
+        ORCHESTRATOR_INSTANCE_ID,
+        CAPACITY_LEASE_TTL_MS,
+    )
 
 
 class ExtractionRequest(BaseModel):
@@ -359,7 +384,31 @@ def live() -> dict[str, str]:
 
 @app.get("/health/ready")
 def ready() -> dict[str, Any]:
-    return {"status": "UP", "configuredDeployments": len(DEPLOYMENTS)}
+    provider = "process-local" if GLOBAL_CAPACITY is None else type(GLOBAL_CAPACITY).__name__
+    return {
+        "status": "UP",
+        "configuredDeployments": len(DEPLOYMENTS),
+        "capacityProvider": provider,
+        "orchestratorInstanceId": ORCHESTRATOR_INSTANCE_ID,
+    }
+
+
+@app.get("/v1/capacity/{profile}/snapshot")
+def capacity_snapshot(profile: str) -> dict[str, Any]:
+    if GLOBAL_CAPACITY is None:
+        slot = PROFILE_SLOTS.get(profile)
+        return {
+            "provider": "process-local",
+            "profile": profile,
+            "active": None,
+            "maxConcurrency": None if slot is None else slot.max_concurrency,
+            "waiting": None if slot is None else slot._waiting,
+        }
+    snap = GLOBAL_CAPACITY.snapshot(profile)
+    snap["provider"] = type(GLOBAL_CAPACITY).__name__
+    snap["profile"] = profile
+    snap["orchestratorInstanceId"] = ORCHESTRATOR_INSTANCE_ID
+    return snap
 
 
 @app.post("/v1/extractions", response_model=ExtractionResponse)
@@ -535,17 +584,78 @@ async def _structured_runtime_call(
     if deployment.api_key:
         headers["Authorization"] = f"Bearer {deployment.api_key}"
 
-    slot = PROFILE_SLOTS.get(deployment.profile)
-    if slot is None:
-        slot = ProfileSlotManager(
+    capacity_lease: CapacityLease | None = None
+    local_slot: ProfileSlotManager | None = None
+    heartbeat_task: asyncio.Task[None] | None = None
+    if GLOBAL_CAPACITY is not None:
+        status, capacity_lease, queue_wait_ms = await asyncio.to_thread(
+            GLOBAL_CAPACITY.acquire,
+            model_profile=deployment.profile,
             max_concurrency=deployment.max_concurrency,
-            max_queue_depth=deployment.max_queue_depth,
-            queue_wait_timeout_seconds=deployment.queue_wait_timeout_seconds,
-            deployment_alias=deployment.deployment_alias,
+            owner_id=ORCHESTRATOR_INSTANCE_ID,
+            correlation_id=correlation_id,
+            lease_ttl_ms=CAPACITY_LEASE_TTL_MS,
+            wait_timeout_seconds=deployment.queue_wait_timeout_seconds,
         )
-        PROFILE_SLOTS[deployment.profile] = slot
+        if status == "PROVIDER_UNAVAILABLE":
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "code": "CAPACITY_PROVIDER_UNAVAILABLE",
+                    "deploymentAlias": deployment.deployment_alias,
+                },
+            )
+        if status == "CAPACITY_FULL":
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "code": "CAPACITY_FULL",
+                    "deploymentAlias": deployment.deployment_alias,
+                },
+            )
+        if status == "WAIT_TIMEOUT" or capacity_lease is None:
+            raise HTTPException(
+                status_code=504,
+                detail={
+                    "code": "CAPACITY_WAIT_TIMEOUT",
+                    "deploymentAlias": deployment.deployment_alias,
+                },
+            )
 
-    queue_wait_ms = await slot.acquire(correlation_id)
+        lease_lost = asyncio.Event()
+
+        async def _heartbeat_loop(lease: CapacityLease) -> None:
+            while True:
+                await asyncio.sleep(CAPACITY_HEARTBEAT_INTERVAL_SECONDS)
+                hb = await asyncio.to_thread(
+                    GLOBAL_CAPACITY.heartbeat, lease, CAPACITY_LEASE_TTL_MS
+                )
+                if hb != "UPDATED":
+                    LOG.error(
+                        "event=CAPACITY_LEASE_LOST leaseId=%s generation=%s status=%s "
+                        "correlation_id=%s",
+                        lease.lease_id,
+                        lease.generation,
+                        hb,
+                        correlation_id,
+                    )
+                    lease_lost.set()
+                    return
+
+        heartbeat_task = asyncio.create_task(_heartbeat_loop(capacity_lease))
+    else:
+        lease_lost = asyncio.Event()
+        local_slot = PROFILE_SLOTS.get(deployment.profile)
+        if local_slot is None:
+            local_slot = ProfileSlotManager(
+                max_concurrency=deployment.max_concurrency,
+                max_queue_depth=deployment.max_queue_depth,
+                queue_wait_timeout_seconds=deployment.queue_wait_timeout_seconds,
+                deployment_alias=deployment.deployment_alias,
+            )
+            PROFILE_SLOTS[deployment.profile] = local_slot
+        queue_wait_ms = await local_slot.acquire(correlation_id)
+
     started = time.monotonic()
     cancellation_requested = False
     cancellation_completed = False
@@ -567,6 +677,7 @@ async def _structured_runtime_call(
                 )
             )
             disconnect_watcher: asyncio.Task[None] | None = None
+            lease_watcher: asyncio.Task[None] | None = None
             if http_request is not None:
 
                 async def _watch_disconnect() -> None:
@@ -577,9 +688,38 @@ async def _structured_runtime_call(
                         await asyncio.sleep(0.25)
 
                 disconnect_watcher = asyncio.create_task(_watch_disconnect())
+
+            async def _watch_lease() -> None:
+                await lease_lost.wait()
+                request_task.cancel()
+
+            if GLOBAL_CAPACITY is not None:
+                lease_watcher = asyncio.create_task(_watch_lease())
             try:
                 response = await request_task
+                if lease_lost.is_set():
+                    result_code = "ERROR"
+                    failure_code = "CAPACITY_LEASE_LOST"
+                    raise HTTPException(
+                        status_code=409,
+                        detail={
+                            "code": "CAPACITY_LEASE_LOST",
+                            "deploymentAlias": deployment.deployment_alias,
+                            "leaseId": capacity_lease.lease_id if capacity_lease else None,
+                        },
+                    )
             except asyncio.CancelledError:
+                if lease_lost.is_set():
+                    result_code = "ERROR"
+                    failure_code = "CAPACITY_LEASE_LOST"
+                    raise HTTPException(
+                        status_code=409,
+                        detail={
+                            "code": "CAPACITY_LEASE_LOST",
+                            "deploymentAlias": deployment.deployment_alias,
+                            "leaseId": capacity_lease.lease_id if capacity_lease else None,
+                        },
+                    ) from None
                 cancellation_requested = True
                 cancellation_completed = True
                 result_code = "CANCELLED"
@@ -597,6 +737,12 @@ async def _structured_runtime_call(
                     disconnect_watcher.cancel()
                     try:
                         await disconnect_watcher
+                    except asyncio.CancelledError:
+                        pass
+                if lease_watcher is not None:
+                    lease_watcher.cancel()
+                    try:
+                        await lease_watcher
                     except asyncio.CancelledError:
                         pass
             try:
@@ -655,16 +801,30 @@ async def _structured_runtime_call(
             },
         ) from exc
     finally:
-        slot.release()
+        if heartbeat_task is not None:
+            heartbeat_task.cancel()
+            try:
+                await heartbeat_task
+            except asyncio.CancelledError:
+                pass
+            except Exception:  # noqa: BLE001
+                pass
+        if GLOBAL_CAPACITY is not None:
+            await asyncio.to_thread(GLOBAL_CAPACITY.release, capacity_lease)
+        elif local_slot is not None:
+            local_slot.release()
         LOG.info(
             "model_call_trace correlation_id=%s requestedProfile=%s "
             "deploymentAlias=%s queueWaitMs=%.0f generationMs=%.0f "
+            "capacityLeaseId=%s capacityGeneration=%s "
             "cancellationRequested=%s cancellationCompleted=%s result=%s failureCode=%s",
             correlation_id,
             deployment.profile,
             deployment.deployment_alias,
             queue_wait_ms,
             (time.monotonic() - started) * 1000.0,
+            capacity_lease.lease_id if capacity_lease else None,
+            capacity_lease.generation if capacity_lease else None,
             cancellation_requested,
             cancellation_completed,
             result_code,

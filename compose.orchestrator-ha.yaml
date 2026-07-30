@@ -1,0 +1,51 @@
+# Optional HA overlay: second AI orchestrator sharing Redis global capacity.
+# Usage:
+#   docker compose -f compose.yaml -f compose.easymeeting.yaml -f compose.orchestrator-ha.yaml \
+#     --env-file /etc/nanobaseai/legal.env up -d --build ai-orchestrator ai-orchestrator-b
+#
+# Backend still targets http://ai-orchestrator:8090 (instance A) by default.
+# Multi-orchestrator capacity tests call both containers directly on the Docker network
+# or via published ports below.
+
+services:
+  ai-orchestrator:
+    environment:
+      ORCHESTRATOR_INSTANCE_ID: orchestrator-a
+    ports:
+      - "127.0.0.1:8095:8090"
+
+  ai-orchestrator-b:
+    build:
+      context: ./services/ai-orchestrator
+    environment:
+      TZ: Europe/Istanbul
+      MODEL_DEPLOYMENTS_JSON: ${AI_MODEL_DEPLOYMENTS_JSON}
+      LOG_LEVEL: ${AI_ORCHESTRATOR_LOG_LEVEL:-INFO}
+      FAULT_INJECTION_ENABLED: ${AI_ORCHESTRATOR_FAULT_INJECTION_ENABLED:-false}
+      FAULT_INJECTION_TOKEN: ${AI_ORCHESTRATOR_FAULT_INJECTION_TOKEN:-}
+      MODEL_CAPACITY_PROVIDER: ${MODEL_CAPACITY_PROVIDER:-redis}
+      MODEL_CAPACITY_FAILURE_POLICY: ${MODEL_CAPACITY_FAILURE_POLICY:-FAIL_CLOSED}
+      MODEL_CAPACITY_LEASE_TTL_MS: ${MODEL_CAPACITY_LEASE_TTL_MS:-120000}
+      MODEL_CAPACITY_HEARTBEAT_INTERVAL_SECONDS: ${MODEL_CAPACITY_HEARTBEAT_INTERVAL_SECONDS:-30}
+      REDIS_HOST: actenora-prodlike-redis
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      ORCHESTRATOR_INSTANCE_ID: orchestrator-b
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - specai
+      - actenora-data
+    ports:
+      - "127.0.0.1:8096:8090"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8090/health/ready', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,mode=1770
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 128
+    restart: unless-stopped

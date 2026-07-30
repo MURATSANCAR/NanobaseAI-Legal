@@ -165,6 +165,18 @@ public class HttpComplianceAiGateway implements ComplianceAiGateway {
         if (lower.contains("llm_cancelled") || lower.contains("\"code\":\"llm_cancelled\"")) {
             return SemanticEvaluationFailureCode.LLM_CANCELLED;
         }
+        if (lower.contains("capacity_provider_unavailable")) {
+            return SemanticEvaluationFailureCode.CAPACITY_PROVIDER_UNAVAILABLE;
+        }
+        if (lower.contains("capacity_lease_lost")) {
+            return SemanticEvaluationFailureCode.CAPACITY_LEASE_LOST;
+        }
+        if (lower.contains("capacity_wait_timeout")) {
+            return SemanticEvaluationFailureCode.CAPACITY_WAIT_TIMEOUT;
+        }
+        if (lower.contains("capacity_full")) {
+            return SemanticEvaluationFailureCode.CAPACITY_FULL;
+        }
         if (lower.contains("llm_overloaded")) {
             return SemanticEvaluationFailureCode.LLM_OVERLOADED;
         }
@@ -217,9 +229,11 @@ public class HttpComplianceAiGateway implements ComplianceAiGateway {
         return switch (code) {
             case LLM_UNAVAILABLE, LLM_CONNECT_TIMEOUT -> true;
             // Retry transient overload / queue wait only when the prior call released its slot.
-            case LLM_OVERLOADED, LLM_TIMEOUT, LLM_QUEUE_TIMEOUT -> cancellationCompleted;
-            // Never blind-retry a full generation timeout or cancelled call.
-            case LLM_GENERATION_TIMEOUT, LLM_CANCELLED, LLM_INVALID_RESPONSE,
+            case LLM_OVERLOADED, LLM_TIMEOUT, LLM_QUEUE_TIMEOUT,
+                 CAPACITY_FULL, CAPACITY_WAIT_TIMEOUT -> cancellationCompleted;
+            // Capacity provider or lease loss must not be conflated with model endpoint errors.
+            case CAPACITY_PROVIDER_UNAVAILABLE, CAPACITY_LEASE_LOST,
+                 LLM_GENERATION_TIMEOUT, LLM_CANCELLED, LLM_INVALID_RESPONSE,
                  LLM_CONTEXT_OVERFLOW, LLM_CIRCUIT_OPEN, CONTEXT_OVERFLOW, EVALUATION_ERROR ->
                 false;
         };

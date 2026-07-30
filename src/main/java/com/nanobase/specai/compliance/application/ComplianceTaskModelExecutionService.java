@@ -164,6 +164,10 @@ public class ComplianceTaskModelExecutionService {
             case LLM_TIMEOUT, LLM_GENERATION_TIMEOUT -> "MODEL_TIMEOUT";
             case LLM_UNAVAILABLE, LLM_CONNECT_TIMEOUT -> "MODEL_UNAVAILABLE";
             case LLM_OVERLOADED, LLM_QUEUE_TIMEOUT -> "SLOT_WAIT_TIMEOUT";
+            case CAPACITY_FULL -> "CAPACITY_FULL";
+            case CAPACITY_WAIT_TIMEOUT -> "CAPACITY_WAIT_TIMEOUT";
+            case CAPACITY_LEASE_LOST -> "CAPACITY_LEASE_LOST";
+            case CAPACITY_PROVIDER_UNAVAILABLE -> "CAPACITY_PROVIDER_UNAVAILABLE";
             case LLM_CANCELLED -> "CANCEL_REQUESTED";
             default -> code.name();
         };
