@@ -18,6 +18,49 @@ API = "http://127.0.0.1:8098"
 REPORT = Path("/tmp/orchestrated_1x5_report.json")
 FIXTURE_CODE = "COMPLIANCE_1X5_TIER_TEST"
 RERANK = 5
+ANCHOR_FRAGMENT = "4cd5fd0c-51cf-4d6f-a63c-126fad74b960"
+FIXTURE_FRAGMENTS = [
+    {
+        "id": "a1000000-0000-4000-8000-000000000001",
+        "page": 901,
+        "text": "Ana veri merkezi Uptime Institute Tier III sertifikasina sahiptir.",
+        "normalized": "ana veri merkezi uptime institute tier iii sertifikasina sahiptir",
+        "hash": "c1a5e00100000000000000000000000000000000000000000000000000000001",
+        "role": "compliant_tier_iii",
+    },
+    {
+        "id": "a1000000-0000-4000-8000-000000000002",
+        "page": 902,
+        "text": "Veri merkezi altyapisi Tier II seviyesindedir; Tier III degildir.",
+        "normalized": "veri merkezi altyapisi tier ii seviyesindedir tier iii degildir",
+        "hash": "c1a5e00100000000000000000000000000000000000000000000000000000002",
+        "role": "non_compliant_tier_ii",
+    },
+    {
+        "id": "a1000000-0000-4000-8000-000000000003",
+        "page": 903,
+        "text": "Ofis climate control standardinda calisir; ana veri merkezi degildir.",
+        "normalized": "ofis climate control standardinda calisir ana veri merkezi degildir",
+        "hash": "c1a5e00100000000000000000000000000000000000000000000000000000003",
+        "role": "low_relevance_office",
+    },
+    {
+        "id": "a1000000-0000-4000-8000-000000000004",
+        "page": 904,
+        "text": "Ana veri merkezi Uptime Institute Tier III sertifikasina sahiptir. (kopya)",
+        "normalized": "ana veri merkezi uptime institute tier iii sertifikasina sahiptir kopya",
+        "hash": "c1a5e00100000000000000000000000000000000000000000000000000000004",
+        "role": "near_duplicate",
+    },
+    {
+        "id": "a1000000-0000-4000-8000-000000000005",
+        "page": 905,
+        "text": "Veri merkezi icin tier hedefi planlanmistir ancak standardinda sertifika yoktur.",
+        "normalized": "veri merkezi icin tier hedefi planlanmistir ancak standardinda sertifika yoktur",
+        "hash": "c1a5e00100000000000000000000000000000000000000000000000000000005",
+        "role": "weak_evidence",
+    },
+]
 
 
 def env(key: str) -> str:
@@ -156,16 +199,97 @@ update retrieval_policy_version
  where id = '{policy_id}';
 """
     )
+    anchor = psql(
+        f"""
+select set_config('app.current_organization_id','{ORG}',true);
+select document_id::text || '|' || document_version_id::text
+  from evidence_fragment
+ where id = '{ANCHOR_FRAGMENT}';
+"""
+    ).splitlines()[-1]
+    document_id, document_version_id = anchor.split("|", 1)
+    fixture_ids = [item["id"] for item in FIXTURE_FRAGMENTS]
+    id_list = ",".join(f"'{item}'" for item in fixture_ids)
+    psql(
+        f"""
+select set_config('app.current_organization_id','{ORG}',true);
+delete from evidence_fragment
+ where organization_id = '{ORG}'
+   and id in ({id_list});
+"""
+    )
+    values = []
+    for item in FIXTURE_FRAGMENTS:
+        text = item["text"].replace("'", "''")
+        normalized = item["normalized"].replace("'", "''")
+        values.append(
+            "("
+            f"'{item['id']}', '{ORG}', '{document_id}', '{document_version_id}', "
+            f"{item['page']}, '{text}', '{normalized}', '[]'::jsonb, "
+            f"'{item['hash']}', 'tr', 1, 1, null, now() - interval '2 minutes'"
+            ")"
+        )
+    values_sql = ",\n".join(values)
+    psql(
+        f"""
+select set_config('app.current_organization_id','{ORG}',true);
+insert into evidence_fragment (
+  id, organization_id, document_id, document_version_id,
+  page_number, fragment_text, normalized_text, bounding_boxes_json,
+  content_hash, language, parser_quality, ocr_quality,
+  valid_until, created_at
+) values
+{values_sql};
+"""
+    )
+    lexical_hits = int(
+        psql(
+            f"""
+select set_config('app.current_organization_id','{ORG}',true);
+with q as (
+  select unnest(string_to_array('ana veri merkezi tier standardinda', ' ')) as token
+)
+select count(*) from evidence_fragment f
+ where f.organization_id = '{ORG}'
+   and f.created_at <= now()
+   and (f.valid_until is null or f.valid_until > now())
+   and (
+     select count(*)::int from q
+      where q.token <> ''
+        and to_tsvector('simple', f.normalized_text)
+            @@ to_tsquery('simple', q.token || ':*')
+   ) >= 2;
+"""
+        ).splitlines()[-1]
+    )
+    assert lexical_hits >= RERANK, f"fixture lexical hits={lexical_hits} expected>={RERANK}"
     return {
         "requirementCountOnProject": remaining,
         "movedRequirementIds": moved_ids,
         "retrievalPolicyVersionId": policy_id,
         "retrievalConfigBefore": json.loads(cfg_raw),
         "retrievalConfigTest": cfg,
+        "fixtureFragmentIds": fixture_ids,
+        "lexicalHitCount": lexical_hits,
+        "documentId": document_id,
+        "documentVersionId": document_version_id,
     }
 
 
 def restore(state: dict) -> None:
+    fixture_ids = state.get("fixtureFragmentIds") or []
+    if fixture_ids:
+        id_list = ",".join(f"'{item}'" for item in fixture_ids)
+        psql(
+            f"""
+select set_config('app.current_organization_id','{ORG}',true);
+delete from compliance_evidence_link
+ where evidence_fragment_id in ({id_list});
+delete from evidence_fragment
+ where organization_id = '{ORG}'
+   and id in ({id_list});
+"""
+        )
     moved_ids = state.get("movedRequirementIds") or []
     if moved_ids:
         id_list = ",".join(f"'{item}'" for item in moved_ids)
