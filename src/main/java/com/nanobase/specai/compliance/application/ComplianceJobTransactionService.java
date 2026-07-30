@@ -10,6 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -83,7 +84,7 @@ public class ComplianceJobTransactionService {
     ) {
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public JobClaimResult claimJob(UUID organizationId, UUID jobId, String workerId,
                                    Instant leaseExpiresAt) {
         Instant now = Instant.now();
@@ -139,7 +140,7 @@ public class ComplianceJobTransactionService {
         return diagnoseJobClaim(organizationId, jobId, workerId, now);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = true)
     public Optional<JobClaimResult> loadRunningJob(UUID organizationId, UUID jobId) {
         List<JobClaimResult> rows = jdbc.query("""
             select id, project_id, status, total_requirement_count, analysis_profile_id,
@@ -169,7 +170,7 @@ public class ComplianceJobTransactionService {
         return rows.stream().findFirst();
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public TaskClaimResult claimTask(UUID organizationId, UUID jobId, UUID taskId,
                                      String workerId, Instant leaseExpiresAt) {
         List<TaskClaimResult> claimed = jdbc.query("""
@@ -210,7 +211,7 @@ public class ComplianceJobTransactionService {
         return new TaskClaimResult(false, taskId, null, null, "UNCLAIMED");
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void heartbeat(UUID organizationId, UUID jobId, UUID taskId, String workerId,
                           Instant leaseExpiresAt) {
         int jobUpdated = jdbc.update("""
@@ -243,7 +244,7 @@ public class ComplianceJobTransactionService {
         }
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public CancellationSnapshot requestCancel(UUID organizationId, UUID jobId,
                                               String actor, String reason) {
         // Cooperative cancel: never wait on a long FOR UPDATE held by LLM work.
@@ -290,7 +291,7 @@ public class ComplianceJobTransactionService {
         return cancellationState(organizationId, jobId);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = true)
     public CancellationSnapshot cancellationState(UUID organizationId, UUID jobId) {
         return jdbc.query("""
             select status, cancel_requested_at
@@ -309,7 +310,7 @@ public class ComplianceJobTransactionService {
             }, jobId, organizationId);
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void cancelRemainingTasks(UUID organizationId, UUID jobId) {
         jdbc.update("""
             update requirement_matching_task
@@ -334,7 +335,7 @@ public class ComplianceJobTransactionService {
         log.info("event=COMPLIANCE_JOB_CANCELLED jobId={}", jobId);
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public JobFinalizationResult finalizeJob(UUID organizationId, UUID jobId) {
         // Aggregate from DB, not in-memory counters.
         var counts = jdbc.query("""
@@ -391,7 +392,7 @@ public class ComplianceJobTransactionService {
         return new JobFinalizationResult(terminal, counts[0], counts[1], 0, processed);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = true)
     public List<UUID> loadPendingTaskIds(UUID organizationId, UUID jobId) {
         return jdbc.query("""
             select id from requirement_matching_task
