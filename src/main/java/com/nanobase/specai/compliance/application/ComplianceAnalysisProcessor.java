@@ -221,6 +221,7 @@ public class ComplianceAnalysisProcessor {
             } catch (RuntimeException summaryFailure) {
                 log.warn("tender_summary_rebuild_failed jobId={} projectId={} error={}",
                     jobId, job.projectId(), summaryFailure.toString());
+                metrics.summaryRebuildFailure();
                 jobs.event(organizationId, jobId, "SUMMARY_FAILED", 100,
                     "Tender summary rebuild failed",
                     Map.of("error", truncate(summaryFailure.getMessage())));
@@ -296,6 +297,7 @@ public class ComplianceAnalysisProcessor {
             if (deterministic != null) {
                 outcome = deterministic;
                 metrics.complianceDeterministic();
+                metrics.deterministicEvaluation();
             } else {
                 outcome = missingOutcome(organizationId, job, requirement);
                 metrics.complianceMissingEvidence();
@@ -306,6 +308,7 @@ public class ComplianceAnalysisProcessor {
             if (deterministic != null) {
                 outcome = deterministic;
                 metrics.complianceDeterministic();
+                metrics.deterministicEvaluation();
             } else {
                 String provider = comparisonProvider(organizationId, requirement.attributes());
                 if (provider == null || "manual-only".equals(provider)) {

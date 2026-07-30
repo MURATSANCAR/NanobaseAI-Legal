@@ -1,0 +1,7 @@
+1. Set all TENDER_* / REQUIREMENT_* / COMPANY_* / DETERMINISTIC_* / GAP_* env flags to false
+2. Restart backend
+3. Confirm production_runtime_policy JSON shows intelligenceEnv all false
+4. Run one baseline compliance smoke job (flags off)
+5. Optional: run scripts/pilot-disable-tender-intelligence.sql
+6. Image rollback only if baseline compliance itself is broken
+7. Never DROP V19–V26 tables for rollback

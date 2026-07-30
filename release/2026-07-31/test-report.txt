@@ -1,0 +1,7 @@
+mvn test summary
+Tests=203
+Failures=0
+Errors=0
+Skipped=0
+FeatureGateIntegrationTest=PASS
+Status=PASS

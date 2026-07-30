@@ -45,6 +45,8 @@ logging:
 
 specai:
   environment: production
+  production-runtime-policy:
+    enforce: true
   bootstrap:
     enabled: false
   storage:

@@ -35,6 +35,16 @@ public class PlatformMetrics {
         "release_rollback_total", "go_live_no_go_total",
         "stabilization_incident_total", "user_satisfaction_score",
         "manual_time_saved_minutes");
+    private static final Set<String> GO_LIVE_METRICS = Set.of(
+        "llm_unavailable_total",
+        "classification_failure_total",
+        "deterministic_evaluation_total",
+        "compliance_gap_created_total",
+        "duplicate_gap_rejected_total",
+        "summary_rebuild_failure_total",
+        "feature_gate_denied_total",
+        "compliance_failed_total",
+        "compliance_job_duration_ms");
     private final MeterRegistry registry;
     private final Counter documentUpload;
     private final Counter documentUploadFailed;
@@ -161,6 +171,19 @@ public class PlatformMetrics {
         registry.timer("impact_analysis_duration_seconds");
         SPRINT_7_METRICS.forEach(registry::counter);
         SPRINT_9_METRICS.forEach(registry::counter);
+        GO_LIVE_METRICS.forEach(name -> {
+            if (name.endsWith("_ms") || name.endsWith("_seconds")) {
+                registry.timer(name);
+            } else {
+                registry.counter(name);
+            }
+        });
+        Gauge.builder("llm_active_requests", new AtomicInteger(0), AtomicInteger::get)
+            .register(registry);
+        Gauge.builder("llm_queue_depth", new AtomicInteger(0), AtomicInteger::get)
+            .register(registry);
+        registry.timer("llm_queue_wait_ms");
+        registry.timer("llm_generation_ms");
         Gauge.builder("outbox.pending.total", outbox,
                 repository -> repository.countByStatus(OutboxStatus.PENDING))
             .register(registry);
@@ -305,6 +328,46 @@ public class PlatformMetrics {
 
     public void complianceFalseCompliant() {
         complianceFalseCompliant.increment();
+    }
+
+    public void featureGateDenied(String featureCode, String reason) {
+        registry.counter("feature_gate_denied_total",
+            "feature", featureCode == null ? "unknown" : featureCode,
+            "reason", reason == null ? "unknown" : reason).increment();
+    }
+
+    public void classificationFailure() {
+        registry.counter("classification_failure_total").increment();
+    }
+
+    public void deterministicEvaluation() {
+        registry.counter("deterministic_evaluation_total").increment();
+    }
+
+    public void complianceGapCreated() {
+        registry.counter("compliance_gap_created_total").increment();
+    }
+
+    public void duplicateGapRejected() {
+        registry.counter("duplicate_gap_rejected_total").increment();
+    }
+
+    public void summaryRebuildFailure() {
+        registry.counter("summary_rebuild_failure_total").increment();
+    }
+
+    public void llmUnavailable() {
+        registry.counter("llm_unavailable_total").increment();
+    }
+
+    public void complianceFailed() {
+        registry.counter("compliance_failed_total").increment();
+    }
+
+    public void complianceJobDuration(Duration duration) {
+        if (duration != null) {
+            registry.timer("compliance_job_duration_ms").record(duration);
+        }
     }
 
     public void sprint7(String metricName) {

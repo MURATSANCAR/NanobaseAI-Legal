@@ -3,12 +3,14 @@ package com.nanobase.specai.compliance.application;
 import com.nanobase.specai.analysis.domain.Remediability;
 import com.nanobase.specai.operations.application.FeatureFlagService;
 import com.nanobase.specai.operations.application.TenderIntelligenceFlags;
+import com.nanobase.specai.shared.observability.PlatformMetrics;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -19,16 +21,24 @@ public class GapAnalysisService {
     private final JdbcTemplate jdbc;
     private final FeatureFlagService flags;
     private final Clock clock;
+    private final PlatformMetrics metrics;
 
     @Autowired
-    public GapAnalysisService(JdbcTemplate jdbc, FeatureFlagService flags) {
-        this(jdbc, flags, Clock.systemUTC());
+    public GapAnalysisService(JdbcTemplate jdbc, FeatureFlagService flags,
+                              ObjectProvider<PlatformMetrics> metrics) {
+        this(jdbc, flags, Clock.systemUTC(), metrics.getIfAvailable());
     }
 
     GapAnalysisService(JdbcTemplate jdbc, FeatureFlagService flags, Clock clock) {
+        this(jdbc, flags, clock, null);
+    }
+
+    GapAnalysisService(JdbcTemplate jdbc, FeatureFlagService flags, Clock clock,
+                       PlatformMetrics metrics) {
         this.jdbc = jdbc;
         this.flags = flags;
         this.clock = clock;
+        this.metrics = metrics;
     }
 
     public record GapDraft(
@@ -84,6 +94,10 @@ public class GapAnalysisService {
                  where id = ? and organization_id = ?
                 """, draft.assessmentId(), draft.description(),
                 toJsonArray(draft.missingElements()), clock.instant(), existing, organizationId);
+            PlatformMetrics platformMetrics = metrics;
+            if (platformMetrics != null) {
+                platformMetrics.duplicateGapRejected();
+            }
             return null;
         }
         UUID id = UUID.randomUUID();
@@ -100,6 +114,9 @@ public class GapAnalysisService {
             draft.description(), toJsonArray(draft.missingElements()), draft.recommendedAction(),
             draft.estimatedResolutionDays(), draft.estimatedCost(), draft.currency(),
             draft.ownerDepartment(), now, now);
+        if (metrics != null) {
+            metrics.complianceGapCreated();
+        }
         return id;
     }
 

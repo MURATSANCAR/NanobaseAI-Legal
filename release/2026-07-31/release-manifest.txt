@@ -1,0 +1,15 @@
+Release version: 2026.07.31-rc1
+Git SHA: 3511fbd747e546e954a2ac4609fdea1f2fb580d1
+Backend image: backend:2026.07.31-rc1
+UI image: ui:2026.07.31-rc1
+Orchestrator image: orchestrator:2026.07.31-rc1
+Migration range: V19-V26
+JDK: openjdk version "21.0.11" 2026-04-21 LTS
+Maven: Apache Maven 3.9.11 (3e54c93a704957b63ee3494413a2b544fd3d825b)
+Test count: see test-report.txt
+Expected feature flags day-1: V2, CLASSIFICATION, CAPABILITY, DETERMINISTIC, GAP
+Day-1 disabled: CLARIFICATION, RISK, BID, OBLIGATION
+Pilot organization ID: REPLACE_WITH_PILOT_ORG_UUID
+Previous backend image: REPLACE
+Previous UI image: REPLACE
+Previous orchestrator image: REPLACE

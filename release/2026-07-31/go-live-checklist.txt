@@ -1,0 +1,11 @@
+[ ] Release images pinned (not latest)
+[ ] Staging V19–V26 SUCCESS
+[ ] Full test suite PASS
+[ ] FeatureGateIntegrationTest PASS
+[ ] Baseline compliance smoke PASS (all flags off)
+[ ] Tenant isolation PASS
+[ ] Pilot enable/disable scripts verified
+[ ] Three acceptance jobs PASS
+[ ] Rollback drill PASS
+[ ] Monitoring counters visible
+[ ] GO / HOLD decision recorded
