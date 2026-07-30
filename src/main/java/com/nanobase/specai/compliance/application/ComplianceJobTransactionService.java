@@ -442,8 +442,10 @@ public class ComplianceJobTransactionService {
               count(*) filter (where status = 'COMPLETED') as completed,
               count(*) filter (where status = 'FAILED') as failed,
               count(*) filter (where status = 'CANCELLED') as cancelled,
-              count(*) filter (where status in ('QUEUED', 'RUNNING', 'READY_FOR_MODEL'))
-                as active,
+              count(*) filter (where status in (
+                    'QUEUED', 'CLAIMED', 'READY_FOR_MODEL', 'WAITING_FOR_SLOT',
+                    'RUNNING', 'RETRY_WAIT')) as active,
+              count(*) filter (where status = 'RETRY_WAIT') as retry_waiting,
               count(*) as total
               from requirement_matching_task
              where compliance_job_id = ? and organization_id = ?
@@ -454,12 +456,18 @@ public class ComplianceJobTransactionService {
                     rs.getInt("failed"),
                     rs.getInt("cancelled"),
                     rs.getInt("active"),
+                    rs.getInt("retry_waiting"),
                     rs.getInt("total")
                 };
             }, jobId, organizationId);
         CancellationSnapshot cancel = cancellationState(organizationId, jobId);
-        if (counts[3] > 0 && !cancel.cancelRequested()) {
-            throw new IllegalStateException("AGGREGATION_INCOMPLETE");
+        if ((counts[3] > 0 || counts[4] > 0) && !cancel.cancelRequested()) {
+            log.info("event=AGGREGATION_DEFERRED jobId={} activeTaskCount={} "
+                    + "retryWaitingTaskCount={}",
+                jobId, counts[3], counts[4]);
+            return new JobFinalizationResult(
+                "AGGREGATION_DEFERRED", counts[0], counts[1], 0,
+                counts[0] + counts[1] + counts[2]);
         }
         String terminal;
         if (cancel.cancelRequested() || counts[2] > 0 && counts[0] == 0 && counts[1] == 0) {

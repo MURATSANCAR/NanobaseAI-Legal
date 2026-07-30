@@ -108,6 +108,7 @@ class ComplianceJobTransactionServiceTest {
                     when(rs.getInt("failed")).thenReturn(0);
                     when(rs.getInt("cancelled")).thenReturn(0);
                     when(rs.getInt("active")).thenReturn(0);
+                    when(rs.getInt("retry_waiting")).thenReturn(0);
                     when(rs.getInt("total")).thenReturn(1);
                 } else {
                     when(rs.getString("status")).thenReturn("COMPLETED");
