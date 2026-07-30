@@ -291,6 +291,19 @@ export function KnowledgeCenter({ documents, token, canWrite, onProblem, onNotif
         <span>{job.processed_fragment_count}/{job.total_fragment_count} fragman ·
           {" "}{job.extracted_entity_count} entity ·
           {" "}{job.manual_review_count} inceleme</span></div>
+      {job.status === "FAILED" && (
+        <p className="warning-box">KNOWLEDGE_EXTRACTION_FAILED
+          {job.error_code ? `: ${job.error_code}` : ""}
+          {job.current_stage_code ? ` (stage ${job.current_stage_code})` : ""}
+          {job.error_message ? ` — ${job.error_message}` : ""}</p>
+      )}
+      {job.status === "COMPLETED" && job.existing_knowledge_used && (
+        <p className="eyebrow">EXISTING_KNOWLEDGE_USED · purpose {job.document_purpose_code || "—"}</p>
+      )}
+      {job.status === "COMPLETED" && !job.existing_knowledge_used && job.document_purpose_code && (
+        <p className="eyebrow">purpose {job.document_purpose_code}
+          {job.current_stage_code ? ` · last stage ${job.current_stage_code}` : ""}</p>
+      )}
       <progress max={Math.max(job.total_fragment_count, 1)}
         value={job.processed_fragment_count} />
     </div>}

@@ -1,0 +1,6 @@
+{
+  "id": "E2E-06",
+  "gate": "tenant-isolation",
+  "asset": "testdata/corpus/assets/.gitkeep",
+  "notes": "Assert cross-tenant document/report proxy returns 404/403"
+}

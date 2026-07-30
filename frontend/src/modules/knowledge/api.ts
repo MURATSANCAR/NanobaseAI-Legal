@@ -130,6 +130,9 @@ export type KnowledgeExtractionJob = {
   manual_review_count: number;
   error_code?: string;
   error_message?: string;
+  document_purpose_code?: string;
+  current_stage_code?: string;
+  existing_knowledge_used?: boolean;
 };
 
 export const knowledgeApi = {

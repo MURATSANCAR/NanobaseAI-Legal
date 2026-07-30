@@ -104,7 +104,8 @@ public class KnowledgeExtractionJobService {
                    total_fragment_count, processed_fragment_count,
                    extracted_entity_count, manual_review_count,
                    error_code, error_message, correlation_id, started_at,
-                   completed_at, created_at, updated_at, version
+                   completed_at, created_at, updated_at, version,
+                   document_purpose_code, current_stage_code, existing_knowledge_used
             from knowledge_extraction_job
             where id = ? and organization_id = ?
             """, jobId, organizationId);

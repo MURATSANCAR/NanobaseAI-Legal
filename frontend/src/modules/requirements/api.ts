@@ -101,6 +101,11 @@ export const requirementApi = {
       `/api/v1/requirement-extractions/${jobId}`,
       token,
     ),
+  explanation: (token: string, requirementId: string) =>
+    apiRequest<Record<string, unknown>>(
+      `/api/v1/requirements/${requirementId}/explanation`,
+      token,
+    ),
   review: (
     token: string,
     requirementId: string,
