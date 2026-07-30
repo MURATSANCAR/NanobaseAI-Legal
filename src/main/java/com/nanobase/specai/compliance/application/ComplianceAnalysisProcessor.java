@@ -47,10 +47,12 @@ public class ComplianceAnalysisProcessor {
     private final ComparisonStrategyRegistry comparisons;
     private final PolicyComplianceConfidenceEngine confidenceEngine;
     private final ComplianceSemanticRouter semanticRouter;
+    private final ComplianceDecisionSafetyGuard decisionSafetyGuard;
     private final ComplianceJobService jobs;
     private final OutboxService outbox;
     private final PlatformMetrics metrics;
     private final int maxOutputTokens;
+    private final int evaluationParallelism;
 
     public ComplianceAnalysisProcessor(
         TenantDatabaseContext tenantDatabase,
@@ -65,7 +67,9 @@ public class ComplianceAnalysisProcessor {
         OutboxService outbox,
         PlatformMetrics metrics,
         @org.springframework.beans.factory.annotation.Value(
-            "${specai.ai-orchestrator.compliance-max-output-tokens:1024}") int maxOutputTokens
+            "${specai.ai-orchestrator.compliance-max-output-tokens:1024}") int maxOutputTokens,
+        @org.springframework.beans.factory.annotation.Value(
+            "${specai.compliance.evaluation-parallelism:1}") int evaluationParallelism
     ) {
         this.tenantDatabase = tenantDatabase;
         this.jdbc = jdbc;
@@ -75,10 +79,20 @@ public class ComplianceAnalysisProcessor {
         this.comparisons = comparisons;
         this.confidenceEngine = confidenceEngine;
         this.semanticRouter = semanticRouter;
+        this.decisionSafetyGuard = new ComplianceDecisionSafetyGuard(mapper);
         this.jobs = jobs;
         this.outbox = outbox;
         this.metrics = metrics;
         this.maxOutputTokens = maxOutputTokens > 0 ? maxOutputTokens : DEFAULT_MAX_OUTPUT_TOKENS;
+        this.evaluationParallelism = evaluationParallelism <= 0 ? 1 : evaluationParallelism;
+        if (this.evaluationParallelism != 1) {
+            log.warn(
+                "compliance_evaluation_parallelism_override requested={} enforced=1 "
+                    + "(production V1 is single-slot sequential)",
+                evaluationParallelism);
+        }
+        log.info("compliance_evaluation_policy parallelism=1 maxOutputTokens={}",
+            this.maxOutputTokens);
     }
 
     @Transactional
@@ -351,8 +365,12 @@ public class ComplianceAnalysisProcessor {
         ComplianceSemanticRouter.RoutedEvaluation routed =
             semanticRouter.evaluate(request, contradiction);
         var response = routed.response();
-        String decisionCode = response.output()
-            .path("recommendedDecisionConcept").asText();
+        ObjectNode safeOutput = decisionSafetyGuard.normalize(
+            response.output(), requirement.text(), evidence);
+        String decisionCode = safeOutput.path("recommendedDecisionConcept").asText();
+        if (decisionCode == null || decisionCode.isBlank()) {
+            decisionCode = safeOutput.path("decision").asText();
+        }
         if (decisionCode == null || decisionCode.isBlank()) {
             throw new SemanticEvaluationException(
                 SemanticEvaluationFailureCode.LLM_INVALID_RESPONSE,
@@ -373,7 +391,7 @@ public class ComplianceAnalysisProcessor {
             .collect(Collectors.toCollection(LinkedHashSet::new));
         StructuredComplianceResponseValidator.ValidationResult validation =
             new StructuredComplianceResponseValidator()
-                .validate(response.output(), allowed, allowedDecisions);
+                .validate(safeOutput, allowed, allowedDecisions);
         if (!validation.valid()) {
             throw new SemanticEvaluationException(
                 validation.failureCode() == null
@@ -390,13 +408,16 @@ public class ComplianceAnalysisProcessor {
                 "historicalAcceptance", 0.5),
             false, contradiction,
             policyConfiguration(organizationId, job.confidencePolicyVersionId())));
-        double modelConfidence = response.output().path("confidence").asDouble(0);
+        double modelConfidence = safeOutput.path("confidence").asDouble(0);
         double combined = (confidence.score() + modelConfidence) / 2d;
-        boolean review = response.output().path("requiresManualReview").asBoolean()
-            || confidence.requiresReview() || contradiction;
+        boolean review = safeOutput.path("requiresManualReview").asBoolean()
+            || confidence.requiresReview() || contradiction
+            || "NON_COMPLIANT".equals(decisionCode)
+            || "INSUFFICIENT_INFORMATION".equals(decisionCode);
         ObjectNode summary = mapper.createObjectNode();
         summary.put("strategyProvider", "llm-semantic-evaluation");
-        summary.set("semanticEvaluation", response.output());
+        summary.put("resultLabel", "AI Ön Değerlendirmesi");
+        summary.set("semanticEvaluation", safeOutput);
         summary.set("confidence", mapper.valueToTree(confidence));
         summary.set("modelRouting", mapper.valueToTree(routed.routing()));
         return new EvaluationOutcome(decisionId, summary, combined, review,

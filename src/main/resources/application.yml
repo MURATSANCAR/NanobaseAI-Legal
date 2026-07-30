@@ -185,16 +185,23 @@ specai:
     knowledge-read-timeout: ${AI_ORCHESTRATOR_KNOWLEDGE_READ_TIMEOUT:PT60S}
     # Compliance must not inherit DOCUMENT_PROVIDER_READ_TIMEOUT (PT180S). Align with
     # host llama-server timeoutSeconds and knowledge extraction budget.
-    # Must exceed BALANCED queueWait(120s)+generation(600s)+margin.
+    # Must exceed BALANCED queueWait(180s)+generation(600s)+margin.
+    # Backend must not close before orchestrator returns a controlled error.
     compliance-read-timeout: ${AI_ORCHESTRATOR_COMPLIANCE_READ_TIMEOUT:PT780S}
     compliance-global-deadline: ${AI_ORCHESTRATOR_COMPLIANCE_GLOBAL_DEADLINE:PT820S}
+    # Max attempts after the first call: 1 retry => 2 total attempts.
     compliance-retry-attempts: ${AI_ORCHESTRATOR_COMPLIANCE_RETRY_ATTEMPTS:1}
     compliance-retry-backoff: ${AI_ORCHESTRATOR_COMPLIANCE_RETRY_BACKOFF:PT2S}
     compliance-max-output-tokens: ${AI_ORCHESTRATOR_COMPLIANCE_MAX_OUTPUT_TOKENS:1024}
   compliance:
+    # Production V1: sequential single-slot evaluation only.
+    evaluation-parallelism: ${COMPLIANCE_EVALUATION_PARALLELISM:1}
     routing:
-      # BALANCED_ONLY | SHADOW | LIVE_FAST
+      # BALANCED_ONLY | SHADOW | LIVE_FAST — FAST/SHADOW stay in code but are feature-flagged off.
       mode: ${COMPLIANCE_ROUTING_MODE:BALANCED_ONLY}
+      fast-enabled: ${COMPLIANCE_FAST_ENABLED:false}
+      shadow-enabled: ${COMPLIANCE_SHADOW_ENABLED:false}
+      shadow-sample-rate: ${COMPLIANCE_SHADOW_SAMPLE_RATE:0}
       live-profile: ${COMPLIANCE_LIVE_PROFILE:BALANCED}
       fast-profile: ${COMPLIANCE_FAST_PROFILE:FAST}
       fast-max-output-tokens: ${COMPLIANCE_FAST_MAX_OUTPUT_TOKENS:768}

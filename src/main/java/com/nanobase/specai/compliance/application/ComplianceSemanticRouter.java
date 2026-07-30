@@ -32,6 +32,8 @@ public class ComplianceSemanticRouter {
     private final String fastProfile;
     private final int liveMaxOutputTokens;
     private final int fastMaxOutputTokens;
+    private final boolean fastEnabled;
+    private final boolean shadowEnabled;
     private final ComplianceEscalationPolicy escalationPolicy;
 
     public ComplianceSemanticRouter(
@@ -48,12 +50,16 @@ public class ComplianceSemanticRouter {
         @Value("${specai.compliance.routing.escalate-confidence-below:0.70}")
             double escalateConfidenceBelow,
         @Value("${specai.compliance.routing.escalate-evidence-above:2}")
-            int escalateEvidenceAbove
+            int escalateEvidenceAbove,
+        @Value("${specai.compliance.routing.fast-enabled:false}") boolean fastEnabled,
+        @Value("${specai.compliance.routing.shadow-enabled:false}") boolean shadowEnabled
     ) {
         this.aiGateway = aiGateway;
         this.mapper = mapper;
         this.metrics = metrics;
-        this.mode = ComplianceRoutingMode.from(mode);
+        this.fastEnabled = fastEnabled;
+        this.shadowEnabled = shadowEnabled;
+        this.mode = resolveMode(mode, fastEnabled, shadowEnabled);
         this.liveProfile = blankToDefault(liveProfile, "BALANCED");
         this.fastProfile = blankToDefault(fastProfile, "FAST");
         this.liveMaxOutputTokens = liveMaxOutputTokens > 0 ? liveMaxOutputTokens : 1024;
@@ -61,12 +67,30 @@ public class ComplianceSemanticRouter {
         this.escalationPolicy = new ComplianceEscalationPolicy(
             escalateConfidenceBelow, escalateEvidenceAbove);
         log.info(
-            "compliance_routing_policy mode={} liveProfile={} fastProfile={} "
-                + "liveMaxTokens={} fastMaxTokens={} escalateConfidenceBelow={} "
-                + "escalateEvidenceAbove={}",
-            this.mode, this.liveProfile, this.fastProfile,
+            "compliance_routing_policy mode={} requestedMode={} liveProfile={} fastProfile={} "
+                + "fastEnabled={} shadowEnabled={} liveMaxTokens={} fastMaxTokens={} "
+                + "escalateConfidenceBelow={} escalateEvidenceAbove={} "
+                + "deploymentAlias=nanobase-balanced",
+            this.mode, blankToDefault(mode, "BALANCED_ONLY"), this.liveProfile, this.fastProfile,
+            this.fastEnabled, this.shadowEnabled,
             this.liveMaxOutputTokens, this.fastMaxOutputTokens,
             this.escalationPolicy.confidenceBelow(), this.escalationPolicy.evidenceAbove());
+    }
+
+    /**
+     * Production V1 keeps FAST/SHADOW code paths but forces BALANCED_ONLY unless both the
+     * routing mode and the corresponding feature flag explicitly enable them.
+     */
+    static ComplianceRoutingMode resolveMode(String rawMode, boolean fastEnabled,
+                                             boolean shadowEnabled) {
+        ComplianceRoutingMode requested = ComplianceRoutingMode.from(rawMode);
+        return switch (requested) {
+            case BALANCED_ONLY -> ComplianceRoutingMode.BALANCED_ONLY;
+            case SHADOW -> shadowEnabled
+                ? ComplianceRoutingMode.SHADOW : ComplianceRoutingMode.BALANCED_ONLY;
+            case LIVE_FAST -> fastEnabled
+                ? ComplianceRoutingMode.LIVE_FAST : ComplianceRoutingMode.BALANCED_ONLY;
+        };
     }
 
     public ComplianceRoutingMode mode() {

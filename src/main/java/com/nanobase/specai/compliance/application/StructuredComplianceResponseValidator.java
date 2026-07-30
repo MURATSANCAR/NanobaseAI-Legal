@@ -8,7 +8,8 @@ import java.util.Set;
  * Validates structured compliance JSON against decision semantics and evidence grounding.
  *
  * <p>Missing information alone must not become {@code NON_COMPLIANT}. Imaginary evidence IDs
- * are rejected as {@code LLM_INVALID_RESPONSE}.
+ * are rejected as {@code LLM_INVALID_RESPONSE}. Unsafe {@code NON_COMPLIANT} payloads should
+ * be remapped by {@link ComplianceDecisionSafetyGuard} before this validator runs.
  */
 public final class StructuredComplianceResponseValidator {
 
@@ -31,7 +32,6 @@ public final class StructuredComplianceResponseValidator {
         }
         String decision = text(output, "recommendedDecisionConcept");
         if (decision == null || decision.isBlank()) {
-            // Prefer newer schema field when present.
             decision = text(output, "decision");
         }
         if (decision == null || decision.isBlank()) {
@@ -58,6 +58,11 @@ public final class StructuredComplianceResponseValidator {
                 "Output references evidence IDs absent from candidates");
         }
 
+        boolean explicitContradiction = bool(output, "explicitContradiction");
+        boolean closedWorldApplied = bool(output, "closedWorldApplied");
+        boolean missingElements = hasTextItems(output, "missingRequirementElements")
+            || hasTextItems(output, "missingInformation");
+
         return switch (decision) {
             case "COMPLIANT", "PARTIALLY_COMPLIANT" -> {
                 if (supporting.isEmpty()) {
@@ -67,10 +72,22 @@ public final class StructuredComplianceResponseValidator {
                 }
                 yield ValidationResult.ok();
             }
-            // NON_COMPLIANT / INSUFFICIENT semantics are enforced primarily via prompts
-            // and decision-semantics tests. During schema rollout, do not reject grounded
-            // NON_COMPLIANT payloads that omit the newer explicitContradiction flags.
-            case "NON_COMPLIANT", "INSUFFICIENT_INFORMATION" -> ValidationResult.ok();
+            case "NON_COMPLIANT" -> {
+                if (!explicitContradiction && !closedWorldApplied) {
+                    yield ValidationResult.fail(
+                        SemanticEvaluationFailureCode.LLM_INVALID_RESPONSE,
+                        "NON_COMPLIANT requires explicitContradiction or closedWorldApplied");
+                }
+                yield ValidationResult.ok();
+            }
+            case "INSUFFICIENT_INFORMATION" -> {
+                if (!missingElements) {
+                    yield ValidationResult.fail(
+                        SemanticEvaluationFailureCode.LLM_INVALID_RESPONSE,
+                        "INSUFFICIENT_INFORMATION requires missingRequirementElements");
+                }
+                yield ValidationResult.ok();
+            }
             default -> ValidationResult.ok();
         };
     }
@@ -86,6 +103,20 @@ public final class StructuredComplianceResponseValidator {
             }
         }
         return ids;
+    }
+
+    private static boolean hasTextItems(JsonNode node, String field) {
+        for (JsonNode item : node.path(field)) {
+            if (item != null && item.isTextual() && !item.asText().isBlank()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean bool(JsonNode node, String field) {
+        JsonNode value = node.path(field);
+        return value != null && value.isBoolean() && value.asBoolean();
     }
 
     private static String text(JsonNode node, String field) {

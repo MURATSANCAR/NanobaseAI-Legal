@@ -121,8 +121,24 @@ class ComplianceSemanticRouterTest {
     }
 
     private ComplianceSemanticRouter router(String mode) {
+        // Explicitly enable FAST/SHADOW flags so mode-specific regression tests exercise
+        // the retained code paths; production defaults keep both flags false.
+        boolean enableFast = "LIVE_FAST".equals(mode) || "SHADOW".equals(mode);
+        boolean enableShadow = "SHADOW".equals(mode);
         return new ComplianceSemanticRouter(
-            gateway, mapper, metrics, mode, "BALANCED", "FAST", 1024, 512, 0.70, 2);
+            gateway, mapper, metrics, mode, "BALANCED", "FAST", 1024, 512, 0.70, 2,
+            enableFast, enableShadow);
+    }
+
+    @Test
+    void productionFlagsForceBalancedOnlyEvenWhenModeRequestsFast() {
+        ComplianceSemanticRouter router = new ComplianceSemanticRouter(
+            gateway, mapper, metrics, "LIVE_FAST", "BALANCED", "FAST", 1024, 512, 0.70, 2,
+            false, false);
+        assertThat(router.mode()).isEqualTo(ComplianceRoutingMode.BALANCED_ONLY);
+        when(gateway.evaluate(any())).thenReturn(response("COMPLIANT", 0.9, false));
+        router.evaluate(request("BALANCED"), false);
+        verify(gateway, times(1)).evaluate(any());
     }
 
     private SemanticRequest request(String profile) {
