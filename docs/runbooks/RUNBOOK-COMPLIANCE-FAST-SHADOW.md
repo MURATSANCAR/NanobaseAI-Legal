@@ -1,6 +1,6 @@
 # Compliance FAST Shadow / Promotion
 
-**Belirti:** FAST (Qwen3.5-9B) shadow disagreement, false COMPLIANT, veya structured
+**Belirti:** FAST shadow disagreement, false COMPLIANT, veya structured
 JSON failure artışı. **Neden:** FAST runtime down, prompt/schema uyumsuzluğu,
 reasoning açık kalması, veya kalite regresyonu.
 
@@ -29,7 +29,7 @@ Aynı dönemde:
 
 ## Müdahale
 
-1. Anında: `COMPLIANCE_ROUTING_MODE=BALANCED_ONLY` (canlı karar 35B)
+1. Anında: `COMPLIANCE_ROUTING_MODE=BALANCED_ONLY` (canlı karar BALANCED)
 2. FAST recovery sonrası tekrar `SHADOW`
 3. Gate’ler geçince `LIVE_FAST` (escalation: düşük güven / çelişki / çok kanıt / FAST failure → BALANCED)
 

@@ -194,7 +194,7 @@ specai:
   compliance:
     routing:
       # BALANCED_ONLY | SHADOW | LIVE_FAST
-      mode: ${COMPLIANCE_ROUTING_MODE:SHADOW}
+      mode: ${COMPLIANCE_ROUTING_MODE:BALANCED_ONLY}
       live-profile: ${COMPLIANCE_LIVE_PROFILE:BALANCED}
       fast-profile: ${COMPLIANCE_FAST_PROFILE:FAST}
       fast-max-output-tokens: ${COMPLIANCE_FAST_MAX_OUTPUT_TOKENS:768}

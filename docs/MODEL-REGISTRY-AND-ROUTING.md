@@ -18,12 +18,12 @@ dönmez. Orchestrator tool, internet ve filesystem erişimi sağlamaz.
 
 Compliance semantic evaluation `ComplianceSemanticRouter` ile yönetilir:
 
-| Mode | Canlı karar | FAST (9B) |
-|------|-------------|-----------|
-| `BALANCED_ONLY` | BALANCED (35B) | yok |
+| Mode | Canlı karar | FAST |
+|------|-------------|------|
+| `BALANCED_ONLY` | BALANCED | yok |
 | `SHADOW` | BALANCED | paralel kayıt / karşılaştırma |
 | `LIVE_FAST` | FAST; düşük güven / çelişki / çok kanıt / FAST failure → BALANCED | birincil |
 
-Önerilen FAST runtime (ayrı vLLM/SGLang deployment): `reasoning=false`,
+Önerilen FAST runtime (ayrı deployment, ürün adı dışarı sızmaz): `reasoning=false`,
 `temperature=0`, `topP=0.8`, `maxTokens=512`, `timeoutSeconds=300`.
 Shadow kapıları ve rollback: `docs/runbooks/RUNBOOK-COMPLIANCE-FAST-SHADOW.md`.

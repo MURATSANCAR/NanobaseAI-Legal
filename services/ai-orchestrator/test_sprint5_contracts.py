@@ -290,7 +290,7 @@ def test_fast_deployment_applies_reasoning_off_top_p_and_token_cap(
     fast = orchestrator.Deployment(
         profile="FAST",
         base_url="http://runtime.invalid",
-        runtime_model="nanobase-qwen35-9b",
+        runtime_model="nanobase-fast",
         api_key=None,
         timeout_seconds=300,
         temperature=0.0,
@@ -319,8 +319,8 @@ def test_load_deployments_parses_fast_runtime_options(
     monkeypatch.setenv(
         "MODEL_DEPLOYMENTS_JSON",
         (
-            '[{"profile":"FAST","baseUrl":"http://fast:8011",'
-            '"runtimeModel":"nanobase-qwen35-9b","timeoutSeconds":300,'
+            '[{"profile":"FAST","baseUrl":"http://fast:8001",'
+            '"runtimeModel":"nanobase-fast","timeoutSeconds":300,'
             '"temperature":0,"topP":0.8,"reasoning":false,"maxTokens":512}]'
         ),
     )
