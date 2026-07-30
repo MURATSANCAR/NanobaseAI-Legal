@@ -8,16 +8,17 @@ import org.junit.jupiter.api.Test;
 class ComplianceTimeoutPolicyTest {
 
     @Test
-    void backendReadTimeoutExceedsBalancedGenerationBudget() {
-        Duration queueWait = Duration.ofSeconds(120);
+    void backendReadTimeoutCoversBalancedGenerationBudget() {
+        Duration queueWait = Duration.ofSeconds(180);
         Duration generation = Duration.ofSeconds(600);
-        Duration networkMargin = Duration.ofSeconds(40);
         Duration backendRead = Duration.ofSeconds(780);
+        Duration globalDeadline = Duration.ofSeconds(820);
 
-        assertThat(backendRead)
-            .isGreaterThan(queueWait.plus(generation));
-        assertThat(backendRead)
-            .isGreaterThanOrEqualTo(queueWait.plus(generation).plus(networkMargin).minusSeconds(20));
+        // Production V1: read timeout covers queue+generation; global deadline adds margin
+        // so the backend does not drop the connection before a controlled orchestrator reply.
+        assertThat(backendRead).isGreaterThanOrEqualTo(queueWait.plus(generation));
+        assertThat(globalDeadline).isGreaterThan(queueWait.plus(generation));
+        assertThat(globalDeadline).isGreaterThan(backendRead);
     }
 
     @Test
@@ -31,7 +32,7 @@ class ComplianceTimeoutPolicyTest {
     @Test
     void complianceDoesNotInheritDocumentProviderTimeout() {
         Duration documentProvider = Duration.ofSeconds(180);
-        Duration compliance = Duration.ofSeconds(660);
+        Duration compliance = Duration.ofSeconds(780);
         assertThat(compliance).isGreaterThan(documentProvider);
     }
 

@@ -4,6 +4,8 @@ services:
   postgres:
     image: postgres:17.5-alpine
     environment:
+      TZ: Europe/Istanbul
+      PGTZ: Europe/Istanbul
       POSTGRES_DB: specai
       POSTGRES_USER: specai
       POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-}
@@ -109,6 +111,7 @@ services:
     build:
       context: .
     environment:
+      TZ: Europe/Istanbul
       DATABASE_URL: jdbc:postgresql://postgres:5432/specai
       DATABASE_USER: specai
       DATABASE_PASSWORD: ${DATABASE_PASSWORD:-}
@@ -140,6 +143,10 @@ services:
       AI_ORCHESTRATOR_BASE_URL: http://ai-orchestrator:8090
       SPECAI_AI_ORCHESTRATOR_BASE_URL: http://ai-orchestrator:8090
       COMPLIANCE_ROUTING_MODE: ${COMPLIANCE_ROUTING_MODE:-BALANCED_ONLY}
+      COMPLIANCE_FAST_ENABLED: ${COMPLIANCE_FAST_ENABLED:-false}
+      COMPLIANCE_SHADOW_ENABLED: ${COMPLIANCE_SHADOW_ENABLED:-false}
+      COMPLIANCE_SHADOW_SAMPLE_RATE: ${COMPLIANCE_SHADOW_SAMPLE_RATE:-0}
+      COMPLIANCE_EVALUATION_PARALLELISM: ${COMPLIANCE_EVALUATION_PARALLELISM:-1}
       COMPLIANCE_LIVE_PROFILE: ${COMPLIANCE_LIVE_PROFILE:-BALANCED}
       COMPLIANCE_FAST_PROFILE: ${COMPLIANCE_FAST_PROFILE:-FAST}
       COMPLIANCE_FAST_MAX_OUTPUT_TOKENS: ${COMPLIANCE_FAST_MAX_OUTPUT_TOKENS:-512}
@@ -248,6 +255,7 @@ services:
     build:
       context: ./services/ai-orchestrator
     environment:
+      TZ: Europe/Istanbul
       MODEL_DEPLOYMENTS_JSON: ${AI_MODEL_DEPLOYMENTS_JSON:-[]}
       LOG_LEVEL: ${AI_ORCHESTRATOR_LOG_LEVEL:-INFO}
     extra_hosts:

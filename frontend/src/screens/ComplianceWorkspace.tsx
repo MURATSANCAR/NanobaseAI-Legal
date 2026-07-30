@@ -257,9 +257,11 @@ export function ComplianceWorkspace({ project, token, canWrite, onProblem, onNot
         <ShieldCheck />Analizi başlat</button>}
     </div>
     {job && <div className="extraction-progress">
-      <div><b>{job.status.replaceAll("_", " ")}</b>
-        <span>{job.processed_requirement_count}/{job.total_requirement_count} requirement ·
-          {" "}{job.manual_review_count} uzman incelemesi · {job.failed_count} hata</span></div>
+      <div><b>{["QUEUED", "RUNNING"].includes(job.status)
+        ? "Analiz devam ediyor" : job.status.replaceAll("_", " ")}</b>
+        <span>İşlenen requirement: {job.processed_requirement_count} /
+          {" "}{job.total_requirement_count}
+          {" "}· {job.manual_review_count} uzman incelemesi · {job.failed_count} hata</span></div>
       <progress max={Math.max(job.total_requirement_count, 1)}
         value={job.processed_requirement_count} />
     </div>}
@@ -295,11 +297,12 @@ export function ComplianceWorkspace({ project, token, canWrite, onProblem, onNot
         </> : <Empty text="Evidence’i görmek için bir requirement seçin." />}
       </main>
       <aside className="panel decision-panel">
-        <p className="eyebrow">DEĞERLENDİRME VE UZMAN KARARI</p>
+        <p className="eyebrow">AI ÖN DEĞERLENDİRMESİ VE UZMAN KARARI</p>
         {selected ? <>
           <dl>
+            <div><dt>Sonuç etiketi</dt><dd>AI Ön Değerlendirmesi</dd></div>
             <div><dt>Önerilen karar</dt><dd>{selected.suggested_decision}</dd></div>
-            <div><dt>Final karar</dt><dd>{selected.final_decision || "Bekliyor"}</dd></div>
+            <div><dt>Final karar</dt><dd>{selected.final_decision || "Uzman incelemesi bekliyor"}</dd></div>
             <div><dt>Grounding</dt><dd>{selected.grounding_status}</dd></div>
             <div><dt>Confidence</dt><dd>
               %{Math.round(selected.combined_confidence * 100)}</dd></div>

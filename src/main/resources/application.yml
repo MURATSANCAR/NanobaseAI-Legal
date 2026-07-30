@@ -16,7 +16,9 @@ spring:
       ddl-auto: validate
     properties:
       hibernate:
-        jdbc.time_zone: UTC
+        jdbc.time_zone: Europe/Istanbul
+  jackson:
+    time-zone: Europe/Istanbul
   flyway:
     enabled: true
   security:

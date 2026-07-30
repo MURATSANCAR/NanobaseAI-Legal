@@ -72,7 +72,7 @@ def _default_queue_depth(profile: str) -> int:
 
 
 def _default_queue_wait(profile: str) -> float:
-    return 60.0 if profile.strip().upper() == "FAST" else 120.0
+    return 60.0 if profile.strip().upper() == "FAST" else 180.0
 
 
 @dataclass
@@ -1018,6 +1018,28 @@ async def evaluate_compliance(
         http_request=http_request,
     )
     output = response.output
+    decision_code = str(output.get("recommendedDecisionConcept") or "")
+    explicit_contradiction = bool(output.get("explicitContradiction"))
+    closed_world_applied = bool(output.get("closedWorldApplied"))
+    missing_elements = output.get("missingRequirementElements") or output.get(
+        "missingInformation"
+    ) or []
+    if decision_code == "NON_COMPLIANT" and not (
+        explicit_contradiction or closed_world_applied
+    ):
+        # Remap unsafe NON_COMPLIANT before allow-list checks.
+        output["recommendedDecisionConcept"] = "INSUFFICIENT_INFORMATION"
+        output["decision"] = "INSUFFICIENT_INFORMATION"
+        output["decisionSafetyOverride"] = "NON_COMPLIANT_WITHOUT_EXPLICIT_GROUNDING"
+        if not missing_elements:
+            output["missingRequirementElements"] = [
+                "Required evidence element not present in candidates"
+            ]
+            output["missingInformation"] = [
+                "Required evidence element not present in candidates"
+            ]
+        decision_code = "INSUFFICIENT_INFORMATION"
+
     if output.get("recommendedDecisionConcept") not in request.allowedDecisionConcepts:
         raise HTTPException(
             status_code=422,
@@ -1032,7 +1054,6 @@ async def evaluate_compliance(
             status_code=422,
             detail={"code": "INVALID_EVIDENCE_ID"},
         )
-    decision_code = str(output.get("recommendedDecisionConcept"))
     decision_metadata = next(
         (
             _ontology_metadata(item)

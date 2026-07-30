@@ -359,7 +359,8 @@ public class ComplianceAnalysisProcessor {
             organizationId, "nanobase-spec-ai", modelProfile(organizationId),
             prompt.components(), prompt.schema(),
             Map.of("id", requirement.id(), "text", requirement.text(),
-                "attributes", requirement.attributes()),
+                "attributes", requirement.attributes(),
+                "evaluationVersion", "v1"),
             ontology(organizationId, job.analysisProfileId()), evidence,
             decisions.stream().map(Decision::code).toList(), maxOutputTokens, correlationId);
         ComplianceSemanticRouter.RoutedEvaluation routed =
@@ -367,15 +368,16 @@ public class ComplianceAnalysisProcessor {
         var response = routed.response();
         ObjectNode safeOutput = decisionSafetyGuard.normalize(
             response.output(), requirement.text(), evidence);
-        String decisionCode = safeOutput.path("recommendedDecisionConcept").asText();
-        if (decisionCode == null || decisionCode.isBlank()) {
-            decisionCode = safeOutput.path("decision").asText();
+        String rawDecision = safeOutput.path("recommendedDecisionConcept").asText();
+        if (rawDecision == null || rawDecision.isBlank()) {
+            rawDecision = safeOutput.path("decision").asText();
         }
-        if (decisionCode == null || decisionCode.isBlank()) {
+        if (rawDecision == null || rawDecision.isBlank()) {
             throw new SemanticEvaluationException(
                 SemanticEvaluationFailureCode.LLM_INVALID_RESPONSE,
                 "Semantic evaluator returned an empty decision concept", 0);
         }
+        final String decisionCode = rawDecision;
         UUID decisionId = decisions.stream()
             .filter(item -> item.code().equals(decisionCode))
             .map(Decision::id).findFirst()

@@ -306,9 +306,12 @@ public class HttpComplianceAiGateway implements ComplianceAiGateway {
     private static String idempotencyKey(SemanticRequest request) {
         Object requirementId = request.requirement() == null
             ? null : request.requirement().get("id");
+        Object evaluationVersion = request.requirement() == null
+            ? null : request.requirement().get("evaluationVersion");
+        // complianceRunId is carried as correlationId for the analysis job.
         return String.valueOf(request.correlationId()) + ":"
             + String.valueOf(requirementId) + ":"
-            + request.modelProfile() + ":v1";
+            + String.valueOf(evaluationVersion == null ? "v1" : evaluationVersion);
     }
 
     private static int estimateTokens(SemanticRequest request) {

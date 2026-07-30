@@ -14,4 +14,4 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD wget -q -O - http://127.0.0.1:8080/actuator/health/liveness \
       | grep -q '"status":"UP"' || exit 1
-ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75", "-Djava.security.egd=file:/dev/urandom", "-jar", "/app/app.jar"]
+ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75", "-Djava.security.egd=file:/dev/urandom", "-Duser.timezone=Europe/Istanbul", "-jar", "/app/app.jar"]

@@ -125,6 +125,49 @@ def test_ungrounded_positive_claim_is_rejected(
     assert error.value.detail["code"] == "UNGROUNDED_POSITIVE_DECISION"
 
 
+def test_unsafe_non_compliant_is_remapped_to_insufficient(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = output(decision="NON_COMPLIANT", supporting=[], contradicting=["evidence-2"])
+    payload["explicitContradiction"] = False
+    payload["closedWorldApplied"] = False
+    payload["conditionEvaluations"][0]["statusConcept"] = "NOT_SATISFIED"
+    result = run_evaluation(monkeypatch, payload)
+    assert result.output["recommendedDecisionConcept"] == "INSUFFICIENT_INFORMATION"
+    assert result.output["decisionSafetyOverride"] == (
+        "NON_COMPLIANT_WITHOUT_EXPLICIT_GROUNDING"
+    )
+    assert result.output["missingRequirementElements"]
+
+
+def test_explicit_non_compliant_is_kept_when_allowed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    req = request()
+    req.allowedDecisionConcepts = [
+        "COMPLIANT",
+        "NON_COMPLIANT",
+        "INSUFFICIENT_INFORMATION",
+    ]
+    req.ontologyConcepts.append(
+        {"code": "NON_COMPLIANT", "metadata": {"positive": False}}
+    )
+    payload = output(decision="NON_COMPLIANT", supporting=[], contradicting=["evidence-2"])
+    payload["explicitContradiction"] = True
+    payload["conditionEvaluations"][0]["statusConcept"] = "NOT_SATISFIED"
+
+    monkeypatch.setattr(orchestrator, "DEPLOYMENTS", (deployment(),))
+
+    async def fake_call(**_kwargs):
+        return response(payload)
+
+    monkeypatch.setattr(
+        orchestrator, "_structured_runtime_call_with_fallback", fake_call
+    )
+    result = asyncio.run(orchestrator.evaluate_compliance(req, None))
+    assert result.output["recommendedDecisionConcept"] == "NON_COMPLIANT"
+
+
 def test_contradiction_omission_is_rejected(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
