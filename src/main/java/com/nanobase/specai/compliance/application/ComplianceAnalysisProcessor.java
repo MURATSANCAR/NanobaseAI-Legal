@@ -19,10 +19,14 @@ import com.nanobase.specai.decision.application.TenderSummaryService;
 import com.nanobase.specai.integration.outbox.OutboxService;
 import com.nanobase.specai.operations.application.FeatureFlagService;
 import com.nanobase.specai.operations.application.TenderIntelligenceFlags;
+import com.nanobase.specai.compliance.application.ComplianceJobTransactionService.ClaimOutcome;
+import com.nanobase.specai.compliance.application.ComplianceJobTransactionService.JobClaimResult;
+import com.nanobase.specai.compliance.application.ComplianceJobTransactionService.JobFinalizationResult;
 import com.nanobase.specai.shared.observability.PlatformMetrics;
 import com.nanobase.specai.shared.security.TenantDatabaseContext;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -31,17 +35,23 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
 public class ComplianceAnalysisProcessor {
     private static final Logger log = LoggerFactory.getLogger(ComplianceAnalysisProcessor.class);
     private static final int DEFAULT_MAX_OUTPUT_TOKENS = 1024;
+    private static final Duration HEARTBEAT_INTERVAL = Duration.ofSeconds(20);
 
     private final TenantDatabaseContext tenantDatabase;
     private final JdbcTemplate jdbc;
@@ -53,6 +63,7 @@ public class ComplianceAnalysisProcessor {
     private final ComplianceSemanticRouter semanticRouter;
     private final ComplianceDecisionSafetyGuard decisionSafetyGuard;
     private final ComplianceJobService jobs;
+    private final ComplianceJobTransactionService transactionService;
     private final OutboxService outbox;
     private final PlatformMetrics metrics;
     private final FeatureFlagService featureFlags;
@@ -73,6 +84,7 @@ public class ComplianceAnalysisProcessor {
         PolicyComplianceConfidenceEngine confidenceEngine,
         ComplianceSemanticRouter semanticRouter,
         ComplianceJobService jobs,
+        ComplianceJobTransactionService transactionService,
         OutboxService outbox,
         PlatformMetrics metrics,
         FeatureFlagService featureFlags,
@@ -95,6 +107,7 @@ public class ComplianceAnalysisProcessor {
         this.semanticRouter = semanticRouter;
         this.decisionSafetyGuard = new ComplianceDecisionSafetyGuard(mapper);
         this.jobs = jobs;
+        this.transactionService = transactionService;
         this.outbox = outbox;
         this.metrics = metrics;
         this.featureFlags = featureFlags;
@@ -114,129 +127,246 @@ public class ComplianceAnalysisProcessor {
             this.maxOutputTokens);
     }
 
-    @Transactional
+    /**
+     * Orchestrates compliance analysis without owning a long-lived database
+     * transaction. Claim/heartbeat/finalize use short transactions via
+     * {@link ComplianceJobTransactionService}. LLM and slot waits run outside TX.
+     */
     public void process(UUID organizationId, UUID jobId, UUID correlationId) {
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            throw new IllegalStateException(
+                "ComplianceAnalysisProcessor.process must not run inside a transaction");
+        }
         tenantDatabase.apply(organizationId);
-        Job job = job(organizationId, jobId);
-        if (!"QUEUED".equals(job.status())) {
+        Instant claimStarted = Instant.now();
+        String workerId = ComplianceJobTransactionService.normalizeWorkerId(
+            "worker-" + jobId + "-" + UUID.randomUUID());
+        Instant leaseExpiresAt = Instant.now()
+            .plus(ComplianceJobTransactionService.DEFAULT_LEASE);
+        log.info("event=COMPLIANCE_JOB_CLAIM_ATTEMPTED jobId={} workerId={} correlationId={}",
+            jobId, workerId, correlationId);
+        JobClaimResult claim = transactionService.claimJob(
+            organizationId, jobId, workerId, leaseExpiresAt);
+        long claimDurationMs = Duration.between(claimStarted, Instant.now()).toMillis();
+        metrics.complianceJobClaim(claim.claimed(), claimDurationMs);
+        if (claim.claimed() && claim.attemptCount() > 1) {
+            metrics.complianceJobReclaimed();
+            log.info("event=COMPLIANCE_JOB_RECLAIMED jobId={} workerId={}", jobId, workerId);
+        }
+        if (!claim.claimed()) {
+            String errorCode = ComplianceJobTransactionService.orchestrationErrorCode(
+                claim.outcome());
+            log.info("event=COMPLIANCE_JOB_CLAIM_SKIPPED jobId={} outcome={} errorCode={} "
+                    + "claimDurationMs={}",
+                jobId, claim.outcome(), errorCode, claimDurationMs);
             return;
         }
         metrics.complianceAnalysis();
-        jdbc.update("""
-            update compliance_analysis_job
-            set status = 'RUNNING', started_at = coalesce(started_at, now()),
-                updated_at = now(), version = version + 1
-            where id = ? and organization_id = ?
-            """, jobId, organizationId);
+        metrics.complianceJobRunning();
+        Job job = Job.fromClaim(claim);
         jobs.event(organizationId, jobId, "STARTED", 0,
             "Compliance analysis started",
-            Map.of("requirementCount", job.totalRequirementCount()));
+            Map.of("requirementCount", job.totalRequirementCount(),
+                "workerId", workerId, "claimDurationMs", claimDurationMs));
         outbox.publish(organizationId, "ComplianceAnalysis", jobId,
             "ComplianceAnalysisStarted", "compliance.analysis.started.v1",
-            Map.of("jobId", jobId), correlationId);
-        List<Task> tasks = tasks(organizationId, jobId);
+            Map.of("jobId", jobId, "claimDurationMs", claimDurationMs), correlationId);
+
+        AtomicReference<UUID> activeTaskId = new AtomicReference<>();
+        ScheduledExecutorService heartbeatExecutor = Executors.newSingleThreadScheduledExecutor(
+            runnable -> {
+                Thread thread = new Thread(runnable, "compliance-heartbeat-" + jobId);
+                thread.setDaemon(true);
+                return thread;
+            });
+        ScheduledFuture<?> heartbeatFuture = heartbeatExecutor.scheduleAtFixedRate(() -> {
+            try {
+                tenantDatabase.apply(organizationId);
+                transactionService.heartbeat(
+                    organizationId, jobId, activeTaskId.get(), workerId,
+                    Instant.now().plus(ComplianceJobTransactionService.DEFAULT_LEASE));
+            } catch (RuntimeException heartbeatFailure) {
+                metrics.complianceHeartbeatFailure();
+                log.warn("event=COMPLIANCE_HEARTBEAT_FAILED jobId={} taskId={} error={}",
+                    jobId, activeTaskId.get(), heartbeatFailure.toString());
+            }
+        }, HEARTBEAT_INTERVAL.toSeconds(), HEARTBEAT_INTERVAL.toSeconds(), TimeUnit.SECONDS);
+
+        Instant jobStarted = Instant.now();
         int processed = 0;
         int completed = 0;
         int reviews = 0;
         int failed = 0;
-        for (Task task : tasks) {
-            try {
-                TaskResult result = evaluate(organizationId, job, task, correlationId);
-                completed++;
-                if (result.requiresReview()) {
-                    reviews++;
+        try {
+            if (transactionService.cancellationState(organizationId, jobId).cancelRequested()) {
+                transactionService.cancelRemainingTasks(organizationId, jobId);
+                metrics.complianceCancelRequest();
+            } else {
+                List<Task> pending = tasks(organizationId, jobId);
+                for (Task task : pending) {
+                    if (transactionService.cancellationState(organizationId, jobId)
+                        .cancelRequested()) {
+                        transactionService.cancelRemainingTasks(organizationId, jobId);
+                        metrics.complianceCancelRequest();
+                        break;
+                    }
+                    Instant taskLease = Instant.now()
+                        .plus(ComplianceJobTransactionService.DEFAULT_LEASE);
+                    var taskClaim = transactionService.claimTask(
+                        organizationId, jobId, task.id(), workerId, taskLease);
+                    if (!taskClaim.claimed()) {
+                        continue;
+                    }
+                    activeTaskId.set(task.id());
+                    Instant taskStarted = Instant.now();
+                    metrics.complianceTaskRunning();
+                    try {
+                        if (transactionService.cancellationState(organizationId, jobId)
+                            .cancelRequested()) {
+                            transactionService.cancelRemainingTasks(organizationId, jobId);
+                            metrics.complianceCancelRequest();
+                            break;
+                        }
+                        TaskResult result = evaluate(organizationId, job, task, correlationId,
+                            workerId);
+                        if (transactionService.cancellationState(organizationId, jobId)
+                            .cancelRequested()) {
+                            // Cooperative cancel after model: do not treat as success progress
+                            // if job was cancelled; remaining tasks are cancelled below.
+                            transactionService.cancelRemainingTasks(organizationId, jobId);
+                            metrics.complianceCancelRequest();
+                            break;
+                        }
+                        completed++;
+                        if (result.requiresReview()) {
+                            reviews++;
+                        }
+                        log.info("event=COMPLIANCE_TASK_COMPLETED jobId={} taskId={} "
+                                + "requirementId={} taskDurationMs={}",
+                            jobId, task.id(), task.requirementId(),
+                            Duration.between(taskStarted, Instant.now()).toMillis());
+                    } catch (SemanticEvaluationException failure) {
+                        failed++;
+                        failTask(organizationId, task.id(), failure.failureCode().name(),
+                            failure.getMessage());
+                        log.warn(
+                            "event=COMPLIANCE_TASK_FAILED complianceRunId={} requirementId={} "
+                                + "failureCode={} retryAttempt={}",
+                            jobId, task.requirementId(), failure.failureCode(),
+                            failure.retryAttempt());
+                    } catch (RuntimeException failure) {
+                        failed++;
+                        failTask(organizationId, task.id(), "EVALUATION_ERROR",
+                            failure.getMessage());
+                        log.warn("event=COMPLIANCE_TASK_FAILED jobId={} taskId={} errorCode={}",
+                            jobId, task.id(), failure.getClass().getSimpleName());
+                    } finally {
+                        activeTaskId.set(null);
+                        metrics.complianceTaskDuration(
+                            Duration.between(taskStarted, Instant.now()));
+                    }
+                    processed++;
+                    int progress = job.totalRequirementCount() == 0 ? 100
+                        : (int) Math.round(processed * 100d / job.totalRequirementCount());
+                    jdbc.update("""
+                        update compliance_analysis_job
+                        set processed_requirement_count = ?, completed_count = ?,
+                            manual_review_count = ?, failed_count = ?,
+                            updated_at = clock_timestamp(),
+                            version = version + 1
+                        where id = ? and organization_id = ?
+                          and status = 'RUNNING'
+                        """, processed, completed, reviews, failed, jobId, organizationId);
+                    jobs.event(organizationId, jobId, "PROGRESS", progress,
+                        "Compliance analysis progressed",
+                        Map.of("processed", processed, "completed", completed,
+                            "manualReview", reviews, "failed", failed));
+                    outbox.publish(organizationId, "ComplianceAnalysis", jobId,
+                        "ComplianceAnalysisProgress", "compliance.analysis.progress.v1",
+                        Map.of("jobId", jobId, "progress", progress,
+                            "processed", processed, "completed", completed,
+                            "manualReview", reviews, "failed", failed), correlationId);
                 }
-            } catch (SemanticEvaluationException failure) {
-                failed++;
-                jdbc.update("""
-                    update requirement_matching_task
-                    set status = 'FAILED', error_code = ?, error_message = ?,
-                        completed_at = clock_timestamp(), updated_at = clock_timestamp(),
-                        version = version + 1
-                    where id = ? and organization_id = ?
-                    """, failure.failureCode().name(),
-                    truncate(failure.getMessage()), task.id(), organizationId);
-                log.warn(
-                    "semantic_evaluation_failed complianceRunId={} requirementId={} "
-                        + "failureCode={} retryAttempt={}",
-                    jobId, task.requirementId(), failure.failureCode(), failure.retryAttempt());
-            } catch (RuntimeException failure) {
-                failed++;
-                jdbc.update("""
-                    update requirement_matching_task
-                    set status = 'FAILED', error_code = ?, error_message = ?,
-                        completed_at = clock_timestamp(), updated_at = clock_timestamp(),
-                        version = version + 1
-                    where id = ? and organization_id = ?
-                    """, failure.getClass().getSimpleName(),
-                    truncate(failure.getMessage()), task.id(), organizationId);
             }
-            processed++;
-            int progress = job.totalRequirementCount() == 0 ? 100
-                : (int) Math.round(processed * 100d / job.totalRequirementCount());
-            jdbc.update("""
-                update compliance_analysis_job
-                set processed_requirement_count = ?, completed_count = ?,
-                    manual_review_count = ?, failed_count = ?, updated_at = now(),
-                    version = version + 1
-                where id = ? and organization_id = ?
-                """, processed, completed, reviews, failed, jobId, organizationId);
-            jobs.event(organizationId, jobId, "PROGRESS", progress,
-                "Compliance analysis progressed",
-                Map.of("processed", processed, "completed", completed,
-                    "manualReview", reviews, "failed", failed));
+
+            log.info("event=COMPLIANCE_JOB_FINALIZATION_STARTED jobId={} workerId={}",
+                jobId, workerId);
+            JobFinalizationResult finalization =
+                transactionService.finalizeJob(organizationId, jobId);
+            String terminal = finalization.status();
+            metrics.complianceJobDuration(Duration.between(jobStarted, Instant.now()));
+            if ("PARTIALLY_COMPLETED".equals(terminal)) {
+                metrics.complianceJobPartial();
+            }
+            jobs.event(organizationId, jobId, terminal, 100,
+                "Compliance analysis finished",
+                Map.of("completed", finalization.completed(),
+                    "manualReview", reviews, "failed", finalization.failed(),
+                    "claimDurationMs", claimDurationMs));
             outbox.publish(organizationId, "ComplianceAnalysis", jobId,
-                "ComplianceAnalysisProgress", "compliance.analysis.progress.v1",
-                Map.of("jobId", jobId, "progress", progress,
-                    "processed", processed, "completed", completed,
-                    "manualReview", reviews, "failed", failed), correlationId);
-        }
-        String terminal = completed == 0 && failed > 0 ? "FAILED"
-            : (failed > 0 ? "PARTIALLY_COMPLETED" : "COMPLETED");
-        jdbc.update("""
-            update compliance_analysis_job
-            set status = ?, completed_at = now(), updated_at = now(), version = version + 1
-            where id = ? and organization_id = ?
-            """, terminal, jobId, organizationId);
-        jobs.event(organizationId, jobId, terminal, 100,
-            "Compliance analysis finished",
-            Map.of("completed", completed, "manualReview", reviews, "failed", failed));
-        outbox.publish(organizationId, "ComplianceAnalysis", jobId,
-            "FAILED".equals(terminal)
-                ? "ComplianceAnalysisFailed" : "ComplianceAnalysisCompleted",
-            "FAILED".equals(terminal)
-                ? "compliance.analysis.failed.v1" : "compliance.analysis.completed.v1",
-            Map.of("jobId", jobId, "completed", completed,
-                "manualReview", reviews, "failed", failed, "status", terminal), correlationId);
-        if (!"FAILED".equals(terminal)
-            && featureFlags.enabled(organizationId, job.projectId(),
-            TenderIntelligenceFlags.TENDER_DOMAIN_V2)) {
-            try {
-                Map<String, Object> summary = tenderSummaryService.rebuild(
-                    organizationId, job.projectId());
-                audit.recordSystem(organizationId, "system", "TENDER_SUMMARY_REBUILT",
-                    "TenderAssessmentSummary", job.projectId(), null,
-                    Map.of("jobId", jobId, "status", summary.getOrDefault(
-                        "overall_compliance_status", "REVIEW_REQUIRED")));
-            } catch (RuntimeException summaryFailure) {
-                log.warn("tender_summary_rebuild_failed jobId={} projectId={} error={}",
-                    jobId, job.projectId(), summaryFailure.toString());
-                metrics.summaryRebuildFailure();
-                jobs.event(organizationId, jobId, "SUMMARY_FAILED", 100,
-                    "Tender summary rebuild failed",
-                    Map.of("error", truncate(summaryFailure.getMessage())));
+                "FAILED".equals(terminal)
+                    ? "ComplianceAnalysisFailed" : "ComplianceAnalysisCompleted",
+                "FAILED".equals(terminal)
+                    ? "compliance.analysis.failed.v1" : "compliance.analysis.completed.v1",
+                Map.of("jobId", jobId, "completed", finalization.completed(),
+                    "manualReview", reviews, "failed", finalization.failed(),
+                    "status", terminal, "claimDurationMs", claimDurationMs), correlationId);
+            if (!"FAILED".equals(terminal) && !"CANCELLED".equals(terminal)
+                && featureFlags.enabled(organizationId, job.projectId(),
+                TenderIntelligenceFlags.TENDER_DOMAIN_V2)) {
+                try {
+                    Map<String, Object> summary = tenderSummaryService.rebuild(
+                        organizationId, job.projectId());
+                    audit.recordSystem(organizationId, "system", "TENDER_SUMMARY_REBUILT",
+                        "TenderAssessmentSummary", job.projectId(), null,
+                        Map.of("jobId", jobId, "status", summary.getOrDefault(
+                            "overall_compliance_status", "REVIEW_REQUIRED")));
+                } catch (RuntimeException summaryFailure) {
+                    log.warn("tender_summary_rebuild_failed jobId={} projectId={} error={}",
+                        jobId, job.projectId(), summaryFailure.toString());
+                    metrics.summaryRebuildFailure();
+                    jobs.event(organizationId, jobId, "SUMMARY_FAILED", 100,
+                        "Tender summary rebuild failed",
+                        Map.of("error", truncate(summaryFailure.getMessage())));
+                }
             }
+        } finally {
+            heartbeatFuture.cancel(true);
+            heartbeatExecutor.shutdownNow();
+        }
+    }
+
+    private void failTask(UUID organizationId, UUID taskId, String errorCode, String message) {
+        jdbc.update("""
+            update requirement_matching_task
+            set status = 'FAILED', error_code = ?, error_message = ?,
+                last_error_code = ?, last_error_message = ?,
+                completed_at = clock_timestamp(), updated_at = clock_timestamp(),
+                version = version + 1
+            where id = ? and organization_id = ?
+              and status = 'RUNNING'
+            """, errorCode, truncate(message), errorCode, truncate(message),
+            taskId, organizationId);
+        metrics.complianceTaskFailed(errorCode);
+        if (errorCode != null && errorCode.contains("TIMEOUT")) {
+            metrics.complianceTaskTimeout();
         }
     }
 
     private TaskResult evaluate(UUID organizationId, Job job, Task task,
-                                UUID correlationId) {
+                                UUID correlationId, String workerId) {
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            throw new IllegalStateException(
+                "Model evaluation must not run inside an active database transaction");
+        }
+        // Task is already claimed RUNNING by ComplianceJobTransactionService.claimTask.
         jdbc.update("""
             update requirement_matching_task
-            set status = 'RUNNING', started_at = now(), updated_at = now(),
+            set heartbeat_at = clock_timestamp(),
+                updated_at = clock_timestamp(),
                 version = version + 1
-            where id = ? and organization_id = ?
-            """, task.id(), organizationId);
+            where id = ? and organization_id = ? and claimed_by = ?
+            """, task.id(), organizationId, workerId);
         PolicyVersion retrievalPolicy = retrievalPolicy(
             organizationId, job.retrievalPolicyVersionId());
         Snapshot snapshot = snapshot(organizationId, job.snapshotId());
@@ -284,7 +414,8 @@ public class ComplianceAnalysisProcessor {
         // successful candidate discovery.
         jdbc.update("""
             update requirement_matching_task
-            set candidate_count = ?, reranked_candidate_count = ?, updated_at = now(),
+            set candidate_count = ?, reranked_candidate_count = ?,
+                updated_at = clock_timestamp(),
                 version = version + 1
             where id = ? and organization_id = ?
             """, candidates.size(), ranked.ranked().size(), task.id(), organizationId);
@@ -342,7 +473,7 @@ public class ComplianceAnalysisProcessor {
                        explicit_contradiction = ?,
                        reasoning_summary = ?,
                        assessment_status = 'COMPLETED',
-                       updated_at = now()
+                       updated_at = clock_timestamp()
                  where id = ? and organization_id = ?
                 """, outcome.evaluationSource(),
                 json(outcome.missingElements() == null ? List.of() : outcome.missingElements()),
@@ -354,9 +485,11 @@ public class ComplianceAnalysisProcessor {
             update requirement_matching_task
             set status = 'COMPLETED', candidate_count = ?,
                 reranked_candidate_count = ?, selected_evidence_count = ?,
-                evaluation_count = 1, model_run_id = ?, completed_at = now(),
-                updated_at = now(), version = version + 1
+                evaluation_count = 1, model_run_id = ?,
+                completed_at = clock_timestamp(),
+                updated_at = clock_timestamp(), version = version + 1
             where id = ? and organization_id = ?
+              and status = 'RUNNING'
             """, candidates.size(), ranked.ranked().size(), outcome.selectedEvidence().size(),
             outcome.modelRunId(), task.id(), organizationId);
         if (outcome.requiresReview()) {
@@ -653,7 +786,7 @@ public class ComplianceAnalysisProcessor {
             from compliance_analysis_job job
             join knowledge_snapshot snapshot on snapshot.id = job.knowledge_snapshot_id
              and snapshot.organization_id = job.organization_id
-            where job.id = ? and job.organization_id = ? for update
+            where job.id = ? and job.organization_id = ?
             """, result -> {
                 if (!result.next()) {
                     throw new IllegalArgumentException("Compliance analysis job not found");
@@ -932,6 +1065,21 @@ public class ComplianceAnalysisProcessor {
         UUID promptPackageVersionId,
         int totalRequirementCount
     ) {
+        static Job fromClaim(JobClaimResult claim) {
+            return new Job(
+                claim.jobId(),
+                claim.projectId(),
+                claim.status(),
+                claim.analysisProfileId(),
+                claim.knowledgeSnapshotId(),
+                claim.retrievalPolicyVersionId(),
+                claim.matchingPolicyVersionId(),
+                claim.comparisonPolicyVersionId(),
+                claim.confidencePolicyVersionId(),
+                claim.promptPackageVersionId(),
+                claim.totalRequirementCount()
+            );
+        }
     }
 
     private record Task(UUID id, UUID requirementId, UUID targetEntityId) {

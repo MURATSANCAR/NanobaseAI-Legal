@@ -22,24 +22,28 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class ComplianceJobService {
-    private static final Set<String> TERMINAL = Set.of("COMPLETED", "FAILED", "CANCELLED");
+    private static final Set<String> TERMINAL = Set.of(
+        "COMPLETED", "FAILED", "CANCELLED", "PARTIALLY_COMPLETED");
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
     private final CurrentTenant currentTenant;
     private final ProjectAccessService access;
     private final OutboxService outbox;
     private final ExtractionEventStream eventStream;
+    private final ComplianceJobTransactionService transactionService;
 
     public ComplianceJobService(JdbcTemplate jdbc, ObjectMapper mapper,
                                 CurrentTenant currentTenant, ProjectAccessService access,
                                 OutboxService outbox,
-                                ExtractionEventStream eventStream) {
+                                ExtractionEventStream eventStream,
+                                ComplianceJobTransactionService transactionService) {
         this.jdbc = jdbc;
         this.mapper = mapper;
         this.currentTenant = currentTenant;
         this.access = access;
         this.outbox = outbox;
         this.eventStream = eventStream;
+        this.transactionService = transactionService;
     }
 
     @Transactional
@@ -133,7 +137,10 @@ public class ComplianceJobService {
                    model_routing_policy_id, total_requirement_count,
                    processed_requirement_count, completed_count, manual_review_count,
                    failed_count, started_at, completed_at, created_by,
-                   created_at, updated_at, version
+                   created_at, updated_at, version,
+                   claimed_by, claimed_at, heartbeat_at, lease_expires_at,
+                   cancel_requested_at, cancel_requested_by, cancel_reason,
+                   attempt_count, last_error_code, last_error_message
             from compliance_analysis_job where id = ? and organization_id = ?
             """, jobId, organizationId);
         if (rows.isEmpty()) {
@@ -157,27 +164,32 @@ public class ComplianceJobService {
 
     @Transactional
     public Map<String, Object> cancel(UUID jobId) {
-        UUID organizationId = currentTenant.require().tenantId();
+        TenantPrincipal principal = currentTenant.require();
+        UUID organizationId = principal.tenantId();
+        Instant cancelStarted = Instant.now();
         String status = String.valueOf(get(jobId).get("status"));
         if (TERMINAL.contains(status)) {
             throw new IllegalStateException("Compliance analysis job is already terminal");
         }
-        jdbc.update("""
-            update compliance_analysis_job
-            set status = 'CANCELLED', completed_at = now(), updated_at = now(),
-                version = version + 1
-            where id = ? and organization_id = ?
-            """, jobId, organizationId);
-        jdbc.update("""
-            update requirement_matching_task
-            set status = 'CANCELLED', completed_at = now(), updated_at = now(),
-                version = version + 1
-            where compliance_job_id = ? and organization_id = ?
-              and status in ('QUEUED', 'RUNNING')
-            """, jobId, organizationId);
-        event(organizationId, jobId, "CANCELLED", 100,
-            "Compliance analysis cancelled", Map.of());
-        return get(jobId);
+        // Short TX cooperative cancel — must not wait on a long job-row lock.
+        var snapshot = transactionService.requestCancel(
+            organizationId, jobId, principal.subject(), "user_cancel");
+        if ("CANCELLED".equals(snapshot.status())) {
+            event(organizationId, jobId, "CANCELLED", 100,
+                "Compliance analysis cancelled", Map.of(
+                    "cancelRequestedAt", snapshot.cancelRequestedAt() == null
+                        ? null : snapshot.cancelRequestedAt().toString()));
+        } else {
+            event(organizationId, jobId, "CANCEL_REQUESTED", 0,
+                "Compliance analysis cancellation requested", Map.of(
+                    "status", snapshot.status(),
+                    "cancelRequestedAt", snapshot.cancelRequestedAt() == null
+                        ? null : snapshot.cancelRequestedAt().toString()));
+        }
+        Map<String, Object> result = get(jobId);
+        result.put("cancelLatencyMs",
+            java.time.Duration.between(cancelStarted, Instant.now()).toMillis());
+        return result;
     }
 
     @Transactional
