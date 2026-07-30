@@ -287,13 +287,15 @@ public class RequirementExtractionProcessor {
 
         int extracted = 0;
         int reviews = 0;
+        int classificationFailures = 0;
         for (JsonNode candidate : response.output().path("requirements")) {
             PersistOutcome outcome = persistCandidate(job, profile, clause, signal, context,
                 strategy, routing, response, schema, candidate);
             extracted += outcome.persisted() ? 1 : 0;
             reviews += outcome.requiresReview() ? 1 : 0;
+            classificationFailures += outcome.classificationFailed() ? 1 : 0;
         }
-        return new ClauseOutcome(extracted, reviews);
+        return new ClauseOutcome(extracted, reviews, classificationFailures);
     }
 
     private PersistOutcome persistCandidate(
@@ -355,8 +357,9 @@ public class RequirementExtractionProcessor {
         String requirementCode = requiredText(candidate, "requirementCode");
         if (requirements.existsByExtractionJobIdAndSourceClauseIdAndRequirementCode(
             job.id(), clause.id(), requirementCode)) {
-            return new PersistOutcome(false, true);
+            return new PersistOutcome(false, true, false);
         }
+
         String requirementText = requiredText(candidate, "requirementText");
         ObjectNode explanation = mapper.createObjectNode();
         explanation.set("analysisProfile", read(profile.snapshotJson()));
@@ -383,11 +386,83 @@ public class RequirementExtractionProcessor {
             grounding.status(), grounding.coverage(), profile, response.modelRunId(),
             confidence.score(), json(explanation), now);
         requirements.saveAndFlush(requirement);
+
+        boolean classificationFailed = false;
+        if (featureFlags.enabled(profile.organizationId(), job.projectId(),
+            TenderIntelligenceFlags.REQUIREMENT_CLASSIFICATION)) {
+            try {
+                var proposal = RequirementClassificationValidator.ClassificationProposal
+                    .fromCandidate(candidate);
+                var classified = classificationValidator.validate(proposal,
+                    profile.organizationId(), job.projectId());
+                if (classified.status()
+                    == RequirementClassificationValidator.Status.FAILED) {
+                    classificationFailed = true;
+                }
+                classificationValidator.apply(requirement, classified, now);
+                if (classified.evaluationMethod()
+                    == com.nanobase.specai.analysis.domain.EvaluationMethod.NUMERIC_THRESHOLD
+                    || classified.evaluationMethod()
+                    == com.nanobase.specai.analysis.domain.EvaluationMethod.MULTI_CONDITION
+                    || classified.evaluationMethod()
+                    == com.nanobase.specai.analysis.domain.EvaluationMethod.CERTIFICATE_VALIDITY
+                    || classified.evaluationMethod()
+                    == com.nanobase.specai.analysis.domain.EvaluationMethod.PERSONNEL_COUNT
+                    || classified.evaluationMethod()
+                    == com.nanobase.specai.analysis.domain.EvaluationMethod.EXPERIENCE_DURATION
+                    || classified.evaluationMethod()
+                    == com.nanobase.specai.analysis.domain.EvaluationMethod.DATE_VALIDITY) {
+                    var conditions = conditionExtractor.extractAndPersist(
+                        profile.organizationId(), requirement.id(), requirementText, candidate);
+                    if (!conditions.succeeded()
+                        && classified.evaluationMethod()
+                        == com.nanobase.specai.analysis.domain.EvaluationMethod.NUMERIC_THRESHOLD) {
+                        requirement.classify(classified.requirementType(),
+                            classified.obligationLevel(), classified.lifecycleStage(),
+                            classified.criticality(),
+                            com.nanobase.specai.analysis.domain.EvaluationMethod.MANUAL_REVIEW,
+                            classified.consequenceType(), classified.remediability(),
+                            classified.responsibleDepartment(), classified.deadlineType(),
+                            classified.explicitDeadline(), classified.relativeDeadlineDays(),
+                            classified.scoringWeight(), classified.minimumScore(),
+                            classified.closedWorldRequired(), classified.requiresClarification(),
+                            now);
+                        requirement.classificationStatus(
+                            RequirementClassificationValidator.Status.REVIEW_REQUIRED.name());
+                    } else if (conditions.succeeded()) {
+                        audit.recordSystem(profile.organizationId(), AiGateway.LOGICAL_MODEL,
+                            "REQUIREMENT_CONDITIONS_EXTRACTED", "Requirement", requirement.id(),
+                            null, Map.of("conditionCount", conditions.conditions().size(),
+                                "projectId", job.projectId()));
+                    }
+                }
+                requirements.saveAndFlush(requirement);
+                audit.recordSystem(profile.organizationId(), AiGateway.LOGICAL_MODEL,
+                    "REQUIREMENT_CLASSIFIED", "Requirement", requirement.id(), null,
+                    Map.of("classificationStatus", requirement.classificationStatus(),
+                        "obligationLevel", requirement.obligationLevel().name(),
+                        "projectId", job.projectId()));
+                if (classified.status()
+                    == RequirementClassificationValidator.Status.REVIEW_REQUIRED) {
+                    requiresReview = true;
+                }
+            } catch (RuntimeException classificationError) {
+                classificationFailed = true;
+                var failed = classificationValidator.failed();
+                classificationValidator.apply(requirement, failed, now);
+                requirements.saveAndFlush(requirement);
+                store.event(profile.organizationId(), job.id(), "CLASSIFICATION_FAILED", 0,
+                    "Requirement classification failed; defaults applied",
+                    Map.of("requirementId", requirement.id(),
+                        "errorCode", safeCode(classificationError)), now);
+            }
+        }
+
         store.sourceFragments(requirement, clause, fragments, grounding.evidence(), now);
         revisions.save(new RequirementRevision(UUID.randomUUID(), profile.organizationId(),
             requirement.id(), 1, snapshot(requirement), "AI_EXTRACTION",
             response.modelRunId(), AiGateway.LOGICAL_MODEL, now));
-        return new PersistOutcome(true, requiresReview);
+        return new PersistOutcome(true, requiresReview, classificationFailed);
     }
 
     private DuplicateResult duplicateResult(
