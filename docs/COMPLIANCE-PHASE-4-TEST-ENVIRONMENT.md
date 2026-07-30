@@ -41,16 +41,14 @@ Policy version `50000000-0000-0000-0000-000000000021`:
 
 This is the restored production/default policy after Phase 3 1×5 temporary `reranking=5` / `minimumValidityScore=0` overrides.
 
-## Phase 4 temporary overrides (must restore)
+## Phase 4 temporary overrides (restored)
 
 | Key | before | test | after |
 |-----|--------|------|-------|
-| COMPLIANCE_FAULT_INJECTION_ENABLED | unset/false | true | restore false |
-| COMPLIANCE_FAULT_INJECTION_TOKEN | unset | `phase4-fault-token-7c3a` | remove |
-| AI_ORCHESTRATOR_FAULT_INJECTION_* | unset/false | true + same token | restore false/remove |
-| COMPLIANCE_LEASE_DURATION | PT15M | short only for crash tests | PT15M |
-| DATABASE_POOL_SIZE | default | 5 for Hikari multi-job | restore |
-| Orchestrator slot capacity | production | may raise for pool test | restore + hash |
+| COMPLIANCE_FAULT_INJECTION_ENABLED | unset/false | true | **false** |
+| COMPLIANCE_FAULT_INJECTION_TOKEN | unset | `phase4-fault-token-7c3a` | **removed** |
+| AI_ORCHESTRATOR_FAULT_INJECTION_* | unset/false | true + token | **false** / removed |
+| Retrieval policy md5 | `65f7982cf7b27f34433cae2f9a5f8eee` | unchanged in Phase 4 live gates | **`65f7982cf7b27f34433cae2f9a5f8eee`** |
 
 ## Fault injection
 
