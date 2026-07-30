@@ -1,15 +1,22 @@
-# Known Issues — Compliance Phase 2
+# Known Issues — Compliance Phase 3
 
-## Resolved in Phase 2
+## Resolved / improved this phase
 
-- Suspended tenant TX / held DB connection across model call replaced by
-  prepare (`REQUIRES_NEW`) → execute (`NEVER`) → persist (`REQUIRES_NEW`).
-- `lease_generation` fencing (V28) rejects stale worker persists.
+- Dead evaluate helpers removed from `ComplianceAnalysisProcessor` (prepare/execute/persist-only).
+- `finalizeJob` returns `AGGREGATION_DEFERRED` instead of throwing when active tasks remain.
+- `ComplianceLeaseReclaimScheduler` added (lease expiry → QUEUED + outbox republish).
+- Live **1×5** PASS (`d2b2b9ef-…`, reranked=5).
+- Cancel regression PASS (18 ms).
+- Observational execute-phase idle-in-transaction = 0.
 
-## Remaining
+## Remaining (PRODUCTION_READY = false)
 
-1. Live gates still open: 1×5, controlled timeout, two-worker, crash/reclaim,
-   connection-pool pressure harness.
-2. Distinct `WAITING_FOR_SLOT` status optional; prepare uses `READY_FOR_MODEL`.
-3. Processor may still contain unused legacy helper methods (cleanup debt).
-4. Intelligence feature flags remain dual-gated and off.
+1. Controlled model timeout live gate.
+2. Concurrent two-worker / duplicate delivery while RUNNING (`JOB_ALREADY_CLAIMED`).
+3. Crash + reclaim live (`docker kill` + generation bump + terminal).
+4. Stale-worker live fencing after reclaim.
+5. Hikari `maximumPoolSize=5` multi-job pressure + prometheus series.
+6. Controlled cancel/persist barrier race.
+7. Aggregation deferred live with stuck `READY_FOR_MODEL`.
+8. `ProfileSlotManager` remains **instance-local** — not a global multi-worker capacity guarantee.
+9. Retrieval corpus for Tier III requirement needed seeded fixtures for 1×5; production docs must not assume rich candidates without fixtures.

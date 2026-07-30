@@ -176,21 +176,20 @@ select count(*) from requirement where organization_id='{ORG}' and project_id='{
     before_policy = psql(
         f"""
 select set_config('app.current_organization_id','{ORG}',true);
-select version.id::text || '|' || version.configuration_json::text
-  from retrieval_policy_version version
-  join retrieval_policy_definition definition
-    on definition.active_version_id = version.id
- where version.status = 'ACTIVE'
- order by (version.organization_id is not null) desc
- limit 1;
+select id::text || '|' || configuration_json::text
+  from retrieval_policy_version
+ where id = '50000000-0000-0000-0000-000000000021';
 """
     ).splitlines()[-1]
     policy_id, cfg_raw = before_policy.split("|", 1)
     cfg = json.loads(cfg_raw)
     cfg.setdefault("candidateLimits", {})
     cfg["candidateLimits"]["reranking"] = RERANK
-    cfg["candidateLimits"]["metadata"] = 20
+    cfg["candidateLimits"]["metadata"] = max(20, RERANK)
     cfg["candidateLimits"]["lexical"] = max(10, RERANK)
+    cfg["candidateLimits"]["graph"] = max(30, RERANK)
+    # Fixture fragments lack validity assessments; allow lexical-only candidates through.
+    cfg["minimumValidityScore"] = 0.0
     psql(
         f"""
 select set_config('app.current_organization_id','{ORG}',true);
@@ -199,6 +198,16 @@ update retrieval_policy_version
  where id = '{policy_id}';
 """
     )
+    rerank_now = int(
+        psql(
+            f"""
+select set_config('app.current_organization_id','{ORG}',true);
+select configuration_json->'candidateLimits'->>'reranking'
+  from retrieval_policy_version where id = '{policy_id}';
+"""
+        ).splitlines()[-1]
+    )
+    assert rerank_now == RERANK, f"rerank policy not applied: {rerank_now}"
     anchor = psql(
         f"""
 select set_config('app.current_organization_id','{ORG}',true);

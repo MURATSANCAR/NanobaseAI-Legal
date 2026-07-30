@@ -17,6 +17,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 LOG = logging.getLogger("specai.ai_orchestrator")
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
+FAULT_INJECTION_ENABLED = os.getenv("FAULT_INJECTION_ENABLED", "false").lower() == "true"
+FAULT_INJECTION_TOKEN = os.getenv("FAULT_INJECTION_TOKEN", "").strip()
+_FAULT_RULES: list[dict[str, Any]] = []
+_FAULT_EXECUTIONS: dict[str, int] = {}
 LOGICAL_MODEL = "nanobase-spec-ai"
 PROMPT_SIGNAL_PATTERNS: tuple[tuple[str, re.Pattern[str], float], ...] = (
     ("authority_override", re.compile(
@@ -1000,6 +1004,7 @@ async def evaluate_compliance(
     http_request: Request,
     x_correlation_id: str | None = Header(default=None),
 ) -> ExtractionResponse:
+    await _apply_fault_injection(x_correlation_id)
     deployments = _deployments(request.model, request.profile)
     response = await _structured_runtime_call_with_fallback(
         deployments=deployments,
@@ -1153,3 +1158,88 @@ async def clarification_candidate(
             detail={"code": "CLARIFICATION_MUST_REMAIN_CANDIDATE"},
         )
     return response
+
+
+def _fault_authorized(token: str | None) -> bool:
+    return FAULT_INJECTION_ENABLED and bool(FAULT_INJECTION_TOKEN) and token == FAULT_INJECTION_TOKEN
+
+
+@app.get("/v1/test/fault-injection")
+async def fault_injection_status(
+    x_fault_injection_token: str | None = Header(default=None),
+) -> dict[str, Any]:
+    if not _fault_authorized(x_fault_injection_token):
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+    return {
+        "enabled": FAULT_INJECTION_ENABLED,
+        "ruleCount": len(_FAULT_RULES),
+        "executions": dict(_FAULT_EXECUTIONS),
+    }
+
+
+@app.post("/v1/test/fault-injection/rules")
+async def fault_injection_replace_rules(
+    body: dict[str, Any],
+    x_fault_injection_token: str | None = Header(default=None),
+) -> dict[str, Any]:
+    if not _fault_authorized(x_fault_injection_token):
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
+    global _FAULT_RULES
+    _FAULT_EXECUTIONS.clear()
+    if not body.get("enabled", False):
+        _FAULT_RULES = []
+        LOG.info("event=FAULT_INJECTION_CLEARED")
+        return {"enabled": True, "ruleCount": 0}
+    rules = body.get("rules") or []
+    if not isinstance(rules, list):
+        raise HTTPException(status_code=400, detail={"code": "INVALID_RULES"})
+    _FAULT_RULES = rules
+    LOG.info("event=FAULT_INJECTION_RULES_SET count=%s", len(_FAULT_RULES))
+    return {"enabled": True, "ruleCount": len(_FAULT_RULES)}
+
+
+async def _apply_fault_injection(correlation_id: str | None) -> None:
+    if not FAULT_INJECTION_ENABLED or not correlation_id:
+        return
+    for index, rule in enumerate(_FAULT_RULES):
+        match = rule.get("match") or {}
+        if str(match.get("correlationId", "")) != str(correlation_id):
+            continue
+        action = rule.get("action") or {}
+        action_type = str(action.get("type", ""))
+        max_executions = max(1, int(rule.get("maxExecutions", 1)))
+        key = f"{correlation_id}:{index}:{action_type}"
+        used = _FAULT_EXECUTIONS.get(key, 0)
+        if used >= max_executions:
+            continue
+        _FAULT_EXECUTIONS[key] = used + 1
+        delay_ms = int(action.get("delayMs", 0))
+        LOG.warning(
+            "event=FAULT_INJECTION_APPLIED correlation_id=%s action=%s delayMs=%s execution=%s",
+            correlation_id,
+            action_type,
+            delay_ms,
+            used + 1,
+        )
+        if delay_ms > 0:
+            await asyncio.sleep(delay_ms / 1000.0)
+        if action_type in {"DELAY", "DELAY_THEN_SUCCESS"}:
+            return
+        if action_type == "DELAY_THEN_TIMEOUT":
+            raise HTTPException(
+                status_code=504,
+                detail={
+                    "code": "LLM_GENERATION_TIMEOUT",
+                    "message": "Fault-injected model generation timeout",
+                    "cancellationCompleted": True,
+                },
+            )
+        if action_type == "RETURN_503":
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "code": "LLM_UNAVAILABLE",
+                    "message": "Fault-injected model unavailable",
+                },
+            )
+        return

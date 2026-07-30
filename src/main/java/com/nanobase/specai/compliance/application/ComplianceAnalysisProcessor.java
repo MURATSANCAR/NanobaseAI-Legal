@@ -49,6 +49,7 @@ public class ComplianceAnalysisProcessor {
     private final FeatureFlagService featureFlags;
     private final TenderSummaryService tenderSummaryService;
     private final AuditService audit;
+    private final ComplianceFaultInjection faultInjection;
     private final TransactionTemplate tenantTx;
     private final int maxOutputTokens;
 
@@ -65,6 +66,7 @@ public class ComplianceAnalysisProcessor {
         FeatureFlagService featureFlags,
         TenderSummaryService tenderSummaryService,
         AuditService audit,
+        ComplianceFaultInjection faultInjection,
         PlatformTransactionManager transactionManager,
         @org.springframework.beans.factory.annotation.Value(
             "${specai.ai-orchestrator.compliance-max-output-tokens:1024}") int maxOutputTokens,
@@ -83,6 +85,7 @@ public class ComplianceAnalysisProcessor {
         this.featureFlags = featureFlags;
         this.tenderSummaryService = tenderSummaryService;
         this.audit = audit;
+        this.faultInjection = faultInjection;
         TransactionTemplate template = new TransactionTemplate(transactionManager);
         template.setPropagationBehavior(
             org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);
@@ -113,7 +116,7 @@ public class ComplianceAnalysisProcessor {
         String workerId = ComplianceJobTransactionService.normalizeWorkerId(
             "worker-" + jobId + "-" + UUID.randomUUID());
         Instant leaseExpiresAt = Instant.now()
-            .plus(ComplianceJobTransactionService.DEFAULT_LEASE);
+            .plus(transactionService.leaseDuration());
         log.info("event=COMPLIANCE_JOB_CLAIM_ATTEMPTED jobId={} workerId={} correlationId={}",
             jobId, workerId, correlationId);
         JobClaimResult claim = transactionService.claimJob(
@@ -158,7 +161,7 @@ public class ComplianceAnalysisProcessor {
                 var outcome = transactionService.heartbeat(
                     organizationId, jobId, activeTaskId.get(), workerId,
                     activeLeaseGeneration.get() == null ? 0L : activeLeaseGeneration.get(),
-                    Instant.now().plus(ComplianceJobTransactionService.DEFAULT_LEASE));
+                    Instant.now().plus(transactionService.leaseDuration()));
                 if (outcome == ComplianceJobTransactionService.HeartbeatOutcome.LEASE_LOST) {
                     metrics.complianceStaleWorkerResult();
                     log.warn("event=COMPLIANCE_HEARTBEAT_LEASE_LOST jobId={} taskId={}",
@@ -191,7 +194,7 @@ public class ComplianceAnalysisProcessor {
                         break;
                     }
                     Instant taskLease = Instant.now()
-                        .plus(ComplianceJobTransactionService.DEFAULT_LEASE);
+                        .plus(transactionService.leaseDuration());
                     var taskClaim = transactionService.claimTask(
                         organizationId, jobId, task.id(), workerId, taskLease);
                     if (!taskClaim.claimed()) {
@@ -232,13 +235,13 @@ public class ComplianceAnalysisProcessor {
                             break;
                         }
                         failed++;
-                        failTask(organizationId, task.id(), failure.failureCode().name(),
-                            failure.getMessage());
+                        failTask(organizationId, task.id(),
+                            domainErrorCode(failure.failureCode()), failure.getMessage());
                         log.warn(
                             "event=COMPLIANCE_TASK_FAILED complianceRunId={} requirementId={} "
-                                + "failureCode={} retryAttempt={}",
+                                + "failureCode={} domainErrorCode={} retryAttempt={}",
                             jobId, task.requirementId(), failure.failureCode(),
-                            failure.retryAttempt());
+                            domainErrorCode(failure.failureCode()), failure.retryAttempt());
                     } catch (RuntimeException failure) {
                         failed++;
                         failTask(organizationId, task.id(), "EVALUATION_ERROR",
@@ -386,6 +389,9 @@ public class ComplianceAnalysisProcessor {
             job.promptPackageVersionId(),
             task.id(), task.requirementId(), task.targetEntityId(),
             workerId, leaseGeneration, correlationId, maxOutputTokens);
+        faultInjection.maybePause(
+            ComplianceFaultInjection.PAUSE_AFTER_PREPARE,
+            correlationId, job.id(), task.id());
         // Prepare TX is committed; DB connection returned to pool before execute.
         if (TransactionSynchronizationManager.isActualTransactionActive()) {
             metrics.complianceConnectionHeldDuringModel();
@@ -399,7 +405,7 @@ public class ComplianceAnalysisProcessor {
         }
         ComplianceExecutionResult execution;
         if (prepared.needsModelExecution()) {
-            Instant lease = Instant.now().plus(ComplianceJobTransactionService.DEFAULT_LEASE);
+            Instant lease = Instant.now().plus(transactionService.leaseDuration());
             if (!transactionService.markTaskRunningForModel(
                 organizationId, task.id(), workerId, leaseGeneration, lease)) {
                 metrics.complianceStaleWorkerResult();
@@ -408,6 +414,9 @@ public class ComplianceAnalysisProcessor {
                     "STALE_WORKER_RESULT", 0);
             }
             execution = modelExecutionService.execute(prepared);
+            faultInjection.maybePause(
+                ComplianceFaultInjection.PAUSE_AFTER_MODEL_RESPONSE,
+                correlationId, job.id(), task.id());
         } else {
             execution = ComplianceExecutionResult.fromPrecomputed(prepared.precomputedOutcome());
         }
@@ -415,6 +424,9 @@ public class ComplianceAnalysisProcessor {
             && execution.success()) {
             execution = ComplianceExecutionResult.cancelledResult();
         }
+        faultInjection.maybePause(
+            ComplianceFaultInjection.PAUSE_BEFORE_PERSIST,
+            correlationId, job.id(), task.id());
         var persist = persistenceService.persist(prepared, execution, correlationId);
         if (persist.rejectedStale()) {
             throw new SemanticEvaluationException(
@@ -437,6 +449,16 @@ public class ComplianceAnalysisProcessor {
         } catch (RuntimeException ignored) {
             return SemanticEvaluationFailureCode.EVALUATION_ERROR;
         }
+    }
+
+    private static String domainErrorCode(SemanticEvaluationFailureCode code) {
+        return switch (code) {
+            case LLM_TIMEOUT, LLM_GENERATION_TIMEOUT -> "MODEL_TIMEOUT";
+            case LLM_UNAVAILABLE, LLM_CONNECT_TIMEOUT -> "MODEL_UNAVAILABLE";
+            case LLM_OVERLOADED, LLM_QUEUE_TIMEOUT -> "SLOT_WAIT_TIMEOUT";
+            case LLM_CANCELLED -> "CANCEL_REQUESTED";
+            default -> code.name();
+        };
     }
 
     private List<Task> tasks(UUID organizationId, UUID jobId) {

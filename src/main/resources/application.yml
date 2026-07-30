@@ -198,6 +198,14 @@ specai:
   compliance:
     # Production V1: sequential single-slot evaluation only.
     evaluation-parallelism: ${COMPLIANCE_EVALUATION_PARALLELISM:1}
+    lease-duration: ${COMPLIANCE_LEASE_DURATION:PT15M}
+    reclaim-interval-ms: ${COMPLIANCE_RECLAIM_INTERVAL_MS:30000}
+    reclaim-batch-size: ${COMPLIANCE_RECLAIM_BATCH_SIZE:10}
+    max-attempt-count: ${COMPLIANCE_MAX_ATTEMPT_COUNT:5}
+    fault-injection:
+      # Hard-disabled when SPECAI_ENVIRONMENT=production regardless of this flag.
+      enabled: ${COMPLIANCE_FAULT_INJECTION_ENABLED:false}
+      token: ${COMPLIANCE_FAULT_INJECTION_TOKEN:}
     routing:
       # BALANCED_ONLY | SHADOW | LIVE_FAST — FAST/SHADOW stay in code but are feature-flagged off.
       mode: ${COMPLIANCE_ROUTING_MODE:BALANCED_ONLY}

@@ -96,6 +96,14 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/v1/**").hasAnyRole(
                     "SYSTEM_ADMIN", "TENANT_ADMIN", "TENDER_MANAGER", "TECHNICAL_REVIEWER",
                     "REPORT_VIEWER")
+                .requestMatchers(HttpMethod.POST,
+                    "/api/v1/internal/compliance-fault-injection/rules",
+                    "/api/v1/internal/compliance-fault-injection/release",
+                    "/api/v1/internal/compliance-jobs/*/*/finalize").hasAnyRole(
+                        "SYSTEM_ADMIN", "TENANT_ADMIN")
+                .requestMatchers(HttpMethod.GET,
+                    "/api/v1/internal/compliance-fault-injection").hasAnyRole(
+                        "SYSTEM_ADMIN", "TENANT_ADMIN")
                 .requestMatchers(HttpMethod.POST, "/api/v1/tenders").hasAnyRole(
                     "SYSTEM_ADMIN", "TENANT_ADMIN", "TENDER_MANAGER")
                 .requestMatchers(HttpMethod.POST,

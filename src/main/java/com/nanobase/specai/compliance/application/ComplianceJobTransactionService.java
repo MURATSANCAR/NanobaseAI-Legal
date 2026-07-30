@@ -26,11 +26,29 @@ public class ComplianceJobTransactionService {
 
     private final JdbcTemplate jdbc;
     private final TenantDatabaseContext tenantDatabase;
+    private final Duration leaseDuration;
 
-    public ComplianceJobTransactionService(JdbcTemplate jdbc,
-                                           TenantDatabaseContext tenantDatabase) {
+    public ComplianceJobTransactionService(
+        JdbcTemplate jdbc,
+        TenantDatabaseContext tenantDatabase,
+        @org.springframework.beans.factory.annotation.Value(
+            "${specai.compliance.lease-duration:PT15M}") Duration leaseDuration
+    ) {
         this.jdbc = jdbc;
         this.tenantDatabase = tenantDatabase;
+        this.leaseDuration = leaseDuration == null || leaseDuration.isZero() || leaseDuration.isNegative()
+            ? DEFAULT_LEASE : leaseDuration;
+        log.info("event=COMPLIANCE_LEASE_POLICY leaseDuration={}", this.leaseDuration);
+    }
+
+    /** Test helper / older unit tests without duration bean. */
+    public ComplianceJobTransactionService(JdbcTemplate jdbc,
+                                           TenantDatabaseContext tenantDatabase) {
+        this(jdbc, tenantDatabase, DEFAULT_LEASE);
+    }
+
+    public Duration leaseDuration() {
+        return leaseDuration;
     }
 
     public enum ClaimOutcome {
