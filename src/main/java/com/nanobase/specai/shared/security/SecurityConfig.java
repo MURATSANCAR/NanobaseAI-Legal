@@ -183,7 +183,13 @@ public class SecurityConfig {
                         "TECHNICAL_REVIEWER")
                 .requestMatchers(HttpMethod.POST,
                     "/api/v1/tenders/*/members",
-                    "/api/v1/tenders/*/archive").hasAnyRole(
+                    "/api/v1/tenders/*/archive",
+                    "/api/v1/tenders/*/summary/rebuild",
+                    "/api/v1/tenders/*/bid-decision/recommend",
+                    "/api/v1/tenders/*/bid-decision/approve",
+                    "/api/v1/tenders/*/award/obligations",
+                    "/api/v1/contracts/*/obligations/*/evidence",
+                    "/api/v1/assessment-reviews").hasAnyRole(
                         "SYSTEM_ADMIN", "TENANT_ADMIN", "TENDER_MANAGER")
                 .requestMatchers(HttpMethod.POST,
                     "/api/v1/feedback",

@@ -2,10 +2,14 @@ package com.nanobase.specai.analysis.domain;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
+import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.UUID;
 
 @Entity
@@ -76,6 +80,48 @@ public class Requirement {
     @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
     @Column(name = "explanation_json", nullable = false, columnDefinition = "jsonb")
     private String explanationJson;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "requirement_type", nullable = false, length = 40)
+    private RequirementType requirementType = RequirementType.OTHER;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "obligation_level", nullable = false, length = 40)
+    private ObligationLevel obligationLevel = ObligationLevel.UNKNOWN;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "lifecycle_stage", nullable = false, length = 40)
+    private LifecycleStage lifecycleStage = LifecycleStage.UNKNOWN;
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 40)
+    private RequirementCriticality criticality = RequirementCriticality.UNKNOWN;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "evaluation_method", nullable = false, length = 40)
+    private EvaluationMethod evaluationMethod = EvaluationMethod.MANUAL_REVIEW;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "consequence_type", nullable = false, length = 40)
+    private ConsequenceType consequenceType = ConsequenceType.UNKNOWN;
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 40)
+    private Remediability remediability = Remediability.UNKNOWN;
+    @Column(name = "responsible_department", length = 120)
+    private String responsibleDepartment;
+    @Column(name = "deadline_type", length = 40)
+    private String deadlineType;
+    @Column(name = "explicit_deadline")
+    private LocalDate explicitDeadline;
+    @Column(name = "relative_deadline_days")
+    private Integer relativeDeadlineDays;
+    @Column(name = "scoring_weight")
+    private BigDecimal scoringWeight;
+    @Column(name = "minimum_score")
+    private BigDecimal minimumScore;
+    @Column(name = "closed_world_required", nullable = false)
+    private boolean closedWorldRequired;
+    @Column(name = "requires_clarification", nullable = false)
+    private boolean requiresClarification;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "requirement_status", nullable = false, length = 40)
+    private RequirementLifecycleStatus requirementStatus = RequirementLifecycleStatus.ACTIVE;
+    @Column(name = "superseded_by_requirement_id")
+    private UUID supersededByRequirementId;
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
     @Column(name = "updated_at", nullable = false)
@@ -127,7 +173,50 @@ public class Requirement {
         this.modelRunId = modelRunId;
         this.combinedConfidence = combinedConfidence;
         this.explanationJson = explanationJson;
+        this.requirementType = RequirementType.OTHER;
+        this.obligationLevel = ObligationLevel.UNKNOWN;
+        this.lifecycleStage = LifecycleStage.UNKNOWN;
+        this.criticality = RequirementCriticality.UNKNOWN;
+        this.evaluationMethod = EvaluationMethod.MANUAL_REVIEW;
+        this.consequenceType = ConsequenceType.UNKNOWN;
+        this.remediability = Remediability.UNKNOWN;
+        this.closedWorldRequired = false;
+        this.requiresClarification = false;
+        this.requirementStatus = RequirementLifecycleStatus.ACTIVE;
         this.createdAt = now;
+        this.updatedAt = now;
+    }
+
+    public void classify(RequirementType requirementType, ObligationLevel obligationLevel,
+                         LifecycleStage lifecycleStage, RequirementCriticality criticality,
+                         EvaluationMethod evaluationMethod, ConsequenceType consequenceType,
+                         Remediability remediability, String responsibleDepartment,
+                         String deadlineType, LocalDate explicitDeadline,
+                         Integer relativeDeadlineDays, BigDecimal scoringWeight,
+                         BigDecimal minimumScore, boolean closedWorldRequired,
+                         boolean requiresClarification, Instant now) {
+        this.requirementType = requirementType == null ? RequirementType.OTHER : requirementType;
+        this.obligationLevel = obligationLevel == null ? ObligationLevel.UNKNOWN : obligationLevel;
+        this.lifecycleStage = lifecycleStage == null ? LifecycleStage.UNKNOWN : lifecycleStage;
+        this.criticality = criticality == null ? RequirementCriticality.UNKNOWN : criticality;
+        this.evaluationMethod = evaluationMethod == null
+            ? EvaluationMethod.MANUAL_REVIEW : evaluationMethod;
+        this.consequenceType = consequenceType == null ? ConsequenceType.UNKNOWN : consequenceType;
+        this.remediability = remediability == null ? Remediability.UNKNOWN : remediability;
+        this.responsibleDepartment = responsibleDepartment;
+        this.deadlineType = deadlineType;
+        this.explicitDeadline = explicitDeadline;
+        this.relativeDeadlineDays = relativeDeadlineDays;
+        this.scoringWeight = scoringWeight;
+        this.minimumScore = minimumScore;
+        this.closedWorldRequired = closedWorldRequired;
+        this.requiresClarification = requiresClarification;
+        this.updatedAt = now;
+    }
+
+    public void supersede(UUID successorId, Instant now) {
+        this.requirementStatus = RequirementLifecycleStatus.SUPERSEDED;
+        this.supersededByRequirementId = successorId;
         this.updatedAt = now;
     }
 
@@ -199,6 +288,23 @@ public class Requirement {
     public UUID modelRunId() { return modelRunId; }
     public double combinedConfidence() { return combinedConfidence; }
     public String explanationJson() { return explanationJson; }
+    public RequirementType requirementType() { return requirementType; }
+    public ObligationLevel obligationLevel() { return obligationLevel; }
+    public LifecycleStage lifecycleStage() { return lifecycleStage; }
+    public RequirementCriticality criticality() { return criticality; }
+    public EvaluationMethod evaluationMethod() { return evaluationMethod; }
+    public ConsequenceType consequenceType() { return consequenceType; }
+    public Remediability remediability() { return remediability; }
+    public String responsibleDepartment() { return responsibleDepartment; }
+    public String deadlineType() { return deadlineType; }
+    public LocalDate explicitDeadline() { return explicitDeadline; }
+    public Integer relativeDeadlineDays() { return relativeDeadlineDays; }
+    public BigDecimal scoringWeight() { return scoringWeight; }
+    public BigDecimal minimumScore() { return minimumScore; }
+    public boolean closedWorldRequired() { return closedWorldRequired; }
+    public boolean requiresClarification() { return requiresClarification; }
+    public RequirementLifecycleStatus requirementStatus() { return requirementStatus; }
+    public UUID supersededByRequirementId() { return supersededByRequirementId; }
     public Instant createdAt() { return createdAt; }
     public Instant updatedAt() { return updatedAt; }
     public long version() { return version; }

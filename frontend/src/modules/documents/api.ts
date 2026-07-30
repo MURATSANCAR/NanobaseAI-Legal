@@ -9,7 +9,14 @@ export type DocumentType =
   | "PRODUCT_CATALOG"
   | "CERTIFICATE"
   | "TECHNICAL_DRAWING"
-  | "OTHER";
+  | "OTHER"
+  | "AMENDMENT"
+  | "ANNEX"
+  | "TECHNICAL_FORM"
+  | "FINANCIAL_FORM"
+  | "OFFICIAL_CLARIFICATION"
+  | "QUESTION_RESPONSE"
+  | "AWARD_NOTICE";
 
 export type ProcessingStatus =
   | "UPLOADED"
@@ -294,10 +301,17 @@ export const documentTypeLabels: Record<DocumentType, string> = {
   TECHNICAL_SPECIFICATION: "Teknik şartname",
   ADMINISTRATIVE_SPECIFICATION: "İdari şartname",
   DRAFT_CONTRACT: "Sözleşme taslağı",
-  ADDENDUM: "Zeyilname",
+  ADDENDUM: "Zeyilname (eski)",
   PRICE_SCHEDULE: "Fiyat cetveli",
   PRODUCT_CATALOG: "Ürün kataloğu",
   CERTIFICATE: "Sertifika",
   TECHNICAL_DRAWING: "Teknik çizim",
   OTHER: "Diğer",
+  AMENDMENT: "Zeyilname",
+  ANNEX: "Ek",
+  TECHNICAL_FORM: "Teknik form",
+  FINANCIAL_FORM: "Mali form",
+  OFFICIAL_CLARIFICATION: "Resmi açıklama",
+  QUESTION_RESPONSE: "Soru-cevap",
+  AWARD_NOTICE: "İhale sonuç ilanı",
 };

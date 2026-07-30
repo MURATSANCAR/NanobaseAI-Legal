@@ -64,6 +64,16 @@ public final class TenderContracts {
         LocalDate clarificationDeadline,
         String description,
         String currency,
+        String country,
+        java.math.BigDecimal estimatedValue,
+        LocalDate publicationDate,
+        LocalDate awardDate,
+        LocalDate contractStartDate,
+        LocalDate contractEndDate,
+        String businessOwnerUserId,
+        String legalOwnerUserId,
+        String technicalOwnerUserId,
+        String financialOwnerUserId,
         String ownerUserId,
         Instant createdAt,
         Instant updatedAt,
@@ -74,8 +84,12 @@ public final class TenderContracts {
                 project.institutionName(), project.tenderRegistrationNumber(), project.tenderType(),
                 project.businessType(), project.sector(), project.priority(), project.status(),
                 project.bidDeadline(), project.clarificationDeadline(), project.description(),
-                project.currency(), project.ownerUserId(), project.createdAt(), project.updatedAt(),
-                project.version());
+                project.currency(), project.country(), project.estimatedValue(),
+                project.publicationDate(), project.awardDate(), project.contractStartDate(),
+                project.contractEndDate(), project.businessOwnerUserId(),
+                project.legalOwnerUserId(), project.technicalOwnerUserId(),
+                project.financialOwnerUserId(), project.ownerUserId(), project.createdAt(),
+                project.updatedAt(), project.version());
         }
     }
 

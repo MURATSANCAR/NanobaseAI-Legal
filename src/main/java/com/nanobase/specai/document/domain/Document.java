@@ -8,6 +8,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.UUID;
 
 @Entity
@@ -33,6 +34,24 @@ public class Document {
     private int currentVersionNumber;
     @Column(name = "included_in_analysis", nullable = false)
     private boolean includedInAnalysis;
+    @Column(name = "effective_date")
+    private LocalDate effectiveDate;
+    @Column(name = "publication_date")
+    private LocalDate publicationDate;
+    @Column(name = "is_authoritative", nullable = false)
+    private boolean authoritative = true;
+    @Column(name = "supersedes_document_id")
+    private UUID supersedesDocumentId;
+    @Column(name = "superseded_by_document_id")
+    private UUID supersededByDocumentId;
+    @Column(name = "document_priority", nullable = false)
+    private int documentPriority = 100;
+    @Column(name = "source_institution", length = 200)
+    private String sourceInstitution;
+    @Column(name = "analysis_status", nullable = false, length = 50)
+    private String analysisStatus = "NOT_STARTED";
+    @Column(name = "content_checksum", length = 64)
+    private String contentChecksum;
     @Column(name = "created_by", nullable = false, updatable = false, length = 255)
     private String createdBy;
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -57,10 +76,51 @@ public class Document {
         document.status = DocumentStatus.UPLOADED;
         document.currentVersionNumber = 0;
         document.includedInAnalysis = includedInAnalysis;
+        document.authoritative = true;
+        document.documentPriority = priorityFor(type);
+        document.analysisStatus = "NOT_STARTED";
         document.createdBy = createdBy;
         document.createdAt = now;
         document.updatedAt = now;
         return document;
+    }
+
+    public void applyHierarchy(LocalDate effectiveDate, LocalDate publicationDate,
+                               boolean authoritative, UUID supersedesDocumentId,
+                               int documentPriority, String sourceInstitution, Instant now) {
+        this.effectiveDate = effectiveDate;
+        this.publicationDate = publicationDate;
+        this.authoritative = authoritative;
+        this.supersedesDocumentId = supersedesDocumentId;
+        this.documentPriority = documentPriority;
+        this.sourceInstitution = sourceInstitution;
+        this.updatedAt = now;
+    }
+
+    public void markSupersededBy(UUID successorId, Instant now) {
+        this.supersededByDocumentId = successorId;
+        this.authoritative = false;
+        this.updatedAt = now;
+    }
+
+    public void analysisStatus(String analysisStatus, Instant now) {
+        this.analysisStatus = analysisStatus;
+        this.updatedAt = now;
+    }
+
+    public void contentChecksum(String checksum) {
+        this.contentChecksum = checksum;
+    }
+
+    private static int priorityFor(DocumentType type) {
+        return switch (type) {
+            case AMENDMENT, ADDENDUM -> 10;
+            case OFFICIAL_CLARIFICATION, QUESTION_RESPONSE -> 20;
+            case DRAFT_CONTRACT -> 30;
+            case ADMINISTRATIVE_SPECIFICATION, TECHNICAL_SPECIFICATION -> 40;
+            case ANNEX -> 50;
+            default -> 100;
+        };
     }
 
     public void attachVersion(UUID versionId, int versionNumber, Instant now) {
@@ -90,6 +150,15 @@ public class Document {
     public DocumentStatus status() { return status; }
     public int currentVersionNumber() { return currentVersionNumber; }
     public boolean includedInAnalysis() { return includedInAnalysis; }
+    public LocalDate effectiveDate() { return effectiveDate; }
+    public LocalDate publicationDate() { return publicationDate; }
+    public boolean authoritative() { return authoritative; }
+    public UUID supersedesDocumentId() { return supersedesDocumentId; }
+    public UUID supersededByDocumentId() { return supersededByDocumentId; }
+    public int documentPriority() { return documentPriority; }
+    public String sourceInstitution() { return sourceInstitution; }
+    public String analysisStatus() { return analysisStatus; }
+    public String contentChecksum() { return contentChecksum; }
     public String createdBy() { return createdBy; }
     public Instant createdAt() { return createdAt; }
     public Instant updatedAt() { return updatedAt; }

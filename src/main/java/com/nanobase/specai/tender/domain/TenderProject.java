@@ -7,6 +7,7 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
@@ -50,6 +51,28 @@ public class TenderProject {
     private String createdBy;
     @Column(name = "currency", length = 3)
     private String currency;
+    @Column(length = 2)
+    private String country;
+    @Column(name = "estimated_value")
+    private BigDecimal estimatedValue;
+    @Column(name = "publication_date")
+    private LocalDate publicationDate;
+    @Column(name = "award_date")
+    private LocalDate awardDate;
+    @Column(name = "contract_start_date")
+    private LocalDate contractStartDate;
+    @Column(name = "contract_end_date")
+    private LocalDate contractEndDate;
+    @Column(name = "business_owner_user_id", length = 255)
+    private String businessOwnerUserId;
+    @Column(name = "legal_owner_user_id", length = 255)
+    private String legalOwnerUserId;
+    @Column(name = "technical_owner_user_id", length = 255)
+    private String technicalOwnerUserId;
+    @Column(name = "financial_owner_user_id", length = 255)
+    private String financialOwnerUserId;
+    @Column(name = "updated_by", length = 255)
+    private String updatedBy;
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
     @Column(name = "updated_at", nullable = false)
@@ -94,6 +117,23 @@ public class TenderProject {
                        String tenderType, String businessType, String sector, Priority priority,
                        LocalDate bidDeadline, LocalDate clarificationDeadline, String description,
                        String currency, Instant now) {
+        update(name, institutionName, tenderRegistrationNumber, tenderType, businessType, sector,
+            priority, bidDeadline, clarificationDeadline, description, currency,
+            this.country, this.estimatedValue, this.publicationDate, this.awardDate,
+            this.contractStartDate, this.contractEndDate, this.businessOwnerUserId,
+            this.legalOwnerUserId, this.technicalOwnerUserId, this.financialOwnerUserId,
+            null, now);
+    }
+
+    public void update(String name, String institutionName, String tenderRegistrationNumber,
+                       String tenderType, String businessType, String sector, Priority priority,
+                       LocalDate bidDeadline, LocalDate clarificationDeadline, String description,
+                       String currency, String country, BigDecimal estimatedValue,
+                       LocalDate publicationDate, LocalDate awardDate,
+                       LocalDate contractStartDate, LocalDate contractEndDate,
+                       String businessOwnerUserId, String legalOwnerUserId,
+                       String technicalOwnerUserId, String financialOwnerUserId,
+                       String updatedBy, Instant now) {
         TenderDates.validate(bidDeadline, clarificationDeadline);
         this.name = name;
         this.institutionName = institutionName;
@@ -106,11 +146,28 @@ public class TenderProject {
         this.clarificationDeadline = clarificationDeadline;
         this.description = description;
         this.currency = currency;
+        this.country = country;
+        this.estimatedValue = estimatedValue;
+        this.publicationDate = publicationDate;
+        this.awardDate = awardDate;
+        this.contractStartDate = contractStartDate;
+        this.contractEndDate = contractEndDate;
+        this.businessOwnerUserId = businessOwnerUserId;
+        this.legalOwnerUserId = legalOwnerUserId;
+        this.technicalOwnerUserId = technicalOwnerUserId;
+        this.financialOwnerUserId = financialOwnerUserId;
+        this.updatedBy = updatedBy;
+        this.updatedAt = now;
+    }
+
+    public void transitionTo(TenderStatus next, String actor, Instant now) {
+        this.status = next;
+        this.updatedBy = actor;
         this.updatedAt = now;
     }
 
     public void archive(Instant now) {
-        if (status != TenderStatus.ARCHIVED) {
+        if (status != TenderStatus.ARCHIVED && status != TenderStatus.CLOSED) {
             status = TenderStatus.ARCHIVED;
             updatedAt = now;
         }
@@ -131,6 +188,17 @@ public class TenderProject {
     public LocalDate clarificationDeadline() { return clarificationDeadline; }
     public String description() { return description; }
     public String currency() { return currency; }
+    public String country() { return country; }
+    public BigDecimal estimatedValue() { return estimatedValue; }
+    public LocalDate publicationDate() { return publicationDate; }
+    public LocalDate awardDate() { return awardDate; }
+    public LocalDate contractStartDate() { return contractStartDate; }
+    public LocalDate contractEndDate() { return contractEndDate; }
+    public String businessOwnerUserId() { return businessOwnerUserId; }
+    public String legalOwnerUserId() { return legalOwnerUserId; }
+    public String technicalOwnerUserId() { return technicalOwnerUserId; }
+    public String financialOwnerUserId() { return financialOwnerUserId; }
+    public String updatedBy() { return updatedBy; }
     public String ownerUserId() { return ownerUserId; }
     public Instant createdAt() { return createdAt; }
     public Instant updatedAt() { return updatedAt; }

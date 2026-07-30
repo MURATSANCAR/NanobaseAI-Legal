@@ -42,6 +42,7 @@ import { ChangeImpactWorkspace } from "./ChangeImpactWorkspace";
 import { ActivityHistory } from "./ActivityHistory";
 import { ProjectSettings } from "./ProjectSettings";
 import { FindingsWorkspace } from "./FindingsWorkspace";
+import { TenderIntelligenceDashboard } from "./TenderIntelligenceDashboard";
 
 const PROJECT_SUBNAVS: Array<{ id: ProjectSubNav; label: string }> = [
   { id: "overview", label: "Genel bakış" },
@@ -200,7 +201,10 @@ export function ProjectDetail({
       ) : expertMode ? (
         <>
           {tab === "overview" && (
-            <Overview project={project} documents={documents} members={members} />
+            <div className="space-y-6">
+              <TenderIntelligenceDashboard token={token} project={project} />
+              <Overview project={project} documents={documents} members={members} />
+            </div>
           )}
           {tab === "documents" && (
             <DocumentCenter
@@ -396,7 +400,10 @@ export function ProjectDetail({
                 ))}
               </nav>
               {projectSubNav === "overview" && (
-                <Overview project={project} documents={documents} members={members} />
+                <div className="space-y-6">
+                  <TenderIntelligenceDashboard token={token} project={project} />
+                  <Overview project={project} documents={documents} members={members} />
+                </div>
               )}
               {projectSubNav === "activity" && (
                 <ActivityHistory events={auditEvents} />

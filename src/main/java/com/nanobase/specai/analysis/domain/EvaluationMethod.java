@@ -1,0 +1,15 @@
+package com.nanobase.specai.analysis.domain;
+
+public enum EvaluationMethod {
+    BOOLEAN,
+    NUMERIC_THRESHOLD,
+    DATE_VALIDITY,
+    DOCUMENT_PRESENCE,
+    CERTIFICATE_VALIDITY,
+    PERSONNEL_COUNT,
+    EXPERIENCE_DURATION,
+    FINANCIAL_RATIO,
+    TEXTUAL_COMPLIANCE,
+    MULTI_CONDITION,
+    MANUAL_REVIEW
+}

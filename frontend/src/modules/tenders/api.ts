@@ -7,7 +7,20 @@ export type TenderStatus =
   | "ANALYSIS_IN_PROGRESS"
   | "REVIEW_IN_PROGRESS"
   | "COMPLETED"
-  | "ARCHIVED";
+  | "ARCHIVED"
+  | "ANALYSIS_PENDING"
+  | "ANALYZING"
+  | "REVIEW_REQUIRED"
+  | "READY_FOR_DECISION"
+  | "BID_APPROVED"
+  | "CONDITIONAL_BID"
+  | "NO_BID"
+  | "SUBMITTED"
+  | "AWARDED"
+  | "NOT_AWARDED"
+  | "CONTRACT_ACTIVE"
+  | "CLOSED"
+  | "CANCELLED";
 
 export type TenderProject = {
   id: string;
@@ -24,10 +37,38 @@ export type TenderProject = {
   clarificationDeadline?: string;
   description?: string;
   currency?: string;
+  country?: string;
+  estimatedValue?: number;
+  publicationDate?: string;
+  awardDate?: string;
+  contractStartDate?: string;
+  contractEndDate?: string;
+  businessOwnerUserId?: string;
+  legalOwnerUserId?: string;
+  technicalOwnerUserId?: string;
+  financialOwnerUserId?: string;
   ownerUserId: string;
   createdAt: string;
   updatedAt: string;
   version: number;
+};
+
+export type TenderAssessmentSummary = {
+  projectId?: string;
+  status?: string;
+  total_requirements?: number;
+  mandatory_requirements?: number;
+  compliant_mandatory?: number;
+  non_compliant_mandatory?: number;
+  unknown_mandatory?: number;
+  hard_blocker_count?: number;
+  remediable_gap_count?: number;
+  clarification_count?: number;
+  critical_risk_count?: number;
+  overall_compliance_status?: string;
+  overall_risk_level?: string;
+  recommended_bid_decision?: string;
+  generated_at?: string;
 };
 
 export type TenderPage = {
@@ -117,5 +158,26 @@ export const tenderApi = {
       `/api/v1/tenders/${projectId}/members/${memberId}`,
       token,
       { method: "DELETE" },
+    ),
+  summary: (token: string, projectId: string) =>
+    apiRequest<TenderAssessmentSummary>(
+      `/api/v1/tenders/${projectId}/summary`,
+      token,
+    ),
+  rebuildSummary: (token: string, projectId: string) =>
+    apiRequest<TenderAssessmentSummary>(
+      `/api/v1/tenders/${projectId}/summary/rebuild`,
+      token,
+      { method: "POST" },
+    ),
+  gaps: (token: string, projectId: string) =>
+    apiRequest<Record<string, unknown>[]>(
+      `/api/v1/tenders/${projectId}/gaps`,
+      token,
+    ),
+  bidDecision: (token: string, projectId: string) =>
+    apiRequest<Record<string, unknown>>(
+      `/api/v1/tenders/${projectId}/bid-decision`,
+      token,
     ),
 };
