@@ -141,7 +141,7 @@ order by created_at limit 1;
 
 
 def run_case(name: str, action: str, token: str) -> dict:
-    correlation_id = f"phase4-{name}-{uuid.uuid4()}"
+    correlation_id = str(uuid.uuid4())
     orch_set_rules(
         {
             "enabled": True,

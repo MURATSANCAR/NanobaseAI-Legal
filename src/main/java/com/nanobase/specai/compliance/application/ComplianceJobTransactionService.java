@@ -28,6 +28,7 @@ public class ComplianceJobTransactionService {
     private final TenantDatabaseContext tenantDatabase;
     private final Duration leaseDuration;
 
+    @org.springframework.beans.factory.annotation.Autowired
     public ComplianceJobTransactionService(
         JdbcTemplate jdbc,
         TenantDatabaseContext tenantDatabase,
@@ -41,9 +42,9 @@ public class ComplianceJobTransactionService {
         log.info("event=COMPLIANCE_LEASE_POLICY leaseDuration={}", this.leaseDuration);
     }
 
-    /** Test helper / older unit tests without duration bean. */
-    public ComplianceJobTransactionService(JdbcTemplate jdbc,
-                                           TenantDatabaseContext tenantDatabase) {
+    /** Unit-test helper. */
+    ComplianceJobTransactionService(JdbcTemplate jdbc,
+                                    TenantDatabaseContext tenantDatabase) {
         this(jdbc, tenantDatabase, DEFAULT_LEASE);
     }
 
