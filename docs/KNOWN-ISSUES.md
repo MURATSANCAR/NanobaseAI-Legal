@@ -1,4 +1,26 @@
-# Known Issues — Sprint 8
+# Known Issues — Compliance Orchestration TX Fix
+
+## Resolved by this change
+
+- Long `@Transactional` on `ComplianceAnalysisProcessor.process` held
+  `SELECT … FOR UPDATE` across LLM (~2 min), so polls only saw `QUEUED` until
+  `COMPLETED`, cancel blocked, and `now()` timestamps collapsed.
+
+## Remaining / follow-ups
+
+1. Live orchestrated gates (1×1 visibility, cancel, 1×5, timeout, dual-worker,
+   reclaim) must be re-run after deploy with V27 applied; results belong in
+   `CODEX-HANDOVER-COMPLIANCE-TX-FIX.md`.
+2. Task statuses `WAITING_FOR_SLOT` / `CLAIMED` as distinct enum values are not
+   fully persisted yet; claim jumps `QUEUED → RUNNING` with lease columns.
+3. HTTP client abort of in-flight model calls on cancel is optional and not
+   required for cooperative cancel correctness.
+4. Historical Sprint 8 issues (Dockerless host limits, etc.) still apply — see
+   earlier sections of this file.
+5. Intelligence feature flags remain dual-gated and off until orchestration
+   acceptance passes.
+
+## Sprint 8 carry-forward
 
 1. Docker engine yok; gerçek infrastructure integration, container build/scan, ClamAV, backup/
    restore, chaos, load, offline ve E2E çalıştırılmadı.
@@ -15,22 +37,3 @@
 10. Retention/classification schema var; masking/deletion/export enforcement tam değil.
 11. GitHub Actions ref’leri commit SHA ile pinlenmedi; Cosign sign/verify yok.
 12. Sites portalı için generated social preview kullanıldı; bu runtime security evidence değildir.
-
-## Sprint 7 özel sınırları
-
-1. V13 migration, FORCE RLS ve repository tenant filtreleri yazıldı; Docker olmayan
-   bu hostta gerçek PostgreSQL cross-tenant/RLS entegrasyonu çalıştırılmadı.
-2. Sprint 7 notification consumer duplicate teslimata karşı idempotenttir; RabbitMQ
-   redelivery/retry/dead-letter ve tüm event zinciri canlı broker ile doğrulanmadı.
-3. SLA scheduler warning/breach ve ilk policy escalation’ını üretir; çok seviyeli
-   escalation ilerletmesi ile canlı zaman/broker davranışı doğrulanmadı.
-4. Clarification answer source-linked analizleri stale işaretler ve yeniden analiz
-   event’i üretir; analysis consumer’larının zinciri uçtan uca yenilemesi doğrulanmadı.
-5. Report job progress kalıcıdır ancak SSE progress stream’i yoktur. PDF/DOCX/XLSX
-   renderer’ları geçerli minimal artifact üretir; ileri branding/accessibility yoktur.
-6. Report field-level masking, approval delegation domain modeli ve admin role/
-   dashboard editor ekranları tamamlanmadı.
-7. Reopen geçmişi append-only korunur; policy ile otomatik yeni workflow instance
-   başlatma bağlı değildir.
-8. Frontend production build/source tests kapsamındadır; signed-in browser E2E,
-   drag/drop workflow canvas ve görsel regression yapılmadı.

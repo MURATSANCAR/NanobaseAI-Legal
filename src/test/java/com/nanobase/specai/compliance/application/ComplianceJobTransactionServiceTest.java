@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 
 import com.nanobase.specai.compliance.application.ComplianceJobTransactionService.ClaimOutcome;
 import com.nanobase.specai.compliance.application.ComplianceJobTransactionService.JobClaimResult;
+import com.nanobase.specai.shared.security.TenantDatabaseContext;
 import java.sql.ResultSet;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -28,7 +29,9 @@ class ComplianceJobTransactionServiceTest {
     @SuppressWarnings("unchecked")
     void claimJobReturnsClaimedWhenUpdateReturningSucceeds() {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
-        ComplianceJobTransactionService service = new ComplianceJobTransactionService(jdbc);
+        TenantDatabaseContext tenant = mock(TenantDatabaseContext.class);
+        ComplianceJobTransactionService service =
+            new ComplianceJobTransactionService(jdbc, tenant);
         UUID orgId = UUID.randomUUID();
         UUID jobId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();
@@ -52,7 +55,9 @@ class ComplianceJobTransactionServiceTest {
     @SuppressWarnings("unchecked")
     void claimJobDiagnosesAlreadyClaimedWithoutMarkingLlmUnavailable() throws Exception {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
-        ComplianceJobTransactionService service = new ComplianceJobTransactionService(jdbc);
+        TenantDatabaseContext tenant = mock(TenantDatabaseContext.class);
+        ComplianceJobTransactionService service =
+            new ComplianceJobTransactionService(jdbc, tenant);
         UUID orgId = UUID.randomUUID();
         UUID jobId = UUID.randomUUID();
         when(jdbc.query(anyString(), any(RowMapper.class), any(), any(), any(), any()))
@@ -87,7 +92,9 @@ class ComplianceJobTransactionServiceTest {
     @Test
     void finalizeJobIsIdempotentWhenAlreadyTerminal() {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
-        ComplianceJobTransactionService service = new ComplianceJobTransactionService(jdbc);
+        TenantDatabaseContext tenant = mock(TenantDatabaseContext.class);
+        ComplianceJobTransactionService service =
+            new ComplianceJobTransactionService(jdbc, tenant);
         UUID orgId = UUID.randomUUID();
         UUID jobId = UUID.randomUUID();
         when(jdbc.query(anyString(), any(ResultSetExtractor.class), any(), any()))

@@ -45,7 +45,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 public class ComplianceAnalysisProcessor {
@@ -71,6 +73,8 @@ public class ComplianceAnalysisProcessor {
     private final CompliancePostAssessmentHooks postAssessmentHooks;
     private final TenderSummaryService tenderSummaryService;
     private final AuditService audit;
+    private final TransactionTemplate tenantTx;
+    private final PlatformTransactionManager transactionManager;
     private final int maxOutputTokens;
     private final int evaluationParallelism;
 
@@ -92,6 +96,7 @@ public class ComplianceAnalysisProcessor {
         CompliancePostAssessmentHooks postAssessmentHooks,
         TenderSummaryService tenderSummaryService,
         AuditService audit,
+        PlatformTransactionManager transactionManager,
         @org.springframework.beans.factory.annotation.Value(
             "${specai.ai-orchestrator.compliance-max-output-tokens:1024}") int maxOutputTokens,
         @org.springframework.beans.factory.annotation.Value(
@@ -115,6 +120,11 @@ public class ComplianceAnalysisProcessor {
         this.postAssessmentHooks = postAssessmentHooks;
         this.tenderSummaryService = tenderSummaryService;
         this.audit = audit;
+        this.transactionManager = transactionManager;
+        TransactionTemplate template = new TransactionTemplate(transactionManager);
+        template.setPropagationBehavior(
+            org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        this.tenantTx = template;
         this.maxOutputTokens = maxOutputTokens > 0 ? maxOutputTokens : DEFAULT_MAX_OUTPUT_TOKENS;
         this.evaluationParallelism = evaluationParallelism <= 0 ? 1 : evaluationParallelism;
         if (this.evaluationParallelism != 1) {
@@ -137,7 +147,6 @@ public class ComplianceAnalysisProcessor {
             throw new IllegalStateException(
                 "ComplianceAnalysisProcessor.process must not run inside a transaction");
         }
-        tenantDatabase.apply(organizationId);
         Instant claimStarted = Instant.now();
         String workerId = ComplianceJobTransactionService.normalizeWorkerId(
             "worker-" + jobId + "-" + UUID.randomUUID());
@@ -164,13 +173,15 @@ public class ComplianceAnalysisProcessor {
         metrics.complianceAnalysis();
         metrics.complianceJobRunning();
         Job job = Job.fromClaim(claim);
-        jobs.event(organizationId, jobId, "STARTED", 0,
-            "Compliance analysis started",
-            Map.of("requirementCount", job.totalRequirementCount(),
-                "workerId", workerId, "claimDurationMs", claimDurationMs));
-        outbox.publish(organizationId, "ComplianceAnalysis", jobId,
-            "ComplianceAnalysisStarted", "compliance.analysis.started.v1",
-            Map.of("jobId", jobId, "claimDurationMs", claimDurationMs), correlationId);
+        inTenant(organizationId, () -> {
+            jobs.event(organizationId, jobId, "STARTED", 0,
+                "Compliance analysis started",
+                Map.of("requirementCount", job.totalRequirementCount(),
+                    "workerId", workerId, "claimDurationMs", claimDurationMs));
+            outbox.publish(organizationId, "ComplianceAnalysis", jobId,
+                "ComplianceAnalysisStarted", "compliance.analysis.started.v1",
+                Map.of("jobId", jobId, "claimDurationMs", claimDurationMs), correlationId);
+        });
 
         AtomicReference<UUID> activeTaskId = new AtomicReference<>();
         ScheduledExecutorService heartbeatExecutor = Executors.newSingleThreadScheduledExecutor(
@@ -181,7 +192,6 @@ public class ComplianceAnalysisProcessor {
             });
         ScheduledFuture<?> heartbeatFuture = heartbeatExecutor.scheduleAtFixedRate(() -> {
             try {
-                tenantDatabase.apply(organizationId);
                 transactionService.heartbeat(
                     organizationId, jobId, activeTaskId.get(), workerId,
                     Instant.now().plus(ComplianceJobTransactionService.DEFAULT_LEASE));
@@ -202,7 +212,8 @@ public class ComplianceAnalysisProcessor {
                 transactionService.cancelRemainingTasks(organizationId, jobId);
                 metrics.complianceCancelRequest();
             } else {
-                List<Task> pending = tasks(organizationId, jobId);
+                List<Task> pending = inTenant(organizationId,
+                    () -> tasks(organizationId, jobId));
                 for (Task task : pending) {
                     if (transactionService.cancellationState(organizationId, jobId)
                         .cancelRequested()) {
@@ -274,24 +285,32 @@ public class ComplianceAnalysisProcessor {
                     processed++;
                     int progress = job.totalRequirementCount() == 0 ? 100
                         : (int) Math.round(processed * 100d / job.totalRequirementCount());
-                    jdbc.update("""
-                        update compliance_analysis_job
-                        set processed_requirement_count = ?, completed_count = ?,
-                            manual_review_count = ?, failed_count = ?,
-                            updated_at = clock_timestamp(),
-                            version = version + 1
-                        where id = ? and organization_id = ?
-                          and status = 'RUNNING'
-                        """, processed, completed, reviews, failed, jobId, organizationId);
-                    jobs.event(organizationId, jobId, "PROGRESS", progress,
-                        "Compliance analysis progressed",
-                        Map.of("processed", processed, "completed", completed,
-                            "manualReview", reviews, "failed", failed));
-                    outbox.publish(organizationId, "ComplianceAnalysis", jobId,
-                        "ComplianceAnalysisProgress", "compliance.analysis.progress.v1",
-                        Map.of("jobId", jobId, "progress", progress,
-                            "processed", processed, "completed", completed,
-                            "manualReview", reviews, "failed", failed), correlationId);
+                    final int processedSnapshot = processed;
+                    final int completedSnapshot = completed;
+                    final int reviewsSnapshot = reviews;
+                    final int failedSnapshot = failed;
+                    inTenant(organizationId, () -> {
+                        jdbc.update("""
+                            update compliance_analysis_job
+                            set processed_requirement_count = ?, completed_count = ?,
+                                manual_review_count = ?, failed_count = ?,
+                                updated_at = clock_timestamp(),
+                                version = version + 1
+                            where id = ? and organization_id = ?
+                              and status = 'RUNNING'
+                            """, processedSnapshot, completedSnapshot, reviewsSnapshot,
+                            failedSnapshot, jobId, organizationId);
+                        jobs.event(organizationId, jobId, "PROGRESS", progress,
+                            "Compliance analysis progressed",
+                            Map.of("processed", processedSnapshot, "completed", completedSnapshot,
+                                "manualReview", reviewsSnapshot, "failed", failedSnapshot));
+                        outbox.publish(organizationId, "ComplianceAnalysis", jobId,
+                            "ComplianceAnalysisProgress", "compliance.analysis.progress.v1",
+                            Map.of("jobId", jobId, "progress", progress,
+                                "processed", processedSnapshot, "completed", completedSnapshot,
+                                "manualReview", reviewsSnapshot, "failed", failedSnapshot),
+                            correlationId);
+                    });
                 }
             }
 
@@ -304,38 +323,41 @@ public class ComplianceAnalysisProcessor {
             if ("PARTIALLY_COMPLETED".equals(terminal)) {
                 metrics.complianceJobPartial();
             }
-            jobs.event(organizationId, jobId, terminal, 100,
-                "Compliance analysis finished",
-                Map.of("completed", finalization.completed(),
-                    "manualReview", reviews, "failed", finalization.failed(),
-                    "claimDurationMs", claimDurationMs));
-            outbox.publish(organizationId, "ComplianceAnalysis", jobId,
-                "FAILED".equals(terminal)
-                    ? "ComplianceAnalysisFailed" : "ComplianceAnalysisCompleted",
-                "FAILED".equals(terminal)
-                    ? "compliance.analysis.failed.v1" : "compliance.analysis.completed.v1",
-                Map.of("jobId", jobId, "completed", finalization.completed(),
-                    "manualReview", reviews, "failed", finalization.failed(),
-                    "status", terminal, "claimDurationMs", claimDurationMs), correlationId);
-            if (!"FAILED".equals(terminal) && !"CANCELLED".equals(terminal)
-                && featureFlags.enabled(organizationId, job.projectId(),
-                TenderIntelligenceFlags.TENDER_DOMAIN_V2)) {
-                try {
-                    Map<String, Object> summary = tenderSummaryService.rebuild(
-                        organizationId, job.projectId());
-                    audit.recordSystem(organizationId, "system", "TENDER_SUMMARY_REBUILT",
-                        "TenderAssessmentSummary", job.projectId(), null,
-                        Map.of("jobId", jobId, "status", summary.getOrDefault(
-                            "overall_compliance_status", "REVIEW_REQUIRED")));
-                } catch (RuntimeException summaryFailure) {
-                    log.warn("tender_summary_rebuild_failed jobId={} projectId={} error={}",
-                        jobId, job.projectId(), summaryFailure.toString());
-                    metrics.summaryRebuildFailure();
-                    jobs.event(organizationId, jobId, "SUMMARY_FAILED", 100,
-                        "Tender summary rebuild failed",
-                        Map.of("error", truncate(summaryFailure.getMessage())));
+            final int reviewsSnapshot = reviews;
+            inTenant(organizationId, () -> {
+                jobs.event(organizationId, jobId, terminal, 100,
+                    "Compliance analysis finished",
+                    Map.of("completed", finalization.completed(),
+                        "manualReview", reviewsSnapshot, "failed", finalization.failed(),
+                        "claimDurationMs", claimDurationMs));
+                outbox.publish(organizationId, "ComplianceAnalysis", jobId,
+                    "FAILED".equals(terminal)
+                        ? "ComplianceAnalysisFailed" : "ComplianceAnalysisCompleted",
+                    "FAILED".equals(terminal)
+                        ? "compliance.analysis.failed.v1" : "compliance.analysis.completed.v1",
+                    Map.of("jobId", jobId, "completed", finalization.completed(),
+                        "manualReview", reviewsSnapshot, "failed", finalization.failed(),
+                        "status", terminal, "claimDurationMs", claimDurationMs), correlationId);
+                if (!"FAILED".equals(terminal) && !"CANCELLED".equals(terminal)
+                    && featureFlags.enabled(organizationId, job.projectId(),
+                    TenderIntelligenceFlags.TENDER_DOMAIN_V2)) {
+                    try {
+                        Map<String, Object> summary = tenderSummaryService.rebuild(
+                            organizationId, job.projectId());
+                        audit.recordSystem(organizationId, "system", "TENDER_SUMMARY_REBUILT",
+                            "TenderAssessmentSummary", job.projectId(), null,
+                            Map.of("jobId", jobId, "status", summary.getOrDefault(
+                                "overall_compliance_status", "REVIEW_REQUIRED")));
+                    } catch (RuntimeException summaryFailure) {
+                        log.warn("tender_summary_rebuild_failed jobId={} projectId={} error={}",
+                            jobId, job.projectId(), summaryFailure.toString());
+                        metrics.summaryRebuildFailure();
+                        jobs.event(organizationId, jobId, "SUMMARY_FAILED", 100,
+                            "Tender summary rebuild failed",
+                            Map.of("error", truncate(summaryFailure.getMessage())));
+                    }
                 }
-            }
+            });
         } finally {
             heartbeatFuture.cancel(true);
             heartbeatExecutor.shutdownNow();
@@ -343,7 +365,7 @@ public class ComplianceAnalysisProcessor {
     }
 
     private void failTask(UUID organizationId, UUID taskId, String errorCode, String message) {
-        jdbc.update("""
+        inTenant(organizationId, () -> jdbc.update("""
             update requirement_matching_task
             set status = 'FAILED', error_code = ?, error_message = ?,
                 last_error_code = ?, last_error_message = ?,
@@ -352,19 +374,42 @@ public class ComplianceAnalysisProcessor {
             where id = ? and organization_id = ?
               and status = 'RUNNING'
             """, errorCode, truncate(message), errorCode, truncate(message),
-            taskId, organizationId);
+            taskId, organizationId));
         metrics.complianceTaskFailed(errorCode);
         if (errorCode != null && errorCode.contains("TIMEOUT")) {
             metrics.complianceTaskTimeout();
         }
     }
 
+    private <T> T inTenant(UUID organizationId, java.util.function.Supplier<T> work) {
+        return tenantTx.execute(status -> {
+            tenantDatabase.apply(organizationId);
+            return work.get();
+        });
+    }
+
+    private void inTenant(UUID organizationId, Runnable work) {
+        tenantTx.executeWithoutResult(status -> {
+            tenantDatabase.apply(organizationId);
+            work.run();
+        });
+    }
+
+    private <T> T withoutTransaction(java.util.function.Supplier<T> work) {
+        TransactionTemplate suspended = new TransactionTemplate(transactionManager);
+        suspended.setPropagationBehavior(
+            org.springframework.transaction.TransactionDefinition.PROPAGATION_NOT_SUPPORTED);
+        return suspended.execute(status -> work.get());
+    }
+
     private TaskResult evaluate(UUID organizationId, Job job, Task task,
                                 UUID correlationId, String workerId) {
-        if (TransactionSynchronizationManager.isActualTransactionActive()) {
-            throw new IllegalStateException(
-                "Model evaluation must not run inside an active database transaction");
-        }
+        return inTenant(organizationId, () -> evaluateInTenant(
+            organizationId, job, task, correlationId, workerId));
+    }
+
+    private TaskResult evaluateInTenant(UUID organizationId, Job job, Task task,
+                                        UUID correlationId, String workerId) {
         // Task is already claimed RUNNING by ComplianceJobTransactionService.claimTask.
         jdbc.update("""
             update requirement_matching_task
@@ -644,8 +689,21 @@ public class ComplianceAnalysisProcessor {
                 "evaluationVersion", "v1"),
             ontology(organizationId, job.analysisProfileId()), evidence,
             decisions.stream().map(Decision::code).toList(), maxOutputTokens, correlationId);
-        ComplianceSemanticRouter.RoutedEvaluation routed =
-            semanticRouter.evaluate(request, contradiction);
+        ComplianceSemanticRouter.RoutedEvaluation routed = withoutTransaction(() -> {
+            if (TransactionSynchronizationManager.isActualTransactionActive()) {
+                throw new IllegalStateException(
+                    "Model executor must not be called inside an active transaction");
+            }
+            log.info("event=COMPLIANCE_MODEL_REQUEST_STARTED jobId={} requirementId={} "
+                    + "correlationId={}",
+                job.id(), requirement.id(), correlationId);
+            ComplianceSemanticRouter.RoutedEvaluation result =
+                semanticRouter.evaluate(request, contradiction);
+            log.info("event=COMPLIANCE_MODEL_REQUEST_COMPLETED jobId={} requirementId={} "
+                    + "correlationId={}",
+                job.id(), requirement.id(), correlationId);
+            return result;
+        });
         var response = routed.response();
         ObjectNode safeOutput = decisionSafetyGuard.normalize(
             response.output(), requirement.text(), evidence);

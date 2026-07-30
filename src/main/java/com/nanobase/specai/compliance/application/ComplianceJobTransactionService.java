@@ -12,6 +12,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import com.nanobase.specai.shared.security.TenantDatabaseContext;
 
 /**
  * Short-lived transactions for compliance job/task claim, heartbeat, cancel and
@@ -24,9 +25,12 @@ public class ComplianceJobTransactionService {
     public static final Duration DEFAULT_LEASE = Duration.ofMinutes(15);
 
     private final JdbcTemplate jdbc;
+    private final TenantDatabaseContext tenantDatabase;
 
-    public ComplianceJobTransactionService(JdbcTemplate jdbc) {
+    public ComplianceJobTransactionService(JdbcTemplate jdbc,
+                                           TenantDatabaseContext tenantDatabase) {
         this.jdbc = jdbc;
+        this.tenantDatabase = tenantDatabase;
     }
 
     public enum ClaimOutcome {
@@ -52,7 +56,8 @@ public class ComplianceJobTransactionService {
         UUID confidencePolicyVersionId,
         UUID promptPackageVersionId,
         Instant claimedAt,
-        int attemptCount
+        int attemptCount,
+        long leaseGeneration
     ) {
         public boolean claimed() {
             return outcome == ClaimOutcome.CLAIMED;
@@ -64,8 +69,17 @@ public class ComplianceJobTransactionService {
         UUID taskId,
         UUID requirementId,
         UUID targetEntityId,
-        String status
+        String status,
+        long leaseGeneration
     ) {
+    }
+
+    public enum HeartbeatOutcome {
+        UPDATED,
+        LEASE_LOST,
+        TASK_TERMINAL,
+        JOB_CANCELLED,
+        NOT_FOUND
     }
 
     public record CancellationSnapshot(
@@ -87,6 +101,7 @@ public class ComplianceJobTransactionService {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public JobClaimResult claimJob(UUID organizationId, UUID jobId, String workerId,
                                    Instant leaseExpiresAt) {
+        tenantDatabase.apply(organizationId);
         Instant now = Instant.now();
         List<JobClaimResult> claimed = jdbc.query("""
             update compliance_analysis_job
@@ -95,6 +110,7 @@ public class ComplianceJobTransactionService {
                    claimed_at = clock_timestamp(),
                    heartbeat_at = clock_timestamp(),
                    lease_expires_at = ?,
+                   lease_generation = lease_generation + 1,
                    started_at = coalesce(started_at, clock_timestamp()),
                    attempt_count = attempt_count + 1,
                    updated_at = clock_timestamp(),
@@ -113,7 +129,7 @@ public class ComplianceJobTransactionService {
                    knowledge_snapshot_id, retrieval_policy_version_id,
                    matching_policy_version_id, comparison_policy_version_id,
                    confidence_policy_version_id, prompt_package_version_id, claimed_at,
-                   attempt_count
+                   attempt_count, lease_generation
             """, (rs, row) -> new JobClaimResult(
             ClaimOutcome.CLAIMED,
             rs.getObject("id", UUID.class),
@@ -128,7 +144,8 @@ public class ComplianceJobTransactionService {
             rs.getObject("confidence_policy_version_id", UUID.class),
             rs.getObject("prompt_package_version_id", UUID.class),
             rs.getTimestamp("claimed_at").toInstant(),
-            rs.getInt("attempt_count")
+            rs.getInt("attempt_count"),
+            rs.getLong("lease_generation")
         ), workerId, java.sql.Timestamp.from(leaseExpiresAt), jobId, organizationId);
         if (!claimed.isEmpty()) {
             log.info("event=COMPLIANCE_JOB_CLAIMED jobId={} workerId={} leaseExpiresAt={}",
@@ -142,6 +159,7 @@ public class ComplianceJobTransactionService {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = true)
     public Optional<JobClaimResult> loadRunningJob(UUID organizationId, UUID jobId) {
+        tenantDatabase.apply(organizationId);
         List<JobClaimResult> rows = jdbc.query("""
             select id, project_id, status, total_requirement_count, analysis_profile_id,
                    knowledge_snapshot_id, retrieval_policy_version_id,
@@ -173,6 +191,7 @@ public class ComplianceJobTransactionService {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public TaskClaimResult claimTask(UUID organizationId, UUID jobId, UUID taskId,
                                      String workerId, Instant leaseExpiresAt) {
+        tenantDatabase.apply(organizationId);
         List<TaskClaimResult> claimed = jdbc.query("""
             update requirement_matching_task
                set status = 'RUNNING',
@@ -214,6 +233,7 @@ public class ComplianceJobTransactionService {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void heartbeat(UUID organizationId, UUID jobId, UUID taskId, String workerId,
                           Instant leaseExpiresAt) {
+        tenantDatabase.apply(organizationId);
         int jobUpdated = jdbc.update("""
             update compliance_analysis_job
                set heartbeat_at = clock_timestamp(),
@@ -247,6 +267,7 @@ public class ComplianceJobTransactionService {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public CancellationSnapshot requestCancel(UUID organizationId, UUID jobId,
                                               String actor, String reason) {
+        tenantDatabase.apply(organizationId);
         // Cooperative cancel: never wait on a long FOR UPDATE held by LLM work.
         int updated = jdbc.update("""
             update compliance_analysis_job
@@ -293,6 +314,7 @@ public class ComplianceJobTransactionService {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = true)
     public CancellationSnapshot cancellationState(UUID organizationId, UUID jobId) {
+        tenantDatabase.apply(organizationId);
         return jdbc.query("""
             select status, cancel_requested_at
               from compliance_analysis_job
@@ -312,6 +334,7 @@ public class ComplianceJobTransactionService {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void cancelRemainingTasks(UUID organizationId, UUID jobId) {
+        tenantDatabase.apply(organizationId);
         jdbc.update("""
             update requirement_matching_task
                set status = 'CANCELLED',
@@ -337,6 +360,7 @@ public class ComplianceJobTransactionService {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public JobFinalizationResult finalizeJob(UUID organizationId, UUID jobId) {
+        tenantDatabase.apply(organizationId);
         // Aggregate from DB, not in-memory counters.
         var counts = jdbc.query("""
             select
@@ -394,6 +418,7 @@ public class ComplianceJobTransactionService {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = true)
     public List<UUID> loadPendingTaskIds(UUID organizationId, UUID jobId) {
+        tenantDatabase.apply(organizationId);
         return jdbc.query("""
             select id from requirement_matching_task
              where organization_id = ? and compliance_job_id = ?
