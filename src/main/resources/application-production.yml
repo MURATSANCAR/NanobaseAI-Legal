@@ -47,6 +47,13 @@ specai:
   environment: production
   production-runtime-policy:
     enforce: true
+  compliance:
+    deployment:
+      enforce: true
+      operational-headroom: ${COMPLIANCE_DB_OPERATIONAL_HEADROOM:2}
+      require-redis-capacity: ${COMPLIANCE_REQUIRE_REDIS_CAPACITY:true}
+    fault-injection:
+      enabled: false
   bootstrap:
     enabled: false
   storage:

@@ -44,6 +44,8 @@ spring:
     listener:
       simple:
         default-requeue-rejected: false
+        concurrency: ${COMPLIANCE_WORKER_CONCURRENCY:1}
+        max-concurrency: ${COMPLIANCE_WORKER_MAX_CONCURRENCY:${COMPLIANCE_WORKER_CONCURRENCY:1}}
   data:
     redis:
       host: ${REDIS_HOST:localhost}
@@ -202,6 +204,12 @@ specai:
     reclaim-interval-ms: ${COMPLIANCE_RECLAIM_INTERVAL_MS:30000}
     reclaim-batch-size: ${COMPLIANCE_RECLAIM_BATCH_SIZE:10}
     max-attempt-count: ${COMPLIANCE_MAX_ATTEMPT_COUNT:5}
+    deployment:
+      # databasePoolSize >= workerConcurrency + operationalHeadroom
+      operational-headroom: ${COMPLIANCE_DB_OPERATIONAL_HEADROOM:2}
+      enforce: ${COMPLIANCE_DEPLOYMENT_GUARDRAILS_ENFORCE:false}
+      # Production profile sets true; probes AI orchestrator /health/ready capacityProvider.
+      require-redis-capacity: ${COMPLIANCE_REQUIRE_REDIS_CAPACITY:false}
     fault-injection:
       # Hard-disabled when SPECAI_ENVIRONMENT=production regardless of this flag.
       enabled: ${COMPLIANCE_FAULT_INJECTION_ENABLED:false}

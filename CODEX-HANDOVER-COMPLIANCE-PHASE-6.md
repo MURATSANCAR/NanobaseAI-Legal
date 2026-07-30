@@ -86,14 +86,24 @@ PENDING (non-blocking).
 2. concurrency=4 + parallel creates → still timeouts  
 3. Final PASS: sequential create + concurrency=3 + capacity=3 under pool=5
 
-## 28. Residual risks
+## Residual risks
 
-Scheduler HA live + retry-limit live PENDING; size worker concurrency with pool headroom.
+Scheduler HA live + retry-limit live PENDING (post-production hardening, not go-live blockers).
 
 ## 29. Production readiness kararı
 
 ```text
 PRODUCTION_READY = true
+baseline = compliance-orchestration-v1.0
 ```
 
-Required assumptions: Redis capacity + FAIL_CLOSED + FI off + reclaim/heartbeat active + pool sized with headroom above worker concurrency.
+Validated profile locked by `ComplianceDeploymentGuardrails`:
+
+```text
+databasePoolSize >= workerConcurrency + operationalHeadroom
+Redis capacity + FAIL_CLOSED
+Fault injection disabled
+Lease/heartbeat/reclaim enabled
+```
+
+See `docs/COMPLIANCE-DEPLOYMENT-GUARDRAILS.md` and `docs/COMPLIANCE-FINAL-PRODUCTION-READINESS.md`.

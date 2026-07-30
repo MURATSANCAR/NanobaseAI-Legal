@@ -153,6 +153,14 @@ class RedisModelCapacityManager:
             self._failure_policy,
         )
 
+    @property
+    def failure_policy(self) -> str:
+        return self._failure_policy
+
+    @property
+    def provider_name(self) -> str:
+        return "redis"
+
     def _key(self, profile: str) -> str:
         return f"{self._key_prefix}:{profile.strip().upper()}:leases"
 
@@ -269,9 +277,52 @@ class RedisModelCapacityManager:
             LOG.error("event=CAPACITY_SNAPSHOT_FAILED profile=%s error=%s", model_profile, exc)
             return {"active": -1, "error": "PROVIDER_UNAVAILABLE"}
 
+    def health_probe(self) -> dict[str, Any]:
+        """Low-cost acquire/release on an isolated health profile (not product capacity)."""
+        health_profile = "__ORCHESTRATOR_HEALTH__"
+        try:
+            self._redis.ping()
+            status, lease, _wait = self.acquire(
+                model_profile=health_profile,
+                max_concurrency=1,
+                owner_id="orchestrator-health-probe",
+                correlation_id="health-probe",
+                lease_ttl_ms=2_000,
+                wait_timeout_seconds=0,
+            )
+            if status != "ACQUIRED" or lease is None:
+                return {
+                    "capacityProvider": self.provider_name,
+                    "failurePolicy": self._failure_policy,
+                    "providerReachable": True,
+                    "leaseOperationsHealthy": False,
+                    "detail": f"acquire_status={status}",
+                }
+            release_status = self.release(lease)
+            healthy = release_status in {"RELEASED", "ALREADY_RELEASED"}
+            return {
+                "capacityProvider": self.provider_name,
+                "failurePolicy": self._failure_policy,
+                "providerReachable": True,
+                "leaseOperationsHealthy": healthy,
+                "detail": f"release_status={release_status}",
+            }
+        except Exception as exc:  # noqa: BLE001
+            LOG.error("event=CAPACITY_HEALTH_PROBE_FAILED error=%s", exc)
+            return {
+                "capacityProvider": self.provider_name,
+                "failurePolicy": self._failure_policy,
+                "providerReachable": False,
+                "leaseOperationsHealthy": False,
+                "detail": str(exc),
+            }
+
 
 class FailClosedCapacityManager:
     """Used when Redis is required but unreachable at startup/runtime."""
+
+    failure_policy = "FAIL_CLOSED"
+    provider_name = "redis-unavailable"
 
     def acquire(self, **kwargs: Any) -> tuple[str, CapacityLease | None, float]:
         LOG.error("event=CAPACITY_PROVIDER_UNAVAILABLE reason=FAIL_CLOSED_STUB")
@@ -285,6 +336,15 @@ class FailClosedCapacityManager:
 
     def snapshot(self, model_profile: str) -> dict[str, Any]:
         return {"active": -1, "error": "PROVIDER_UNAVAILABLE"}
+
+    def health_probe(self) -> dict[str, Any]:
+        return {
+            "capacityProvider": self.provider_name,
+            "failurePolicy": self.failure_policy,
+            "providerReachable": False,
+            "leaseOperationsHealthy": False,
+            "detail": "FAIL_CLOSED_STUB",
+        }
 
 
 def build_capacity_manager_from_env() -> RedisModelCapacityManager | FailClosedCapacityManager | None:

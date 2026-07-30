@@ -13,6 +13,7 @@ from typing import Any
 
 import httpx
 from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi.responses import JSONResponse
 from jsonschema import Draft202012Validator
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -383,14 +384,52 @@ def live() -> dict[str, str]:
 
 
 @app.get("/health/ready")
-def ready() -> dict[str, Any]:
-    provider = "process-local" if GLOBAL_CAPACITY is None else type(GLOBAL_CAPACITY).__name__
-    return {
-        "status": "UP",
+def ready() -> dict[str, Any] | JSONResponse:
+    """Readiness includes capacity lease health — not Redis PING alone."""
+    required_provider = os.getenv("MODEL_CAPACITY_PROVIDER", "redis").strip().lower()
+    failure_policy = os.getenv("MODEL_CAPACITY_FAILURE_POLICY", "FAIL_CLOSED").strip().upper()
+
+    if GLOBAL_CAPACITY is None:
+        body = {
+            "status": "UP" if required_provider in {"none", "local", "process-local"} else "DOWN",
+            "configuredDeployments": len(DEPLOYMENTS),
+            "capacityProvider": "process-local",
+            "failurePolicy": failure_policy,
+            "providerReachable": required_provider in {"none", "local", "process-local"},
+            "leaseOperationsHealthy": required_provider in {"none", "local", "process-local"},
+            "orchestratorInstanceId": ORCHESTRATOR_INSTANCE_ID,
+            "detail": "process-local capacity; not valid for multi-instance production",
+        }
+        if body["status"] == "DOWN":
+            return JSONResponse(status_code=503, content=body)
+        return body
+
+    probe = GLOBAL_CAPACITY.health_probe()
+    provider = str(probe.get("capacityProvider") or type(GLOBAL_CAPACITY).__name__)
+    provider_ok = "redis" in provider.lower() and "unavailable" not in provider.lower()
+    policy = str(probe.get("failurePolicy") or failure_policy).upper()
+    reachable = bool(probe.get("providerReachable"))
+    leases_ok = bool(probe.get("leaseOperationsHealthy"))
+    ready_ok = (
+        provider_ok
+        and policy == "FAIL_CLOSED"
+        and reachable
+        and leases_ok
+    ) if required_provider == "redis" else reachable and leases_ok
+
+    body = {
+        "status": "UP" if ready_ok else "DOWN",
         "configuredDeployments": len(DEPLOYMENTS),
-        "capacityProvider": provider,
+        "capacityProvider": "redis" if provider_ok else provider,
+        "failurePolicy": policy,
+        "providerReachable": reachable,
+        "leaseOperationsHealthy": leases_ok,
         "orchestratorInstanceId": ORCHESTRATOR_INSTANCE_ID,
+        "detail": probe.get("detail"),
     }
+    if not ready_ok:
+        return JSONResponse(status_code=503, content=body)
+    return body
 
 
 @app.get("/v1/capacity/{profile}/snapshot")

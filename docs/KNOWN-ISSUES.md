@@ -1,19 +1,23 @@
 # Known Issues
 
-## Residual (non-blocking)
+## Residual (post-production hardening — not go-live blockers)
 
-1. Scheduler HA (two reclaim instances) live gate not run.
-2. Retry-limit live exhaustion (`WORKER_REPEATEDLY_INTERRUPTED`) not re-run in Phase 6.
-3. Optional 12-job stress observation not run.
+Priority:
 
-## Operational guidance
+1. Scheduler HA (two reclaim instances) live gate
+2. Retry-limit live exhaustion (`WORKER_REPEATEDLY_INTERRUPTED`)
+3. Optional 12-job stress observation
 
-- Keep worker concurrency strictly below Hikari `maximumPoolSize` (leave ≥1–2 connections for API/heartbeat/schedulers).
-- Do not stampede 8 parallel `POST compliance-analyses` creates against pool=5; enqueue jobs quickly but avoid create-TX pileup.
+## Operational guidance (enforced)
 
-## Closed in Phase 5–6
+- `databasePoolSize >= workerConcurrency + operationalHeadroom`
+- Keep Redis capacity + FAIL_CLOSED; never ship process-local capacity as multi-instance production
+- Fault injection must stay off in production
+- Startup guardrail: `ComplianceDeploymentGuardrails`
 
-- Process-local-only model capacity (Redis leases).
-- Stale-worker orphan evaluation insert.
-- Hikari pool=5 × 8-job pressure gate.
-- Crash/reclaim, cancel/persist barriers, same-event idempotency.
+## Closed
+
+- Compliance orchestration Phase 1–6 mandatory gates
+- Hikari pool=5 × 8-job pressure
+- Global Redis capacity / multi-orchestrator
+- Crash/reclaim, stale-worker, cancel/persist, same-event/same-job
