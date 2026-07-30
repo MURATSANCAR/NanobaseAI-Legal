@@ -165,7 +165,7 @@ public class ComplianceJobTransactionService {
                    knowledge_snapshot_id, retrieval_policy_version_id,
                    matching_policy_version_id, comparison_policy_version_id,
                    confidence_policy_version_id, prompt_package_version_id, claimed_at,
-                   attempt_count
+                   attempt_count, lease_generation
               from compliance_analysis_job
              where id = ? and organization_id = ?
             """, (rs, row) -> new JobClaimResult(
@@ -183,7 +183,8 @@ public class ComplianceJobTransactionService {
             rs.getObject("prompt_package_version_id", UUID.class),
             rs.getTimestamp("claimed_at") == null
                 ? null : rs.getTimestamp("claimed_at").toInstant(),
-            rs.getInt("attempt_count")
+            rs.getInt("attempt_count"),
+            rs.getLong("lease_generation")
         ), jobId, organizationId);
         return rows.stream().findFirst();
     }
@@ -434,7 +435,7 @@ public class ComplianceJobTransactionService {
                    analysis_profile_id, knowledge_snapshot_id, retrieval_policy_version_id,
                    matching_policy_version_id, comparison_policy_version_id,
                    confidence_policy_version_id, prompt_package_version_id, claimed_at,
-                   attempt_count
+                   attempt_count, lease_generation
               from compliance_analysis_job
              where id = ? and organization_id = ?
             """, rs -> {
@@ -442,7 +443,7 @@ public class ComplianceJobTransactionService {
                     log.info("event=COMPLIANCE_JOB_CLAIM_ATTEMPTED jobId={} outcome=NOT_FOUND",
                         jobId);
                     return new JobClaimResult(ClaimOutcome.NOT_FOUND, jobId, null, null, 0,
-                        null, null, null, null, null, null, null, null, 0);
+                        null, null, null, null, null, null, null, null, 0, 0);
                 }
                 String status = rs.getString("status");
                 String claimedBy = rs.getString("claimed_by");
@@ -480,7 +481,8 @@ public class ComplianceJobTransactionService {
                     rs.getObject("prompt_package_version_id", UUID.class),
                     rs.getTimestamp("claimed_at") == null
                         ? null : rs.getTimestamp("claimed_at").toInstant(),
-                    rs.getInt("attempt_count")
+                    rs.getInt("attempt_count"),
+                    rs.getLong("lease_generation")
                 );
             }, jobId, organizationId);
     }
