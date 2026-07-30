@@ -12,7 +12,8 @@ import java.util.UUID;
 @Entity
 @Table(name = "requirement_extraction_job")
 public class RequirementExtractionJob {
-    private static final Set<String> TERMINAL = Set.of("COMPLETED", "FAILED", "CANCELLED");
+    private static final Set<String> TERMINAL = Set.of(
+        "COMPLETED", "FAILED", "CANCELLED", "PARTIALLY_COMPLETED");
 
     @Id
     private UUID id;
@@ -111,6 +112,13 @@ public class RequirementExtractionJob {
     public void complete(Instant now) {
         requireMutable();
         status = "COMPLETED";
+        completedAt = now;
+        updatedAt = now;
+    }
+
+    public void partiallyComplete(Instant now) {
+        requireMutable();
+        status = "PARTIALLY_COMPLETED";
         completedAt = now;
         updatedAt = now;
     }

@@ -122,6 +122,8 @@ public class Requirement {
     private RequirementLifecycleStatus requirementStatus = RequirementLifecycleStatus.ACTIVE;
     @Column(name = "superseded_by_requirement_id")
     private UUID supersededByRequirementId;
+    @Column(name = "classification_status", nullable = false, length = 40)
+    private String classificationStatus = "SKIPPED";
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
     @Column(name = "updated_at", nullable = false)
@@ -183,6 +185,7 @@ public class Requirement {
         this.closedWorldRequired = false;
         this.requiresClarification = false;
         this.requirementStatus = RequirementLifecycleStatus.ACTIVE;
+        this.classificationStatus = "SKIPPED";
         this.createdAt = now;
         this.updatedAt = now;
     }
@@ -218,6 +221,10 @@ public class Requirement {
         this.requirementStatus = RequirementLifecycleStatus.SUPERSEDED;
         this.supersededByRequirementId = successorId;
         this.updatedAt = now;
+    }
+
+    public void classificationStatus(String classificationStatus) {
+        this.classificationStatus = classificationStatus == null ? "SKIPPED" : classificationStatus;
     }
 
     public void edit(String title, String requirementText, String normalizedText,
@@ -305,6 +312,7 @@ public class Requirement {
     public boolean requiresClarification() { return requiresClarification; }
     public RequirementLifecycleStatus requirementStatus() { return requirementStatus; }
     public UUID supersededByRequirementId() { return supersededByRequirementId; }
+    public String classificationStatus() { return classificationStatus; }
     public Instant createdAt() { return createdAt; }
     public Instant updatedAt() { return updatedAt; }
     public long version() { return version; }

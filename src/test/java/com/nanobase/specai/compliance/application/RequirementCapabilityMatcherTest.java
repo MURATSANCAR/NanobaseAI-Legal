@@ -25,9 +25,7 @@ class RequirementCapabilityMatcherTest {
 
     @Test
     void isoPartialMatchWithoutClosedWorldIsUnknown() {
-        when(closedWorldValidator.hasActiveDeclaration(any(), any(), anyString()))
-            .thenReturn(false);
-        when(closedWorldValidator.hasActiveDeclaration(any(), any(), isNull()))
+        when(closedWorldValidator.hasActiveDeclaration(any(), any(), any()))
             .thenReturn(false);
         var matcher = new RequirementCapabilityMatcher(new NumericRequirementEvaluator(),
             closedWorldValidator);
