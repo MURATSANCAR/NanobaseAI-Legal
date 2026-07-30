@@ -128,6 +128,29 @@ public class ComplianceTaskPersistenceService {
                 execution.errorCode());
         }
 
+        // Fence before any evaluation/evidence writes so a stale worker cannot leave orphans.
+        Integer fenceOk = jdbc.query("""
+            select 1
+              from requirement_matching_task
+             where id = ?
+               and organization_id = ?
+               and claimed_by = ?
+               and lease_generation = ?
+               and status in ('RUNNING', 'READY_FOR_MODEL')
+             limit 1
+            """, rs -> rs.next() ? 1 : null,
+            prepared.taskId(), prepared.organizationId(), prepared.workerId(),
+            prepared.leaseGeneration());
+        if (fenceOk == null) {
+            metrics.complianceStaleWorkerResult();
+            metrics.complianceFencingRejection();
+            log.info("event=COMPLIANCE_TASK_PERSIST_REJECTED_STALE jobId={} taskId={} "
+                    + "leaseGeneration={}",
+                prepared.jobId(), prepared.taskId(), prepared.leaseGeneration());
+            return new TaskPersistenceResult(false, true, false, false, null,
+                "STALE_WORKER_RESULT");
+        }
+
         UUID evaluationId = persistEvaluation(prepared, execution);
         try {
             postAssessmentHooks.afterAssessment(prepared.organizationId(), prepared.projectId(),
@@ -176,13 +199,14 @@ public class ComplianceTaskPersistenceService {
             prepared.taskId(), prepared.organizationId(), prepared.workerId(),
             prepared.leaseGeneration());
         if (completed == 0) {
+            // Race after pre-check: roll back the whole persist TX so evaluation is not orphaned.
             metrics.complianceStaleWorkerResult();
             metrics.complianceFencingRejection();
             log.info("event=COMPLIANCE_TASK_PERSIST_REJECTED_STALE jobId={} taskId={} "
                     + "leaseGeneration={}",
                 prepared.jobId(), prepared.taskId(), prepared.leaseGeneration());
-            return new TaskPersistenceResult(false, true, false, false, evaluationId,
-                "STALE_WORKER_RESULT");
+            throw new IllegalStateException(
+                "STALE_WORKER_RESULT after evaluation insert; rolling back persist transaction");
         }
         if (execution.requiresReview()) {
             metrics.complianceManualReview();

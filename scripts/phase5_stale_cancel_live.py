@@ -330,29 +330,44 @@ def scenario_persist_before_cancel(token: str) -> dict:
 
 def scenario_stale_worker(token: str) -> dict:
     cid = str(uuid.uuid4())
-    set_pause_rule(token, cid, "PAUSE_BEFORE_PERSIST")
+    set_pause_rule(token, cid, "PAUSE_BEFORE_PERSIST", timeout_ms=600_000)
     job_id = start_job(token, cid)
     paused = wait_pause_in_logs(cid, "PAUSE_BEFORE_PERSIST", 420)
     before = task_snap(job_id)
     gen_before = max((t.get("leaseGeneration") or 0) for t in before["tasks"] or [0])
     worker_a = (before["tasks"][0].get("claimedBy") if before["tasks"] else None)
     force_expire(job_id)
-    after_reclaim = wait_gen(job_id, gen_before + 1, 150)
-    # allow worker B path (concurrency>=2) to proceed without the old pause rule matching new cid
-    # Keep pause on original cid; Worker B uses same correlation from republished event!
-    # So Worker B may also hit the same PAUSE rule if maxExecutions=1 — good, only A paused once.
-    deadline = time.time() + 420
-    terminal = None
+    # Wait for reclaim to queue the job again.
+    reclaimed = False
+    deadline = time.time() + 120
     while time.time() < deadline:
         job = job_snap(job_id)
-        if job.get("status") in {"COMPLETED", "FAILED", "CANCELLED"}:
+        if job.get("status") == "QUEUED":
+            reclaimed = True
+            break
+        logs = subprocess.check_output(
+            ["sudo", "docker", "logs", "--since", "15m", "specai-legal-backend-1"],
+            text=True,
+            stderr=subprocess.STDOUT,
+        )
+        if f"COMPLIANCE_JOB_RECLAIM_SCHEDULED jobId={job_id}" in logs:
+            reclaimed = True
+            break
+        time.sleep(2)
+    # Wait for Worker B completion while A remains paused.
+    terminal = None
+    deadline = time.time() + 420
+    while time.time() < deadline:
+        job = job_snap(job_id)
+        tasks = task_snap(job_id)
+        gen_now = max((t.get("leaseGeneration") or 0) for t in tasks["tasks"] or [0])
+        if job.get("status") == "COMPLETED" and gen_now > gen_before:
             terminal = job
             break
-        tasks = task_snap(job_id)
-        # if a newer generation is RUNNING without pause, wait
+        if job.get("status") in {"FAILED", "CANCELLED"}:
+            terminal = job
+            break
         time.sleep(3)
-        _ = tasks
-    # release A after B likely done or timeout
     release_pause(token, cid, "PAUSE_BEFORE_PERSIST")
     time.sleep(8)
     if terminal is None:
@@ -365,19 +380,25 @@ def scenario_stale_worker(token: str) -> dict:
         text=True,
         stderr=subprocess.STDOUT,
     )
-    stale_seen = "STALE_WORKER_RESULT" in logs or "PERSIST_REJECTED_STALE" in logs
+    stale_seen = (
+        "STALE_WORKER_RESULT" in logs
+        or "PERSIST_REJECTED_STALE" in logs
+        or f"COMPLIANCE_TASK_PERSIST_REJECTED_STALE jobId={job_id}" in logs
+    )
     passed = (
         paused
+        and reclaimed
         and gen_after > gen_before
-        and terminal.get("status") in {"COMPLETED", "FAILED"}
+        and terminal.get("status") == "COMPLETED"
         and stale_seen
-        and evals <= 1
+        and evals == 1
     )
     return {
         "test": "stale_worker",
         "jobId": job_id,
         "correlationId": cid,
         "paused": paused,
+        "reclaimed": reclaimed,
         "workerA": worker_a,
         "taskGenerationBefore": gen_before,
         "taskGenerationAfter": gen_after,

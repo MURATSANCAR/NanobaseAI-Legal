@@ -31,6 +31,7 @@ public class ComplianceFaultInjection {
     private final ObjectMapper mapper;
     private final ConcurrentHashMap<String, RuleState> rules = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, CountDownLatch> latches = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<UUID, String> pausedJobs = new ConcurrentHashMap<>();
 
     public ComplianceFaultInjection(
         ObjectMapper mapper,
@@ -54,6 +55,7 @@ public class ComplianceFaultInjection {
         }
         rules.clear();
         latches.clear();
+        pausedJobs.clear();
         if (root == null || !root.path("enabled").asBoolean(false)) {
             log.info("event=COMPLIANCE_FAULT_INJECTION_CLEARED");
             return;
@@ -91,6 +93,10 @@ public class ComplianceFaultInjection {
         }
     }
 
+    public boolean shouldSuppressHeartbeat(UUID jobId) {
+        return enabled && jobId != null && pausedJobs.containsKey(jobId);
+    }
+
     public void maybePause(String action, UUID correlationId, UUID jobId, UUID taskId) {
         if (!enabled) {
             return;
@@ -105,6 +111,9 @@ public class ComplianceFaultInjection {
         }
         String key = matchedKey(action, correlationId, jobId, taskId);
         CountDownLatch latch = latches.computeIfAbsent(key, ignored -> new CountDownLatch(1));
+        if (jobId != null) {
+            pausedJobs.put(jobId, action);
+        }
         log.warn("event=COMPLIANCE_FAULT_INJECTION_PAUSE action={} correlationId={} jobId={} "
                 + "taskId={} timeoutMs={}",
             action, correlationId, jobId, taskId, matched.timeoutMs);
@@ -116,6 +125,10 @@ public class ComplianceFaultInjection {
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("Fault injection pause interrupted", interrupted);
+        } finally {
+            if (jobId != null) {
+                pausedJobs.remove(jobId, action);
+            }
         }
     }
 
@@ -123,7 +136,8 @@ public class ComplianceFaultInjection {
         return Map.of(
             "enabled", enabled,
             "ruleCount", rules.size(),
-            "pausedKeys", latches.keySet()
+            "pausedKeys", latches.keySet(),
+            "pausedJobCount", pausedJobs.size()
         );
     }
 

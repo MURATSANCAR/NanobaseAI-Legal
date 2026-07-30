@@ -158,6 +158,11 @@ public class ComplianceAnalysisProcessor {
             });
         ScheduledFuture<?> heartbeatFuture = heartbeatExecutor.scheduleAtFixedRate(() -> {
             try {
+                if (faultInjection.shouldSuppressHeartbeat(jobId)) {
+                    log.info("event=COMPLIANCE_HEARTBEAT_SUPPRESSED_FOR_FAULT_PAUSE jobId={}",
+                        jobId);
+                    return;
+                }
                 var outcome = transactionService.heartbeat(
                     organizationId, jobId, activeTaskId.get(), workerId,
                     activeLeaseGeneration.get() == null ? 0L : activeLeaseGeneration.get(),
