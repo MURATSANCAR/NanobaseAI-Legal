@@ -200,6 +200,7 @@ public class ComplianceJobTransactionService {
                    claimed_at = clock_timestamp(),
                    heartbeat_at = clock_timestamp(),
                    lease_expires_at = ?,
+                   lease_generation = lease_generation + 1,
                    started_at = coalesce(started_at, clock_timestamp()),
                    attempt_count = attempt_count + 1,
                    updated_at = clock_timestamp(),
@@ -210,31 +211,41 @@ public class ComplianceJobTransactionService {
                and (
                     status = 'QUEUED'
                     or (
-                        status = 'RUNNING'
+                        status in ('RUNNING', 'READY_FOR_MODEL')
                         and lease_expires_at is not null
                         and lease_expires_at < clock_timestamp()
                     )
                )
-         returning id, requirement_id, status
+         returning id, requirement_id, status, lease_generation
             """, (rs, row) -> new TaskClaimResult(
             true,
             rs.getObject("id", UUID.class),
             rs.getObject("requirement_id", UUID.class),
             null,
-            rs.getString("status")
+            rs.getString("status"),
+            rs.getLong("lease_generation")
         ), workerId, java.sql.Timestamp.from(leaseExpiresAt), taskId, organizationId, jobId);
         if (!claimed.isEmpty()) {
-            log.info("event=COMPLIANCE_TASK_CLAIMED jobId={} taskId={} workerId={}",
-                jobId, taskId, workerId);
+            log.info("event=COMPLIANCE_TASK_CLAIMED jobId={} taskId={} workerId={} "
+                    + "leaseGeneration={}",
+                jobId, taskId, workerId, claimed.getFirst().leaseGeneration());
+            log.info("event=COMPLIANCE_LEASE_GENERATION_INCREMENTED jobId={} taskId={} "
+                    + "leaseGeneration={}",
+                jobId, taskId, claimed.getFirst().leaseGeneration());
             return claimed.getFirst();
         }
-        return new TaskClaimResult(false, taskId, null, null, "UNCLAIMED");
+        return new TaskClaimResult(false, taskId, null, null, "UNCLAIMED", 0);
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void heartbeat(UUID organizationId, UUID jobId, UUID taskId, String workerId,
-                          Instant leaseExpiresAt) {
+    public HeartbeatOutcome heartbeat(UUID organizationId, UUID jobId, UUID taskId,
+                                      String workerId, long leaseGeneration,
+                                      Instant leaseExpiresAt) {
         tenantDatabase.apply(organizationId);
+        CancellationSnapshot cancel = cancellationState(organizationId, jobId);
+        if (cancel.cancelRequested() || "CANCELLED".equals(cancel.status())) {
+            return HeartbeatOutcome.JOB_CANCELLED;
+        }
         int jobUpdated = jdbc.update("""
             update compliance_analysis_job
                set heartbeat_at = clock_timestamp(),
@@ -245,8 +256,11 @@ public class ComplianceJobTransactionService {
                and status = 'RUNNING'
                and claimed_by = ?
             """, java.sql.Timestamp.from(leaseExpiresAt), jobId, organizationId, workerId);
+        if (jobUpdated == 0) {
+            return HeartbeatOutcome.LEASE_LOST;
+        }
         if (taskId != null) {
-            jdbc.update("""
+            int taskUpdated = jdbc.update("""
                 update requirement_matching_task
                    set heartbeat_at = clock_timestamp(),
                        lease_expires_at = ?,
@@ -254,15 +268,75 @@ public class ComplianceJobTransactionService {
                  where id = ?
                    and organization_id = ?
                    and compliance_job_id = ?
-                   and status = 'RUNNING'
+                   and status in ('RUNNING', 'READY_FOR_MODEL')
                    and claimed_by = ?
+                   and lease_generation = ?
                 """, java.sql.Timestamp.from(leaseExpiresAt), taskId, organizationId, jobId,
-                workerId);
+                workerId, leaseGeneration);
+            if (taskUpdated == 0) {
+                String status = jdbc.query("""
+                    select status from requirement_matching_task
+                     where id = ? and organization_id = ?
+                    """, rs -> rs.next() ? rs.getString(1) : null, taskId, organizationId);
+                if (status == null) {
+                    return HeartbeatOutcome.NOT_FOUND;
+                }
+                if ("COMPLETED".equals(status) || "FAILED".equals(status)
+                    || "CANCELLED".equals(status)) {
+                    return HeartbeatOutcome.TASK_TERMINAL;
+                }
+                return HeartbeatOutcome.LEASE_LOST;
+            }
         }
-        if (jobUpdated > 0) {
-            log.info("event=COMPLIANCE_HEARTBEAT_UPDATED jobId={} taskId={} workerId={} "
-                + "leaseExpiresAt={}", jobId, taskId, workerId, leaseExpiresAt);
-        }
+        log.info("event=COMPLIANCE_HEARTBEAT_UPDATED jobId={} taskId={} workerId={} "
+            + "leaseExpiresAt={} leaseGeneration={}",
+            jobId, taskId, workerId, leaseExpiresAt, leaseGeneration);
+        return HeartbeatOutcome.UPDATED;
+    }
+
+    /** @deprecated use {@link #heartbeat(UUID, UUID, UUID, String, long, Instant)} */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void heartbeat(UUID organizationId, UUID jobId, UUID taskId, String workerId,
+                          Instant leaseExpiresAt) {
+        heartbeat(organizationId, jobId, taskId, workerId, 0L, leaseExpiresAt);
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void markTaskReadyForModel(UUID organizationId, UUID taskId, String workerId,
+                                      long leaseGeneration) {
+        tenantDatabase.apply(organizationId);
+        jdbc.update("""
+            update requirement_matching_task
+               set status = 'READY_FOR_MODEL',
+                   updated_at = clock_timestamp(),
+                   version = version + 1
+             where id = ?
+               and organization_id = ?
+               and claimed_by = ?
+               and lease_generation = ?
+               and status = 'RUNNING'
+            """, taskId, organizationId, workerId, leaseGeneration);
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public boolean markTaskRunningForModel(UUID organizationId, UUID taskId, String workerId,
+                                           long leaseGeneration, Instant leaseExpiresAt) {
+        tenantDatabase.apply(organizationId);
+        int updated = jdbc.update("""
+            update requirement_matching_task
+               set status = 'RUNNING',
+                   heartbeat_at = clock_timestamp(),
+                   lease_expires_at = ?,
+                   updated_at = clock_timestamp(),
+                   version = version + 1
+             where id = ?
+               and organization_id = ?
+               and claimed_by = ?
+               and lease_generation = ?
+               and status in ('READY_FOR_MODEL', 'RUNNING')
+            """, java.sql.Timestamp.from(leaseExpiresAt), taskId, organizationId, workerId,
+            leaseGeneration);
+        return updated > 0;
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -344,7 +418,7 @@ public class ComplianceJobTransactionService {
                    version = version + 1
              where compliance_job_id = ?
                and organization_id = ?
-               and status in ('QUEUED', 'RUNNING')
+               and status in ('QUEUED', 'RUNNING', 'READY_FOR_MODEL')
             """, jobId, organizationId);
         jdbc.update("""
             update compliance_analysis_job
@@ -368,7 +442,8 @@ public class ComplianceJobTransactionService {
               count(*) filter (where status = 'COMPLETED') as completed,
               count(*) filter (where status = 'FAILED') as failed,
               count(*) filter (where status = 'CANCELLED') as cancelled,
-              count(*) filter (where status in ('QUEUED', 'RUNNING')) as active,
+              count(*) filter (where status in ('QUEUED', 'RUNNING', 'READY_FOR_MODEL'))
+                as active,
               count(*) as total
               from requirement_matching_task
              where compliance_job_id = ? and organization_id = ?

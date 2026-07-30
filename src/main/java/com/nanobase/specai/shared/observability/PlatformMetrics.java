@@ -421,6 +421,40 @@ public class PlatformMetrics {
         registry.counter("compliance_cancel_request_total").increment();
     }
 
+    public void compliancePrepareDuration(Duration duration) {
+        if (duration != null) {
+            registry.timer("compliance_prepare_duration_seconds").record(duration);
+        }
+    }
+
+    public void complianceExecuteDuration(Duration duration) {
+        if (duration != null) {
+            registry.timer("compliance_execute_duration_seconds").record(duration);
+        }
+    }
+
+    public void compliancePersistDuration(Duration duration) {
+        if (duration != null) {
+            registry.timer("compliance_persist_duration_seconds").record(duration);
+        }
+    }
+
+    public void complianceStaleWorkerResult() {
+        registry.counter("compliance_stale_worker_result_total").increment();
+    }
+
+    public void complianceFencingRejection() {
+        registry.counter("compliance_fencing_rejection_total").increment();
+    }
+
+    public void complianceConnectionHeldDuringModel() {
+        registry.counter("compliance_connection_held_during_model_total").increment();
+    }
+
+    public void complianceAggregationDeferred() {
+        registry.counter("compliance_aggregation_deferred_total").increment();
+    }
+
     public void sprint7(String metricName) {
         if (!SPRINT_7_METRICS.contains(metricName)) {
             throw new IllegalArgumentException("Unknown Sprint 7 metric");
