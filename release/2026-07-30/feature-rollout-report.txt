@@ -1,0 +1,4 @@
+Status: NOT STARTED (HOLD)
+All V1 intelligence env flags remain false.
+Pilot DB assignment not enabled.
+Reason: flags-off smoke failed with LLM_UNAVAILABLE / stuck job.

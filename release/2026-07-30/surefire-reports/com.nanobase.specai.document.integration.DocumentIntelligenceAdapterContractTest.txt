@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.nanobase.specai.document.integration.DocumentIntelligenceAdapterContractTest
+-------------------------------------------------------------------------------
+Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.163 s -- in com.nanobase.specai.document.integration.DocumentIntelligenceAdapterContractTest

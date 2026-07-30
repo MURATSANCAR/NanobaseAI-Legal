@@ -1,0 +1,14 @@
+Release version: legal-v1-2026.07.30-rc1
+Release branch: release/2026-07-30-v1 (local; remote push blocked: no GitHub credentials)
+Git SHA: 4730b5f5c04c841115c8b78fc1b94d8b178aa8c4
+Backend image id: sha256:26eff9aaf8c127990b9d64e85aea9041bdb1999b61c68c74dcc83f869614d0f6
+UI image id: sha256:2acfe9943295ca64e36874a816794c5ae0895ce683996777c2fddd073c41c5b6
+Orchestrator image id: sha256:6e3c00b7c5647d342f5e4e592d286a9d27f72fd7dc6ea0a01f50b61b41f55365
+Named tags requested: backend/ui/orchestrator:2026.07.30-v1 (NOT applied; compose still uses :latest locally on nanobase)
+Migration range: V19-V26
+JDK: OpenJDK 21.0.11
+Maven: 3.9.11
+Test count: 203 PASS
+Pilot organization ID: 11111111-1111-1111-1111-111111111111
+Expected day-1 flags: OFF until smoke/acceptance green (currently HOLD)
+Backup: /data/nanobaseai/backups/legal-2026-07-30/pre_v1_20260730T084101Z.dump (1499935 bytes)

@@ -1,0 +1,11 @@
+Status: FAIL / HOLD blocker
+Job: d6746bc0-e480-4ec0-a73f-0ef64d30b1f2
+Project: 76c32181-c0c5-4e6f-90df-d90d3f38845c (15 requirements)
+Observed:
+- Lexical retrieval ran (candidate counts logged)
+- Multiple semantic_evaluation failures with failureCode=LLM_UNAVAILABLE
+- Job remained status=QUEUED with 15 tasks QUEUED despite in-progress evaluation logs (stuck/inconsistent state)
+- Model http://127.0.0.1:8010/health = 200
+- Orchestrator container healthy; host:8090 not published (docker network only)
+- LLM_INVALID_RESPONSE warnings also present in orchestrator logs
+Intelligence flags were NOT opened.

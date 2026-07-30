@@ -1,0 +1,10 @@
+V19 SUCCESS
+V20 SUCCESS
+V21 SUCCESS
+V22 SUCCESS
+V23 SUCCESS
+V24 SUCCESS
+V25 SUCCESS
+V26 SUCCESS (applied 2026-07-30T11:36:25+03 during backend deploy)
+Pre-counts: requirement=15 evidence_fragment=72 compliance_evaluation=74 tender_project=7 organization=1
+No DROP/TRUNCATE performed.

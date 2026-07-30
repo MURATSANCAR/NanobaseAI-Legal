@@ -1,0 +1,6 @@
+Status: PARTIAL
+Startup production_runtime_policy observed:
+{"event":"production_runtime_policy","modelRouting":"BALANCED_ONLY","evaluationParallelism":1,"fastEnabled":false,"shadowEnabled":false,"intelligenceEnv":{all false}}
+Backend health: UP
+Go-live counters registered in PlatformMetrics; live scrape of llm_active_requests during acceptance not completed (acceptance not run).
+Observed LLM_UNAVAILABLE events in backend logs during smoke.

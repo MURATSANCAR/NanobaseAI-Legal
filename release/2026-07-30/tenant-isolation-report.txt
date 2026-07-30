@@ -1,0 +1,3 @@
+Status: NOT RUN
+Reason: Only one organization exists in DB (Nano Teknoloji A.Ş.).
+ORG_B not provisioned; blocked until smoke gate passes and second org is created.

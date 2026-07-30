@@ -1,0 +1,21 @@
+1. Release SHA: 4730b5f5c04c841115c8b78fc1b94d8b178aa8c4 (branch release/2026-07-30-v1, tag legal-v1-2026.07.30-rc1 local only; push failed)
+2. Migration: V19-V26 PASS
+3. Flags-off smoke: FAIL (LLM_UNAVAILABLE + stuck QUEUED job)
+4. Tenant isolation: NOT RUN (single org)
+5. Active feature flags: ALL intelligence OFF
+6. Three acceptance jobs: NOT RUN
+7. Critical requirement decisions: N/A
+8. Gap results: N/A (gaps not opened)
+9. LLM: unavailable / invalid responses during smoke
+10. Technical failures: LLM_UNAVAILABLE >=1 (blocker)
+11. False COMPLIANT: not evaluated
+12. Rollback: kill switches already OFF
+13. Monitoring: policy snapshot OK; acceptance metrics incomplete
+14. Final decision: V1 HOLD
+
+Open blockers:
+- LLM_UNAVAILABLE during flags-off smoke
+- Compliance job stuck/inconsistent QUEUED state
+- GitHub push credentials missing for remote freeze
+- Image digest tags :2026.07.30-v1 not applied (compose uses :latest)
+- Second organization missing for tenant test

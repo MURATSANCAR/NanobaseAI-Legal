@@ -1,0 +1,5 @@
+Status: PARTIAL / N/A for intelligence (never opened)
+Env kill switches already false (global kill active).
+DB pilot assignment not applied.
+Image rollback drill not executed because current image remains flags-off baseline.
+Backup available for restore if needed.
