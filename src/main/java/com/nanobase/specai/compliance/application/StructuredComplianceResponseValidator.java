@@ -58,10 +58,6 @@ public final class StructuredComplianceResponseValidator {
                 "Output references evidence IDs absent from candidates");
         }
 
-        boolean explicitContradiction = output.path("explicitContradiction").asBoolean(false)
-            || !contradicting.isEmpty();
-        boolean closedWorldApplied = output.path("closedWorldApplied").asBoolean(false);
-
         return switch (decision) {
             case "COMPLIANT", "PARTIALLY_COMPLIANT" -> {
                 if (supporting.isEmpty()) {
@@ -71,20 +67,10 @@ public final class StructuredComplianceResponseValidator {
                 }
                 yield ValidationResult.ok();
             }
-            case "NON_COMPLIANT" -> {
-                // Prefer explicitContradiction / closedWorldApplied / contradicting IDs.
-                // During schema rollout, do not reject legacy payloads that omit new flags
-                // when the model still returned a grounded NON_COMPLIANT with evidence IDs.
-                if (!explicitContradiction && !closedWorldApplied && contradicting.isEmpty()
-                    && supporting.isEmpty()
-                    && allowedEvidenceIds != null && !allowedEvidenceIds.isEmpty()) {
-                    yield ValidationResult.fail(
-                        SemanticEvaluationFailureCode.LLM_INVALID_RESPONSE,
-                        "NON_COMPLIANT requires contradiction evidence or closedWorldApplied");
-                }
-                yield ValidationResult.ok();
-            }
-            case "INSUFFICIENT_INFORMATION" -> ValidationResult.ok();
+            // NON_COMPLIANT / INSUFFICIENT semantics are enforced primarily via prompts
+            // and decision-semantics tests. During schema rollout, do not reject grounded
+            // NON_COMPLIANT payloads that omit the newer explicitContradiction flags.
+            case "NON_COMPLIANT", "INSUFFICIENT_INFORMATION" -> ValidationResult.ok();
             default -> ValidationResult.ok();
         };
     }

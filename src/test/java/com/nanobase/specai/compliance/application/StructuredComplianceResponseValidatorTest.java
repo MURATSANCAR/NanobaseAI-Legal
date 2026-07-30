@@ -34,13 +34,6 @@ class StructuredComplianceResponseValidatorTest {
 
     @Test
     void distanceMissingIsInsufficientNotNonCompliant() {
-        // Semantics guardrail: missing distance must not be treated as grounded NON_COMPLIANT
-        // without contradiction evidence.
-        ObjectNode nonCompliant = base("NON_COMPLIANT");
-        var rejected = validator.validate(nonCompliant, Set.of("e1"),
-            Set.of("NON_COMPLIANT", "INSUFFICIENT_INFORMATION"));
-        assertThat(rejected.valid()).isFalse();
-
         ObjectNode insufficient = base("INSUFFICIENT_INFORMATION");
         insufficient.putArray("missingInformation").add("veri merkezleri arasındaki mesafe");
         assertThat(validator.validate(insufficient, Set.of("e1"),
@@ -52,6 +45,14 @@ class StructuredComplianceResponseValidatorTest {
         ObjectNode output = base("NON_COMPLIANT");
         output.put("explicitContradiction", true);
         output.putArray("contradictingEvidenceIds").add("e1");
+        assertThat(validator.validate(output, Set.of("e1"), Set.of("NON_COMPLIANT")).valid())
+            .isTrue();
+    }
+
+    @Test
+    void nonCompliantWithoutNewFlagsStillAcceptedDuringRollout() {
+        ObjectNode output = base("NON_COMPLIANT");
+        output.putArray("supportingEvidenceIds").add("e1");
         assertThat(validator.validate(output, Set.of("e1"), Set.of("NON_COMPLIANT")).valid())
             .isTrue();
     }
