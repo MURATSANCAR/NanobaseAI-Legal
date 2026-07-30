@@ -211,3 +211,16 @@ specai:
       escalate-evidence-above: ${COMPLIANCE_ESCALATE_EVIDENCE_ABOVE:2}
       fast-relevance-threshold: ${COMPLIANCE_FAST_RELEVANCE_THRESHOLD:0.80}
       fast-final-decision-threshold: ${COMPLIANCE_FAST_FINAL_DECISION_THRESHOLD:0.95}
+  # Tender intelligence master kill switches (default OFF).
+  # Even when true, org/project enablement still requires feature_assignment
+  # (or feature_definition.default_state) because DB defaults are FALSE.
+  tender-intelligence:
+    tender-domain-v2-enabled: ${TENDER_DOMAIN_V2_ENABLED:false}
+    requirement-classification-enabled: ${REQUIREMENT_CLASSIFICATION_ENABLED:false}
+    company-capability-registry-enabled: ${COMPANY_CAPABILITY_REGISTRY_ENABLED:false}
+    deterministic-evaluation-enabled: ${DETERMINISTIC_EVALUATION_ENABLED:false}
+    gap-analysis-enabled: ${GAP_ANALYSIS_ENABLED:false}
+    clarification-management-enabled: ${CLARIFICATION_MANAGEMENT_ENABLED:false}
+    risk-engine-enabled: ${RISK_ENGINE_ENABLED:false}
+    bid-decision-enabled: ${BID_DECISION_ENABLED:false}
+    obligation-management-enabled: ${OBLIGATION_MANAGEMENT_ENABLED:false}
