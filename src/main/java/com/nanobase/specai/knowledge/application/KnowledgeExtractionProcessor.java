@@ -75,6 +75,35 @@ public class KnowledgeExtractionProcessor {
                 """, String.class, documentId, organizationId);
             String purposeCode = "CERTIFICATE".equals(documentType) ? "CERTIFICATE" : "TENDER_SPEC";
 
+            // Tender technical specs are requirement sources — company/product knowledge
+            // extraction is not applicable. Policy-valid terminal without opaque AI failure.
+            if ("TECHNICAL_SPECIFICATION".equals(documentType)
+                || "TENDER_SPECIFICATION".equals(documentType)) {
+                UUID skipStage = beginStage(organizationId, jobId, "SKIPPED_NOT_APPLICABLE");
+                completeStage(organizationId, prepareStageId, "COMPLETED", null, null);
+                completeStage(organizationId, skipStage, "COMPLETED", "SKIPPED_NOT_APPLICABLE",
+                    "Document purpose does not require company knowledge extraction");
+                jdbc.update("""
+                    update knowledge_extraction_job set status = 'COMPLETED',
+                        document_purpose_code = ?, current_stage_code = 'SKIPPED_NOT_APPLICABLE',
+                        extracted_entity_count = 0, processed_fragment_count = 0,
+                        total_fragment_count = 0, existing_knowledge_used = false,
+                        started_at = clock_timestamp(),
+                        completed_at = clock_timestamp(), updated_at = clock_timestamp(),
+                        version = version + 1
+                    where id = ? and organization_id = ?
+                    """, purposeCode, jobId, organizationId);
+                jobs.event(organizationId, jobId, "COMPLETED", 100,
+                    "Knowledge skipped — not applicable for tender technical specification",
+                    Map.of("purposeCode", purposeCode, "documentType", documentType,
+                        "terminalStatus", "SKIPPED_NOT_APPLICABLE"));
+                outbox.publish(organizationId, "KnowledgeExtraction", jobId,
+                    "KnowledgeExtractionCompleted", "knowledge.extraction.completed.v1",
+                    Map.of("jobId", jobId, "skippedNotApplicable", true,
+                        "purposeCode", purposeCode), correlationId);
+                return null;
+            }
+
             // Purpose isolation: check if a completed job with entities already exists
             List<UUID> existingJobs = jdbc.query("""
                 select id from knowledge_extraction_job
