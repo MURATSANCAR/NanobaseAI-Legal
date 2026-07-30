@@ -321,9 +321,17 @@ export function DocumentReview({ document, token, canWrite, onClose, onProblem }
               <div><dt>Hash</dt><dd className="hash">{selected.contentHash}</dd></div>
             </dl>
             <h4>Ham metin</h4><p>{selected.rawText}</p>
-            <h4>Normalize metin</h4><p>{selected.normalizedText}</p>
+            <h4>Normalize metin</h4>
+            <p className="clause-source-highlight">{selected.normalizedText}</p>
             <h4>Kaynak koordinatları</h4>
             <pre>{JSON.stringify(selected.boundingBoxes, null, 2)}</pre>
+            {canWrite && (
+              <div className="requirement-actions" style={{ marginTop: 12 }}>
+                <p className="eyebrow">İNCELEME</p>
+                <p className="text-sm">Madde hiyerarşisi ve kaynak vurgusu otomatik çıkarılır;
+                  gereksinim onay/red işlemleri Gereksinimler matrisinden yapılır.</p>
+              </div>
+            )}
             {!!activeJob?.warnings.length && <>
               <h4>Parser uyarıları</h4>
               {activeJob.warnings.map((warning) =>
