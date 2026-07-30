@@ -1,0 +1,86 @@
+{
+  "test": "orchestrated_1x1",
+  "startedAt": 1785412415.3372715,
+  "prepare": {
+    "requirementCountOnProject": 1,
+    "retrievalPolicyVersionId": "50000000-0000-0000-0000-000000000021",
+    "reranking": 1
+  },
+  "slot_before": {
+    "recentTraceLines": 0
+  },
+  "jobId": "ff743131-0416-4505-a2e6-10ae00336c5e",
+  "createResponse": {
+    "id": "ff743131-0416-4505-a2e6-10ae00336c5e",
+    "status": "QUEUED",
+    "totalRequirementCount": null
+  },
+  "transitions": [
+    {
+      "at": 1785412419.6503186,
+      "elapsedMs": 1608,
+      "status": "QUEUED",
+      "completed": 0,
+      "failed": 0,
+      "tasks": [
+        {
+          "status": "QUEUED",
+          "candidateCount": 0,
+          "rerankedCandidateCount": 0,
+          "errorCode": null
+        }
+      ]
+    },
+    {
+      "at": 1785412541.9259503,
+      "elapsedMs": 123884,
+      "status": "COMPLETED",
+      "completed": 1,
+      "failed": 0,
+      "tasks": [
+        {
+          "status": "COMPLETED",
+          "candidateCount": 1,
+          "rerankedCandidateCount": 1,
+          "errorCode": null
+        }
+      ]
+    }
+  ],
+  "final": {
+    "status": "COMPLETED",
+    "completed": 1,
+    "failed": 0,
+    "processed": 1,
+    "total": 1,
+    "startedAt": "2026-07-30T11:53:39.790327+00:00",
+    "completedAt": "2026-07-30T11:53:39.790327+00:00",
+    "updatedAt": "2026-07-30T11:53:39.790327+00:00",
+    "createdAt": "2026-07-30T11:53:38.697074+00:00",
+    "tasks": [
+      {
+        "taskId": "31b36041-0cf0-4638-b2d0-0674425476e7",
+        "requirementId": "184e7eac-7808-4b79-86df-a70bf619bc33",
+        "status": "COMPLETED",
+        "candidateCount": 1,
+        "rerankedCandidateCount": 1,
+        "selectedEvidenceCount": 1,
+        "errorCode": null,
+        "startedAt": "2026-07-30T11:53:39.790327+00:00",
+        "completedAt": "2026-07-30T11:53:39.790327+00:00"
+      }
+    ]
+  },
+  "claim_duration_ms": null,
+  "job_duration_ms": 123089,
+  "slot_acquired": true,
+  "slot_released": true,
+  "queueWaitMs": 0.0,
+  "generationMs": 120767.0,
+  "llmResult": "COMPLETED",
+  "failureCode": null,
+  "llmUnavailableCount": 0,
+  "backendLogHits": 3,
+  "orchestratorLogHits": 1,
+  "pass": true
+}
