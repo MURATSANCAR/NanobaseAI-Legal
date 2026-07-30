@@ -481,6 +481,25 @@ public class ComplianceAnalysisProcessor {
                 outcome.summary().path("reasonCode").asText(null),
                 evaluationId, organizationId);
         }
+        if (transactionService.cancellationState(organizationId, job.id()).cancelRequested()) {
+            jdbc.update("""
+                update requirement_matching_task
+                set status = 'CANCELLED',
+                    candidate_count = ?,
+                    reranked_candidate_count = ?,
+                    completed_at = clock_timestamp(),
+                    updated_at = clock_timestamp(),
+                    version = version + 1
+                where id = ? and organization_id = ?
+                  and status = 'RUNNING'
+                """, candidates.size(), ranked.ranked().size(), task.id(), organizationId);
+            log.info("event=COMPLIANCE_TASK_CANCELLED jobId={} taskId={} "
+                    + "(late cancel after model, result not completed)",
+                job.id(), task.id());
+            throw new SemanticEvaluationException(
+                SemanticEvaluationFailureCode.LLM_CANCELLED,
+                "Task cancelled after model response", 0);
+        }
         jdbc.update("""
             update requirement_matching_task
             set status = 'COMPLETED', candidate_count = ?,

@@ -11,6 +11,7 @@ import com.nanobase.specai.tender.application.ProjectAccessService;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.Instant;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
@@ -238,7 +239,7 @@ public class ComplianceJobService {
             "message", message,
             "metadata", metadata == null ? Map.of() : metadata
         ));
-        if (TERMINAL.contains(type)) {
+        if (TERMINAL.contains(type) || "PARTIALLY_COMPLETED".equals(type)) {
             eventStream.complete(jobId);
         }
     }
