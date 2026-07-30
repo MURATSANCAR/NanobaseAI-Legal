@@ -1,19 +1,13 @@
-# Known Issues — Compliance Phase 4
+# Known Issues
 
-## Closed this phase
+1. **Hikari pool=5 multi-job gate still PENDING** — Phase 5 did not run ≥8 concurrent long executes under `DATABASE_POOL_SIZE=5`. Blocks `PRODUCTION_READY=true`.
+2. Scheduler HA (two reclaim instances) not live-proven in Phase 5.
+3. Retry-limit live exhaustion (`WORKER_REPEATEDLY_INTERRUPTED`) not re-run in Phase 5.
+4. Redis capacity snapshot may serialize empty lease list as `{}` (Lua empty table); active count remains correct.
+5. `MODEL_CAPACITY_PROVIDER=local` remains available for single-process labs only — **not** multi-instance production.
 
-- Per-correlation fault injection (orchestrator + backend pauses)
-- Concurrent same-job claim race PASS
-- Controlled timeout → `MODEL_TIMEOUT` PASS
-- Controlled 503 → unavailable then retry PASS
-- Live `AGGREGATION_DEFERRED` PASS
-- Phase 3 policy restore hash documented: `65f7982cf7b27f34433cae2f9a5f8eee`
+## Resolved in Phase 5
 
-## Still open (PRODUCTION_READY = false)
-
-1. Crash/reclaim with SIGKILL
-2. Live stale-worker fencing after reclaim
-3. Hikari pool=5 multi-job pressure
-4. Cancel/persist barrier races A/B
-5. Same-event idempotency dual-consumer
-6. ProfileSlotManager still instance-local
+- Process-local-only model capacity for multi-orchestrator (replaced by Redis leases).
+- Stale worker could insert evaluation before fencing reject (fixed: fence-before-insert + TX rollback on late race).
+- Heartbeat during fault-injection pause prevented reclaim (fixed: suppress heartbeat while paused).
