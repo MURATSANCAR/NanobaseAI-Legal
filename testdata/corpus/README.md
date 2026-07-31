@@ -12,5 +12,6 @@ Place anonymized real-world samples here. Do **not** commit secrets or customer-
 | E2E-06 | Tenant isolation | cross-tenant 404 on download/proxy |
 | E2E-07 | Report integrity negative | tiny stub PDF must FAIL validation |
 
-Harness: `scripts/corpus_e2e_harness.py`
-Policy gates: versioned JSON under `testdata/corpus/policy/` (precision/recall thresholds).
+Harness (legacy discovery): `scripts/corpus_e2e_harness.py`
+**v1.1 canonical package:** `evaluation/corpus/` + `scripts/corpus_intake.py` + `scripts/run_v11_corpus_e2e.py`
+Policy gates: `evaluation/corpus/policy/quality-gates-v1.1.json`

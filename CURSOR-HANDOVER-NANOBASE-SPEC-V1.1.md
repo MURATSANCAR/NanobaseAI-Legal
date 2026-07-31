@@ -1,97 +1,85 @@
 # CURSOR handover — Nanobase Spec Intelligence v1.1
 
-## 1. v1.0 baseline doğrulaması
+## 1. Foundation commit
+
+Foundation already on `main` (not rewritten; remote-synced):
+
+- Tip including wiring: `cf19d1d`
+- Initial V33 foundations commit: `6864c6c`
+- Message history contains interim noisy commits; content is additive and flag-default-OFF.
+- Requested release tag `nanobase-spec-intelligence-v1.1` **not** created.
+
+## 2. v1.0 baseline verification
 
 - `compliance-orchestration-v1.0` → `e9a44f1` intact
 - `nanobase-spec-intelligence-v1.0` → `10a1cad` intact
-- Live DSİ IDs remain the v1.0 production evidence (see `docs/FULL-PRODUCT-PRODUCTION-READINESS.md`)
+- V28–V32 migrations not modified by v1.1 work
 
-## 2. Değiştirilen bileşenler
+## 3. V33 deployment
 
-Additive only: V33 schema, capability/OCR/table/delivery/validity/timing/guardrail/report-visual packages, corpus manifests, docs.
+Prod-like Flyway was at **V32** before redeploy. Redeploy backend with V33 is required for live enrichment tables/flags. See readiness doc for digests after deploy step.
 
-Runtime wiring (feature-flag default OFF):
-- `DocumentUploadedConsumer` → `DocumentV11EnrichmentService` (capability/OCR/table cells/DOCX blocks)
-- `DocumentService.downloadUrl` → `ObjectDeliveryStrategy` when `OBJECT_DELIVERY_STRATEGY_ENABLED`
-- `RequirementExtractionProcessor` → stage timing when `REQUIREMENT_EXTRACTION_TIMING_ENABLED`
-- `DynamicReportingService` → visual structure gate when `REPORT_VISUAL_VALIDATION_ENABLED`
+## 4. Corpus manifest inventory
 
-Compliance lease/fencing/Redis untouched.
+15 manifests in `evaluation/corpus/manifests/` covering native/scanned/DOCX/table/knowledge.
 
-## 3. Document capability profile
+## 5. Corpus binary inventory
 
-`document_capability_profile` + `DefaultDocumentCapabilityProfiler` + `DefaultDocumentProcessingRouter`.
+**0** binaries in default asset root (`evaluation/corpus/assets/local`, gitignored).
 
-## 4. Scanned PDF pipeline
+Optional root: `NANOBASE_CORPUS_ASSET_ROOT`.
 
-Profile routing + OCR preprocess port + quality table. Live E2E PENDING.
+## 6. License status
 
-## 5. OCR quality ve numeric integrity
+All manifests: `PENDING`.
 
-`ocr_quality_assessment` + `DefaultNumericOcrIntegrityValidator` (no silent correction).
+## 7. Privacy status
 
-## 6. DOCX pipeline
+All manifests: personal/confidential `UNKNOWN`, redaction `NOT_REVIEWED`.
 
-`docx_structure_block` schema + flags. Live E2E PENDING.
+## 8. Ground-truth status
 
-## 7. Table canonical model
+Template DRAFT only; **0 APPROVED**.
 
-`document_table` extensions + `document_table_cell` + `CanonicalTable*`.
+## 9. DSİ v1.0 regression
 
-## 8. Table requirement extraction
+Re-run after V33 deploy with flags OFF. Expected: ok=true, manual seeds 0, report integrity PASS.
 
-`HeaderContextTableRequirementExtractionStrategy` preserves header context.
+## 10–15. Live multi-format E2Es
 
-## 9–12. Knowledge corpus / certificate / datasheet / validity
+Scanned / DOCX / table / certificate / datasheet / report regression: **NOT RUN** — `BLOCKED_CORPUS_ASSETS`.
 
-Corpus tables seeded; `DeterministicKnowledgeValidityEvaluator`; live knowledge E2Es PENDING.
+## 16. Delivery strategy
 
-## 13–14. Corpus ve slice evaluation
+Profile B (`BACKEND_PROXY_ONLY`) remains valid; `DIRECT_PUBLIC` PENDING without public DNS/TLS.
 
-15 fixture manifests; harness discovery SKIPPED without binaries; slice metrics policy documented.
+## 17–18. Performance / security
 
-## 15–16. Report regression / visual validation
+NOT_RUN this phase (no empty PASS artifacts claimed).
 
-`ReportVisualStructureValidator` + `report_visual_validation_result`. Live E2E-07 PENDING.
+## 19. Tenant isolation
 
-## 17–18. Presigned / proxy-only
+v1.0 evidence preserved; per-format retest pending corpus.
 
-`ProfileAwareObjectDeliveryStrategy`; default `BACKEND_PROXY_ONLY`; blocks Docker-internal hosts.
+## 20. Slice quality metrics
 
-## 19–21. Requirement performance
+All accuracy fields `NOT_SCORED` (no APPROVED ground truth).
 
-Timing table + budget profiles + optimization policy docs. Live budget PASS not claimed.
+## 21–22. Failed attempts / fixes
 
-## 22. Database migrations
+OCR lookalike false positive on clean `IP65` fixed earlier. Corpus PASS not fabricated.
 
-`V33__spec_intelligence_v11_foundations.sql` only (no V28–V32 edits).
+## 23. Remaining blockers
 
-## 23–26. Tests
+1. Licensed binaries for 15-fixture matrix
+2. Privacy review
+3. APPROVED ground truth (≥10)
+4. V33 deploy + DSİ regression confirmation
+5. Flag-scoped live E2E-02–07
 
-Unit/architecture tests added for profiler/router/numeric/table/validity/delivery/v11 architecture. Host JDK may be unavailable in agent shell — verify via Docker backend build.
-
-Security/load live suites: PENDING.
-
-## 27–32. Live E2Es
-
-Scanned / DOCX / table / certificate / datasheet / report regression: **PENDING** (no invented fixtures).
-
-## 33. DSİ v1.0 regression
-
-Baseline preserved; re-run `scripts/full_product_e2e_autonomous_dsi.py` after enabling V33 on the stack.
-
-## 34. Başarısız / çalıştırılmamış
-
-All broad GA live gates PENDING — intentionally not marked PASS.
-
-## 35. Kalan riskler
-
-Corpus licensing, OCR engine wiring, DOCX structure populate path, extraction mega-transaction, public MinIO DNS, performance wall-clock.
-
-## 36. BROAD_DOCUMENT_GA_READY kararı
+## 24. BROAD_DOCUMENT_GA_READY decision
 
 ```text
 BROAD_DOCUMENT_GA_READY = false
+DECISION_REASON = BLOCKED_CORPUS_ASSETS
 ```
-
-Do **not** create `nanobase-spec-intelligence-v1.1` tag until live gates pass.

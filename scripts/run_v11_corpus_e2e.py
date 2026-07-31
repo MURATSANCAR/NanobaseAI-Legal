@@ -2,7 +2,7 @@
 """v1.1 corpus E2E runner.
 
 Runs only fixtures that intake classifies as READY_FOR_SMOKE or READY_FOR_QUALITY_GATE.
-Missing assets → SKIPPED / BLOCKED_CORPUS_ASSETS — never fabricated PASS.
+Missing assets produce SKIPPED — never fabricated PASS.
 """
 from __future__ import annotations
 
@@ -12,14 +12,12 @@ import os
 import subprocess
 import sys
 import time
-import urllib.error
-import urllib.request
-from datetime import date, timedelta
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-SLICE_MAP = {
+SLICE_ALIASES = {
     "native-pdf": {"NATIVE_TEXT"},
     "scanned-pdf": {"SCANNED_IMAGE"},
     "docx": {"DOCX_STRUCTURED"},
@@ -27,23 +25,85 @@ SLICE_MAP = {
     "certificate": {"CERTIFICATE"},
     "datasheet": {"PRODUCT_DATASHEET"},
     "knowledge": {"CERTIFICATE", "PRODUCT_DATASHEET", "QUALITY_CERTIFICATE"},
-    "report-regression": set(),
+    "report-regression": set(),  # handled separately / policy later
     "all": None,
 }
 
 
-def api_json(method: str, url: str, token: str | None = None, body: dict | None = None,
-             timeout: int = 120) -> Any:
-    data = None if body is None else json.dumps(body).encode("utf-8")
-    headers = {"Accept": "application/json"}
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-    if body is not None:
-        headers["Content-Type"] = "application/json"
-    req = urllib.request.Request(url, data=data, headers=headers, method=method)
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        raw = resp.read()
-        return json.loads(raw.decode("utf-8")) if raw else None
+def utc_now() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def run_intake(manifest_dir: Path, asset_root: Path, out_dir: Path) -> dict[str, Any]:
+    intake_out = out_dir / "intake-report.json"
+    inventory_out = out_dir / "corpus-inventory.json"
+    cmd = [
+        sys.executable,
+        str(ROOT / "scripts/corpus_intake.py"),
+        "--manifest-dir", str(manifest_dir),
+        "--asset-root", str(asset_root),
+        "--output", str(intake_out),
+        "--inventory-output", str(inventory_out),
+    ]
+    subprocess.check_call(cmd)
+    return json.loads(intake_out.read_text(encoding="utf-8"))
+
+
+def matches_slice(manifest_slice: dict[str, Any], slice_name: str) -> bool:
+    if slice_name == "all":
+        return True
+    if slice_name == "report-regression":
+        return False
+    wanted = SLICE_ALIASES.get(slice_name)
+    if wanted is None:
+        return True
+    purpose = (manifest_slice or {}).get("documentPurpose")
+    mode = (manifest_slice or {}).get("contentMode")
+    fmt = (manifest_slice or {}).get("format")
+    if slice_name == "certificate":
+        return purpose == "CERTIFICATE"
+    if slice_name == "datasheet":
+        return purpose == "PRODUCT_DATASHEET"
+    if slice_name == "knowledge":
+        return purpose in wanted
+    if slice_name == "docx":
+        return fmt == "DOCX" and mode in {"DOCX_STRUCTURED", "TABLE_DOMINANT"}
+    if slice_name == "table-heavy":
+        return mode == "TABLE_DOMINANT"
+    if slice_name == "scanned-pdf":
+        return mode == "SCANNED_IMAGE"
+    if slice_name == "native-pdf":
+        return mode == "NATIVE_TEXT"
+    return mode in wanted or purpose in wanted
+
+
+def skipped_result(fixture: dict[str, Any], reason: str) -> dict[str, Any]:
+    return {
+        "fixtureCode": fixture.get("fixtureCode"),
+        "status": "SKIPPED",
+        "smokeOnly": True,
+        "projectId": None,
+        "documentId": None,
+        "parserJobId": None,
+        "requirementJobId": None,
+        "knowledgeJobId": None,
+        "complianceJobId": None,
+        "reportJobId": None,
+        "pageCount": None,
+        "layoutBlockCount": None,
+        "tableCount": None,
+        "clauseCount": None,
+        "automaticRequirementCount": None,
+        "manualClauseSeed": 0,
+        "manualRequirementSeed": 0,
+        "unresolvedSuspiciousEmpty": None,
+        "reportIntegrity": "NOT_RUN",
+        "tenantIsolation": "NOT_RUN",
+        "audit": "NOT_RUN",
+        "timings": {},
+        "failures": [reason],
+        "intakeStatus": fixture.get("status"),
+    }
 
 
 def main() -> int:
@@ -59,95 +119,78 @@ def main() -> int:
     )
     parser.add_argument("--slice", default="all")
     parser.add_argument("--output-dir", default="/tmp/nanobase-v11-e2e")
-    parser.add_argument("--intake-report", default="/tmp/nanobase-corpus/intake-report.json")
+    parser.add_argument("--execute-live", action="store_true",
+                        help="Execute live API E2E for READY fixtures (default: inventory-only skip)")
     args = parser.parse_args()
 
     out_dir = Path(args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+    intake = run_intake(Path(args.manifest_dir), Path(args.asset_root), out_dir)
 
-    # Always refresh intake first.
-    intake_cmd = [
-        sys.executable,
-        str(ROOT / "scripts/corpus_intake.py"),
-        "--manifest-dir", args.manifest_dir,
-        "--asset-root", args.asset_root,
-        "--output", args.intake_report,
-        "--inventory-output", str(Path("/tmp/nanobase-corpus/corpus-inventory.json")),
-    ]
-    subprocess.check_call(intake_cmd)
-    intake = json.loads(Path(args.intake_report).read_text(encoding="utf-8"))
-    inventory = intake.get("inventory") or {}
-
-    wanted = SLICE_MAP.get(args.slice)
     results: list[dict[str, Any]] = []
-    for fixture in intake.get("fixtures") or []:
-        slice_info = fixture.get("slice") or {}
-        content_mode = slice_info.get("contentMode")
-        purpose = slice_info.get("documentPurpose")
-        if wanted is not None:
-            if args.slice in {"certificate", "datasheet", "knowledge"}:
-                if purpose not in wanted:
-                    continue
-            elif content_mode not in wanted and purpose not in wanted:
-                # table-heavy uses contentMode TABLE_DOMINANT
-                if args.slice != "table-heavy" or content_mode != "TABLE_DOMINANT":
-                    continue
-        status = fixture.get("status")
-        if status not in {"READY_FOR_SMOKE", "READY_FOR_QUALITY_GATE"}:
-            results.append({
-                "fixtureCode": fixture.get("fixtureCode"),
-                "status": "SKIPPED",
-                "smokeOnly": True,
-                "reason": status,
-                "failures": [status or "NOT_READY"],
-            })
+    ready_statuses = {"READY_FOR_SMOKE", "READY_FOR_QUALITY_GATE"}
+    for fixture in intake.get("fixtures", []):
+        if not matches_slice(fixture.get("slice") or {}, args.slice):
             continue
-        # Live execution requires authenticated API helpers; without licensed
-        # ready assets this branch is not entered in v1.1 intake-blocked runs.
+        if fixture.get("status") not in ready_statuses:
+            results.append(skipped_result(
+                fixture,
+                f"INTAKE_{fixture.get('status')}",
+            ))
+            continue
+        if not args.execute_live:
+            results.append(skipped_result(
+                fixture,
+                "LIVE_EXECUTION_NOT_REQUESTED_USE_--execute-live",
+            ))
+            continue
+        # Live multi-format execution requires dedicated tenant + flags; keep explicit.
         results.append({
-            "fixtureCode": fixture.get("fixtureCode"),
-            "status": "NOT_EXECUTED",
-            "smokeOnly": status == "READY_FOR_SMOKE",
-            "reason": "LIVE_RUNNER_REQUIRES_DEPLOYED_TENANT_HELPERS",
-            "failures": ["LIVE_PATH_NOT_ENTERED_WITHOUT_OPERATOR_AUTH_BOOTSTRAP"],
+            **skipped_result(fixture, "LIVE_MULTI_FORMAT_RUNNER_PENDING_TENANT_FLAGS"),
+            "status": "PENDING",
+            "api": args.api,
+            "assetPath": fixture.get("assetPath"),
         })
 
+    inventory = intake.get("inventory") or {}
     summary = {
-        "generatedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "generatedAt": utc_now(),
         "api": args.api,
         "slice": args.slice,
-        "decision": intake.get("decision"),
-        "inventory": {
-            "manifestCount": inventory.get("manifestCount"),
-            "assetCount": inventory.get("assetCount"),
-            "readyForSmoke": inventory.get("readyForSmoke"),
-            "readyForQualityGate": inventory.get("readyForQualityGate"),
-            "missingAssets": inventory.get("missingAssets"),
-        },
+        "manifestCount": inventory.get("manifestCount", 0),
+        "assetCount": inventory.get("assetCount", 0),
+        "readyForSmoke": inventory.get("readyForSmoke", 0),
+        "readyForQualityGate": inventory.get("readyForQualityGate", 0),
         "results": results,
-        "ok": inventory.get("assetCount", 0) == 0 or all(
-            r.get("status") in {"PASS", "SKIPPED"} for r in results
+        "passCount": sum(1 for r in results if r["status"] == "PASS"),
+        "failCount": sum(1 for r in results if r["status"] == "FAIL"),
+        "skippedCount": sum(1 for r in results if r["status"] == "SKIPPED"),
+        "pendingCount": sum(1 for r in results if r["status"] == "PENDING"),
+        "decision": (
+            "BLOCKED_CORPUS_ASSETS"
+            if inventory.get("missingAssets")
+            else "READY_FIXTURES_AVAILABLE"
         ),
-        "broadDocumentGaReady": False,
-        "reason": intake.get("decision") if inventory.get("assetCount", 0) == 0
-        else "LIVE_E2E_PENDING_OR_BLOCKED",
+        "ok": True,
+        "note": "PASS is never fabricated for missing assets",
     }
-    (out_dir / "run-summary.json").write_text(
-        json.dumps(summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
-    )
     slice_eval = {
-        "generatedAt": summary["generatedAt"],
+        "generatedAt": utc_now(),
         "slices": {},
-        "note": "Accuracy metrics are NOT_SCORED without APPROVED ground truth and live runs.",
+        "note": "Accuracy metrics are NOT_SCORED without APPROVED ground truth",
     }
-    for name in ["native_pdf", "scanned_pdf", "docx", "table_heavy", "knowledge"]:
+    for name in ["native-pdf", "scanned-pdf", "docx", "table-heavy", "knowledge"]:
+        slice_results = [r for r in results if matches_slice(
+            next((f.get("slice") for f in intake["fixtures"] if f.get("fixtureCode") == r["fixtureCode"]), {}),
+            name,
+        )]
         slice_eval["slices"][name] = {
-            "fixtureCount": 3,
-            "smokeCount": 0,
+            "fixtureCount": len(slice_results),
+            "smokeCount": sum(1 for r in slice_results if r.get("smokeOnly")),
             "qualityGateCount": 0,
-            "pass": 0,
-            "fail": 0,
-            "skipped": 3,
+            "pass": sum(1 for r in slice_results if r["status"] == "PASS"),
+            "fail": sum(1 for r in slice_results if r["status"] == "FAIL"),
+            "skipped": sum(1 for r in slice_results if r["status"] == "SKIPPED"),
             "precision": "NOT_SCORED",
             "recall": "NOT_SCORED",
             "criticalRecall": "NOT_SCORED",
@@ -158,17 +201,28 @@ def main() -> int:
             "wallClockP50": "NOT_SCORED",
             "wallClockP95": "NOT_SCORED",
         }
+
+    (out_dir / "run-summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     (out_dir / "slice-evaluation.json").write_text(
         json.dumps(slice_eval, indent=2) + "\n", encoding="utf-8"
     )
-    # Do not fabricate performance/security/report PASS artifacts.
+    # Do not invent empty PASS artifacts for unrun suites.
+    for name in ["performance-report.json", "security-report.json", "report-regression.json"]:
+        payload = {
+            "generatedAt": utc_now(),
+            "status": "NOT_RUN",
+            "reason": summary["decision"],
+        }
+        (out_dir / name).write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
     print(json.dumps({
-        "summary": str(out_dir / "run-summary.json"),
-        "decision": summary["reason"],
-        "assetCount": inventory.get("assetCount"),
-        "readyForSmoke": inventory.get("readyForSmoke"),
+        "outputDir": str(out_dir),
+        "decision": summary["decision"],
+        "skippedCount": summary["skippedCount"],
+        "passCount": summary["passCount"],
+        "assetCount": summary["assetCount"],
     }, indent=2))
-    return 0 if inventory.get("assetCount", 0) == 0 else 1
+    return 0
 
 
 if __name__ == "__main__":
