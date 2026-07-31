@@ -16,7 +16,9 @@ def manager():
     if not url:
         host = os.getenv("REDIS_HOST")
         if not host:
-            pytest.skip("REDIS_URL/REDIS_HOST not set")
+            if os.getenv("INTEGRATION_REQUIRE_REDIS", "0").strip() in {"1", "true", "TRUE"}:
+                pytest.fail("REDIS_URL/REDIS_HOST not set under INTEGRATION_REQUIRE_REDIS=1")
+            pytest.skip("INTEGRATION NOT EXECUTED: REDIS_URL/REDIS_HOST not set")
         password = os.getenv("REDIS_PASSWORD", "")
         port = os.getenv("REDIS_PORT", "6379")
         url = f"redis://:{password}@{host}:{port}/15" if password else f"redis://{host}:{port}/15"
