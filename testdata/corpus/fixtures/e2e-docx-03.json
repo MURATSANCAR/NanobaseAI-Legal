@@ -1,0 +1,15 @@
+{
+  "id": "E2E_DOCX_03",
+  "fixture_code": "e2e-docx-03",
+  "document_type_concept_code": "TECHNICAL_SPEC",
+  "format_concept_code": "DOCX",
+  "gate": "E2E-docx-3",
+  "asset": "testdata/corpus/assets/e2e-docx-03.bin",
+  "license_status_concept_code": "PENDING_LICENSE",
+  "ground_truth": false,
+  "expected_behavior": {
+    "manualSeed": 0,
+    "requireAutomaticExtraction": true,
+    "requireReportIntegrity": true
+  }
+}

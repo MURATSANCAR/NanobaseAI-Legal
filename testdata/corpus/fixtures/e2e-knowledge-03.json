@@ -1,0 +1,15 @@
+{
+  "id": "E2E_KNOWLEDGE_03",
+  "fixture_code": "e2e-knowledge-03",
+  "document_type_concept_code": "QUALITY_CERTIFICATE",
+  "format_concept_code": "PDF",
+  "gate": "E2E-knowledge-3",
+  "asset": "testdata/corpus/assets/e2e-knowledge-03.bin",
+  "license_status_concept_code": "PENDING_LICENSE",
+  "ground_truth": false,
+  "expected_behavior": {
+    "manualSeed": 0,
+    "requireAutomaticExtraction": true,
+    "requireReportIntegrity": true
+  }
+}

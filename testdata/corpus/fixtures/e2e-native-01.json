@@ -1,0 +1,15 @@
+{
+  "id": "E2E_NATIVE_01",
+  "fixture_code": "e2e-native-01",
+  "document_type_concept_code": "NATIVE_PDF",
+  "format_concept_code": "PDF",
+  "gate": "E2E-01-native",
+  "asset": "testdata/corpus/assets/e2e-native-01.bin",
+  "license_status_concept_code": "PENDING_LICENSE",
+  "ground_truth": false,
+  "expected_behavior": {
+    "manualSeed": 0,
+    "requireAutomaticExtraction": true,
+    "requireReportIntegrity": true
+  }
+}

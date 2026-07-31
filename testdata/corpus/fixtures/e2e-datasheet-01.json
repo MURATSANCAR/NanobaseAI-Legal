@@ -1,0 +1,15 @@
+{
+  "id": "E2E_DATASHEET_01",
+  "fixture_code": "e2e-datasheet-01",
+  "document_type_concept_code": "PRODUCT_DATASHEET",
+  "format_concept_code": "PDF",
+  "gate": "E2E-05-datasheet",
+  "asset": "testdata/corpus/assets/e2e-datasheet-01.bin",
+  "license_status_concept_code": "PENDING_LICENSE",
+  "ground_truth": false,
+  "expected_behavior": {
+    "manualSeed": 0,
+    "requireAutomaticExtraction": true,
+    "requireReportIntegrity": true
+  }
+}

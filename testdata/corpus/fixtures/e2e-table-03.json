@@ -1,0 +1,15 @@
+{
+  "id": "E2E_TABLE_03",
+  "fixture_code": "e2e-table-03",
+  "document_type_concept_code": "TABLE_HEAVY",
+  "format_concept_code": "PDF",
+  "gate": "E2E-table-3",
+  "asset": "testdata/corpus/assets/e2e-table-03.bin",
+  "license_status_concept_code": "PENDING_LICENSE",
+  "ground_truth": false,
+  "expected_behavior": {
+    "manualSeed": 0,
+    "requireAutomaticExtraction": true,
+    "requireReportIntegrity": true
+  }
+}

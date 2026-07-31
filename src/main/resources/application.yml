@@ -106,10 +106,16 @@ specai:
   storage:
     endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
     public-endpoint: ${MINIO_PUBLIC_ENDPOINT:${MINIO_ENDPOINT:http://localhost:9000}}
+    delivery-mode: ${MINIO_PRESIGN_MODE:BACKEND_PROXY_ONLY}
     access-key: ${MINIO_ACCESS_KEY:specai}
     secret-key: ${MINIO_SECRET_KEY}
     original-bucket: specai-original
     create-buckets: ${MINIO_CREATE_BUCKETS:false}
+  extraction:
+    worker-concurrency: ${DOCUMENT_EXTRACTION_WORKER_CONCURRENCY:1}
+    deployment:
+      guardrails-enabled: ${EXTRACTION_DEPLOYMENT_GUARDRAILS_ENABLED:false}
+      enforce: ${EXTRACTION_DEPLOYMENT_GUARDRAILS_ENFORCE:false}
   documents:
     max-file-size-bytes: ${MAX_FILE_SIZE_BYTES:104857600}
   file-security:

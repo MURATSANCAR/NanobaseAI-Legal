@@ -1,0 +1,15 @@
+{
+  "id": "E2E_SCANNED_03",
+  "fixture_code": "e2e-scanned-03",
+  "document_type_concept_code": "SCANNED_PDF",
+  "format_concept_code": "PDF",
+  "gate": "E2E-scanned-3",
+  "asset": "testdata/corpus/assets/e2e-scanned-03.bin",
+  "license_status_concept_code": "PENDING_LICENSE",
+  "ground_truth": false,
+  "expected_behavior": {
+    "manualSeed": 0,
+    "requireAutomaticExtraction": true,
+    "requireReportIntegrity": true
+  }
+}
