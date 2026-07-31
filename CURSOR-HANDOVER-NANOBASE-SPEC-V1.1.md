@@ -28,17 +28,20 @@
 
 ## 9. DSİ v1.0 regression
 
-**FAIL** (classification=`COMPLIANCE`).
+**PASS** after orchestrator recovery (classification still `COMPLIANCE` for broad GA).
 
-- Fresh project `f197608a-…` / document `d8347477-…`
-- Parser READY `fa1f112c-…`
-- Requirements PARTIALLY_COMPLETED `0423ea52-…` → 24 clauses / 21 automatic requirements / manual seeds 0
-- Compliance PARTIALLY_COMPLETED `47d7ac4e-…` (19 completed / 2 failed) — gate requires COMPLETED
-- Report job COMPLETED with integrity PASS `9f8b3943-…`
-- Artifact: `/tmp/nanobase-v11-recovery/dsi-regression.json` (`ok=false`)
+Prior FAIL: `47d7ac4e-…` PARTIALLY_COMPLETED (2× `LLM_GENERATION_TIMEOUT` @ 600s). Fix: BALANCED `timeoutSeconds=720` + recreate legal orch with `compose.yaml`+`compose.easymeeting.yaml` (Redis capacity restored).
+
+Fresh PASS:
+
+- Project `f31977f3-…` / document `0722f37b-…`
+- Requirements PARTIALLY_COMPLETED `2b2a469a-…` → extracted=17 / TIMEOUT_EMPTY=4 / seeds 0
+- Compliance COMPLETED `83e5bf4a-…` (17/17, failed=0)
+- Report integrity PASS `82bfde6a-…` (3191 bytes)
+- Artifact: `/tmp/nanobase-v11-recovery/dsi-regression-after-orch-fix.json` (`ok=true`)
 
 ```text
-V1_0_REGRESSION = FAIL
+V1_0_REGRESSION = PASS
 V1_1_CANDIDATE_ACCEPTED = false
 ```
 
