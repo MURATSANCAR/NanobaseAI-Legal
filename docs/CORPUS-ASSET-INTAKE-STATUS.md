@@ -19,7 +19,7 @@ DECISION_REASON = BLOCKED_CORPUS_ASSETS
 | READY_FOR_QUALITY_GATE | 0 |
 | Status | 15× `MISSING_ASSET` |
 
-Asset root (prod-like): `/data/nanobaseai/legal/evaluation/corpus/assets/local`  
+Asset root (prod-like): `/data/nanobaseai/legal/evaluation/corpus/assets/local`
 (`NANOBASE_CORPUS_ASSET_ROOT`; `/opt/nanobase/corpus` not writable on this host without elevated perms)
 
 Artifacts: `/tmp/nanobase-corpus/intake-report.json`, `/tmp/nanobase-corpus/corpus-inventory.json`
