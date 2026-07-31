@@ -17,7 +17,9 @@ Foundation already on `main` (not rewritten; remote-synced):
 
 ## 3. V33 deployment
 
-Prod-like Flyway was at **V32** before redeploy. Redeploy backend with V33 is required for live enrichment tables/flags. See readiness doc for digests after deploy step.
+Last observed Flyway on prod-like DB: **V32** (V33 not applied yet).
+Backend redeploy + DSİ regression blocked in this session by **nanobase host SSH unreachable** (`38.247.162.28` timeout).
+Do not claim V33 deployed until Flyway shows version 33.
 
 ## 4. Corpus manifest inventory
 
