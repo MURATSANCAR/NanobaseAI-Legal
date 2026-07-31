@@ -391,9 +391,20 @@ def main() -> int:
     if extracted <= 0:
         fail("automaticRequirementCount=0", "REQUIREMENT_EXTRACTION")
     if req_done.get("status") == "FAILED":
-        fail("requirement job FAILED", "REQUIREMENT_EXTRACTION")
+        fail(
+            f"requirement job FAILED emptyOutcome={empty_code} suspicious={suspicious}",
+            "REQUIREMENT_EXTRACTION",
+        )
     if suspicious > 0 and extracted == 0:
         fail("unresolved SUSPICIOUS_EMPTY", "REQUIREMENT_SIGNAL")
+    timeout_empty = int(
+        req_done.get("timeoutEmptyCount")
+        or req_done.get("timeout_empty_count")
+        or REPORT.get("timeoutEmpty")
+        or 0
+    )
+    if timeout_empty > 0 and extracted == 0:
+        fail(f"TIMEOUT_EMPTY unresolved count={timeout_empty}", "REQUIREMENT_EXTRACTION")
 
     # Sample grounding
     qcode, reqs = api(

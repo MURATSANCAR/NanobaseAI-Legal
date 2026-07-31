@@ -666,32 +666,46 @@ def build_reflowed_clauses(
 
 def page_fallback_clauses(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     clauses: list[dict[str, Any]] = []
+    window = 500
     for page in pages:
         raw = (page.get("normalizedText") or page.get("rawText") or "").strip()
         if len(raw) < 80:
             continue
-        body = raw if len(raw) <= 1600 else raw[:1600]
         page_no = int(page.get("pageNumber") or 1)
-        clauses.append(
-            {
-                "sourceId": f"docling-page-{page_no}",
-                "parentSourceId": None,
-                "clauseNumber": f"P{page_no}",
-                "title": f"Page {page_no}",
-                "rawText": body,
-                "normalizedText": normalize_text(body),
-                "clauseType": "PAGE",
-                "pageStart": page_no,
-                "pageEnd": page_no,
-                "boundingBoxes": [],
-                "contentHash": hashlib.sha256(body.encode("utf-8")).hexdigest(),
-                "sortOrder": page_no - 1,
-                "metadata": {
-                    "fallback": True,
-                    "segmentationProvider": "DOCLING_PAGE_FALLBACK",
-                },
-            }
-        )
+        start = 0
+        part = 0
+        while start < len(raw) and len(clauses) < 40:
+            end = min(len(raw), start + window)
+            if end < len(raw):
+                split = raw.rfind(". ", start, end)
+                if split > start + window // 3:
+                    end = split + 1
+            body = raw[start:end].strip()
+            if len(body) >= 80:
+                part += 1
+                clauses.append(
+                    {
+                        "sourceId": f"docling-page-{page_no}-{part}",
+                        "parentSourceId": None,
+                        "clauseNumber": f"P{page_no}.{part}",
+                        "title": f"Page {page_no} / {part}",
+                        "rawText": body,
+                        "normalizedText": normalize_text(body),
+                        "clauseType": "PAGE",
+                        "pageStart": page_no,
+                        "pageEnd": page_no,
+                        "boundingBoxes": [],
+                        "contentHash": hashlib.sha256(body.encode("utf-8")).hexdigest(),
+                        "sortOrder": len(clauses),
+                        "metadata": {
+                            "fallback": True,
+                            "segmentationProvider": "DOCLING_PAGE_FALLBACK",
+                        },
+                    }
+                )
+            if end >= len(raw):
+                break
+            start = end
     return clauses
 
 

@@ -7,8 +7,8 @@ import java.util.List;
  * Policy-driven clause text chunking so LLM extraction never receives unbounded page text.
  */
 public final class ClauseChunker {
-    public static final int DEFAULT_MAX_CHARS = 1200;
-    public static final int DEFAULT_OVERLAP_CHARS = 80;
+    public static final int DEFAULT_MAX_CHARS = 500;
+    public static final int DEFAULT_OVERLAP_CHARS = 40;
 
     private ClauseChunker() {
     }

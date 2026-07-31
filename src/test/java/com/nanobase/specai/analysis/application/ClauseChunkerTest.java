@@ -85,6 +85,17 @@ class ClauseChunkerTest {
     }
 
     @Test
+    void defaultMaxCharsIsBoundedForLlm() {
+        assertThat(ClauseChunker.DEFAULT_MAX_CHARS).isLessThanOrEqualTo(600);
+        String text = "word ".repeat(400);
+        List<String> chunks = ClauseChunker.chunk(
+            text, ClauseChunker.DEFAULT_MAX_CHARS, ClauseChunker.DEFAULT_OVERLAP_CHARS);
+        assertThat(chunks).isNotEmpty();
+        chunks.forEach(c ->
+            assertThat(c.length()).isLessThanOrEqualTo(ClauseChunker.DEFAULT_MAX_CHARS));
+    }
+
+    @Test
     void overlapIsConstrainedToQuarterOfMax() {
         // overlap > max/4 should be clamped
         String text = "word ".repeat(300);

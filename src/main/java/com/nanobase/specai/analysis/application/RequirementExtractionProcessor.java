@@ -172,6 +172,8 @@ public class RequirementExtractionProcessor {
         int timeoutEmpty = 0;
         int schemaFailures = 0;
         String dominantEmptyOutcome = null;
+        // Prefer sentence windows; early-stop after consecutive model timeouts.
+        int consecutiveTimeouts = 0;
         try {
             for (Clause clause : sourceClauses) {
                 ClauseSignalResult signal = signalEvaluator.evaluate(
@@ -182,6 +184,7 @@ public class RequirementExtractionProcessor {
                         extracted += outcome.extracted();
                         reviews += outcome.reviews();
                         classificationFailures += outcome.classificationFailures();
+                        consecutiveTimeouts = 0;
                         if (outcome.emptyOutcomeCode() != null) {
                             dominantEmptyOutcome = outcome.emptyOutcomeCode();
                             if (EmptyExtractionOutcome.SUSPICIOUS_EMPTY
@@ -198,6 +201,7 @@ public class RequirementExtractionProcessor {
                             } else if (EmptyExtractionOutcome.TIMEOUT_EMPTY
                                 .equals(outcome.emptyOutcomeCode())) {
                                 timeoutEmpty++;
+                                consecutiveTimeouts++;
                             } else if (EmptyExtractionOutcome.SCHEMA_FAILURE
                                 .equals(outcome.emptyOutcomeCode())) {
                                 schemaFailures++;
@@ -205,11 +209,18 @@ public class RequirementExtractionProcessor {
                         }
                     } catch (RuntimeException clauseFailure) {
                         reviews++;
-                        boolean timedOut = String.valueOf(clauseFailure.getMessage())
-                            .toLowerCase(java.util.Locale.ROOT).contains("timeout");
+                        String failureMessage = String.valueOf(clauseFailure.getMessage())
+                            .toLowerCase(java.util.Locale.ROOT);
+                        boolean timedOut = failureMessage.contains("timeout")
+                            || failureMessage.contains("timed out")
+                            || failureMessage.contains("deadline");
                         if (timedOut) {
                             timeoutEmpty++;
+                            consecutiveTimeouts++;
                             dominantEmptyOutcome = EmptyExtractionOutcome.TIMEOUT_EMPTY;
+                        } else {
+                            consecutiveTimeouts = 0;
+                            dominantEmptyOutcome = EmptyExtractionOutcome.MODEL_FAILURE;
                         }
                         store.event(organizationId, job.id(), "CLAUSE_REVIEW_REQUIRED",
                             percent(processed, sourceClauses.size()),
@@ -224,6 +235,7 @@ public class RequirementExtractionProcessor {
                     }
                 } else if ("MANUAL_REVIEW".equals(signal.recommendedAction())) {
                     reviews++;
+                    consecutiveTimeouts = 0;
                     store.event(organizationId, job.id(), "CLAUSE_REVIEW_REQUIRED",
                         percent(processed, sourceClauses.size()),
                         "Clause signal policy requested manual review",
@@ -238,10 +250,18 @@ public class RequirementExtractionProcessor {
                 outbox.publish(organizationId, "RequirementExtraction", job.id(),
                     "RequirementExtractionProgress", RabbitConfiguration.REQUIREMENT_PROGRESS,
                     progressPayload(job), job.correlationId());
+                if (extracted == 0 && consecutiveTimeouts >= 3) {
+                    store.event(organizationId, job.id(), "TIMEOUT_ABORT",
+                        percent(processed, sourceClauses.size()),
+                        "Aborting after consecutive model timeouts",
+                        Map.of("consecutiveTimeouts", consecutiveTimeouts),
+                        clock.instant());
+                    break;
+                }
             }
-            if (extracted == 0 && suspiciousEmpty > 0) {
+            if (extracted == 0 && (suspiciousEmpty > 0 || timeoutEmpty > 0)) {
                 store.event(organizationId, job.id(), "SUSPICIOUS_EMPTY_JOB", 100,
-                    "Job completed with suspicious empty extractions",
+                    "Job completed with empty extractions after high-signal or timeout outcomes",
                     Map.of(
                         "suspiciousEmpty", suspiciousEmpty,
                         "timeoutEmpty", timeoutEmpty,
@@ -258,12 +278,27 @@ public class RequirementExtractionProcessor {
                 where id = ? and organization_id = ?
                 """, dominantEmptyOutcome, suspiciousEmpty, timeoutEmpty, schemaFailures,
                 job.id(), organizationId);
-            if (classificationFailures > 0 || suspiciousEmpty > 0) {
+            if (extracted == 0 && timeoutEmpty > 0) {
+                job.fail(clock.instant());
+                store.event(organizationId, job.id(), "FAILED", 100,
+                    "Requirement extraction failed due to model timeouts",
+                    Map.of("timeoutEmpty", timeoutEmpty,
+                        "emptyOutcome", EmptyExtractionOutcome.TIMEOUT_EMPTY),
+                    clock.instant());
+                outbox.publish(organizationId, "RequirementExtraction", job.id(),
+                    "RequirementExtractionFailed", RabbitConfiguration.REQUIREMENT_FAILED,
+                    Map.of("jobId", job.id(), "errorCode", "TIMEOUT_EMPTY",
+                        "timeoutEmpty", timeoutEmpty),
+                    job.correlationId());
+                return;
+            }
+            if (classificationFailures > 0 || suspiciousEmpty > 0 || timeoutEmpty > 0) {
                 job.partiallyComplete(clock.instant());
                 store.event(organizationId, job.id(), "PARTIALLY_COMPLETED", 100,
                     "Requirement extraction completed with review-required outcomes",
                     Map.of("classificationFailures", classificationFailures,
-                        "suspiciousEmpty", suspiciousEmpty), clock.instant());
+                        "suspiciousEmpty", suspiciousEmpty,
+                        "timeoutEmpty", timeoutEmpty), clock.instant());
             } else {
                 job.complete(clock.instant());
                 store.event(organizationId, job.id(), "COMPLETED", 100,

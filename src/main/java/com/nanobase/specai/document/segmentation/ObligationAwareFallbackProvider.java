@@ -80,31 +80,50 @@ public class ObligationAwareFallbackProvider implements ClauseSegmentationProvid
             }
         }
         if (clauses.isEmpty()) {
-            // Ultimate fallback: one bounded clause per substantial page.
+            // Ultimate fallback: bounded windows per page (never whole-page LLM payloads).
             for (ExtractedPage page : pages) {
                 String text = normalize(page.normalizedText() == null
                     ? page.rawText() : page.normalizedText());
                 if (text.length() < 120) {
                     continue;
                 }
-                String body = text.length() > 1600 ? text.substring(0, 1600) : text;
-                clauses.add(new ExtractedClause(
-                    "page-fallback-" + page.pageNumber(),
-                    null,
-                    "PF" + page.pageNumber(),
-                    "Sayfa " + page.pageNumber(),
-                    body,
-                    body,
-                    "PAGE",
-                    page.pageNumber(),
-                    page.pageNumber(),
-                    List.of(),
-                    sha256(body),
-                    clauses.size(),
-                    Map.of(
-                        "segmentationProvider", providerCode(),
-                        "fallback", true,
-                        "usedFallback", true)));
+                int window = 500;
+                int start = 0;
+                int part = 0;
+                while (start < text.length() && clauses.size() < MAX_CLAUSES) {
+                    int end = Math.min(text.length(), start + window);
+                    if (end < text.length()) {
+                        int split = text.lastIndexOf(". ", end);
+                        if (split > start + window / 3) {
+                            end = split + 1;
+                        }
+                    }
+                    String body = text.substring(start, end).trim();
+                    if (body.length() >= 80) {
+                        part++;
+                        clauses.add(new ExtractedClause(
+                            "page-fallback-" + page.pageNumber() + "-" + part,
+                            null,
+                            "PF" + page.pageNumber() + "." + part,
+                            "Sayfa " + page.pageNumber() + " / " + part,
+                            body,
+                            body,
+                            "PAGE",
+                            page.pageNumber(),
+                            page.pageNumber(),
+                            List.of(),
+                            sha256(body),
+                            clauses.size(),
+                            Map.of(
+                                "segmentationProvider", providerCode(),
+                                "fallback", true,
+                                "usedFallback", true)));
+                    }
+                    if (end >= text.length()) {
+                        break;
+                    }
+                    start = end;
+                }
             }
         }
         if (clauses.isEmpty()) {
