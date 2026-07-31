@@ -1,0 +1,35 @@
+{
+  "version": "1.1.0",
+  "policyCode": "NANOBASE_SPEC_V11_QUALITY",
+  "releaseLicenseStatuses": [
+    "APPROVED_INTERNAL_EVALUATION",
+    "APPROVED_COMMERCIAL_EVALUATION",
+    "PUBLIC_DOMAIN",
+    "OPEN_LICENSE"
+  ],
+  "qualityGateGroundTruthStatus": ["APPROVED"],
+  "minimumMatrix": {
+    "native_pdf": { "manifests": 3, "binaries": 3, "groundTruth": 2 },
+    "scanned_pdf": { "manifests": 3, "binaries": 3, "groundTruth": 2 },
+    "docx": { "manifests": 3, "binaries": 3, "groundTruth": 2 },
+    "table_heavy": { "manifests": 3, "binaries": 3, "groundTruth": 2 },
+    "knowledge": { "manifests": 3, "binaries": 3, "groundTruth": 2 }
+  },
+  "gates": {
+    "clauseRecallMin": 0.7,
+    "requirementPrecisionMin": 0.6,
+    "criticalRequirementRecallMin": 0.8,
+    "groundingAccuracyMin": 0.8,
+    "numericAccuracyMin": 0.85,
+    "knowledgeEntityGroundingMin": 0.8,
+    "maxManualReviewRate": 0.25,
+    "maxTimeoutRate": 0.08,
+    "reportMinBytes": 1200
+  },
+  "performanceBudgetProfiles": [
+    "NATIVE_PDF_25P",
+    "SCANNED_PDF_25P",
+    "DOCX_25P",
+    "TABLE_HEAVY_25P"
+  ]
+}

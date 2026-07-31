@@ -7,3 +7,9 @@ target/
 data/
 __pycache__/
 *.pyc
+
+# v1.1 evaluation corpus binaries (never commit)
+evaluation/corpus/assets/local/**
+!evaluation/corpus/assets/local/README.md
+testdata/corpus/assets/**
+!testdata/corpus/assets/.gitkeep

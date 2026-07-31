@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nanobase.local/schemas/corpus-manifest.schema.json",
+  "title": "NanobaseCorpusManifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "fixtureCode",
+    "displayName",
+    "slice",
+    "asset",
+    "provenance",
+    "license",
+    "privacy",
+    "groundTruth",
+    "expectedBehavior"
+  ],
+  "properties": {
+    "fixtureCode": { "type": "string", "minLength": 3, "maxLength": 120 },
+    "displayName": { "type": "string", "minLength": 3, "maxLength": 255 },
+    "slice": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["documentPurpose", "format", "contentMode", "layoutMode", "language"],
+      "properties": {
+        "documentPurpose": { "type": "string" },
+        "format": { "type": "string" },
+        "contentMode": { "type": "string" },
+        "layoutMode": { "type": "string" },
+        "language": { "type": "string" },
+        "gate": { "type": "string" }
+      }
+    },
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["relativePath", "mediaType", "required"],
+      "properties": {
+        "relativePath": { "type": "string" },
+        "sha256": { "type": ["string", "null"], "pattern": "^([a-fA-F0-9]{64})?$" },
+        "mediaType": { "type": "string" },
+        "expectedPageCount": { "type": ["integer", "null"], "minimum": 1 },
+        "required": { "type": "boolean" }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceType"],
+      "properties": {
+        "sourceType": { "type": "string" },
+        "sourceReference": { "type": ["string", "null"] },
+        "organizationOwner": { "type": ["string", "null"] },
+        "acquiredAt": { "type": ["string", "null"] }
+      }
+    },
+    "license": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "commercialEvaluationAllowed", "redistributionAllowed"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "PENDING",
+            "APPROVED_INTERNAL_EVALUATION",
+            "APPROVED_COMMERCIAL_EVALUATION",
+            "PUBLIC_DOMAIN",
+            "OPEN_LICENSE",
+            "RESTRICTED",
+            "REJECTED"
+          ]
+        },
+        "type": { "type": ["string", "null"] },
+        "reference": { "type": ["string", "null"] },
+        "commercialEvaluationAllowed": { "type": "boolean" },
+        "redistributionAllowed": { "type": "boolean" }
+      }
+    },
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["containsPersonalData", "containsConfidentialData", "redactionStatus"],
+      "properties": {
+        "containsPersonalData": { "type": "string" },
+        "containsConfidentialData": { "type": "string" },
+        "redactionStatus": { "type": "string" }
+      }
+    },
+    "groundTruth": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["PENDING", "DRAFT", "FIRST_REVIEW", "SECOND_REVIEW", "APPROVED", "REJECTED"]
+        },
+        "annotationPath": { "type": ["string", "null"] },
+        "reviewedBy": { "type": ["string", "null"] },
+        "reviewedAt": { "type": ["string", "null"] }
+      }
+    },
+    "expectedBehavior": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "parserTerminal",
+        "minimumPageCount",
+        "minimumClauseCount",
+        "minimumAutomaticRequirementCount",
+        "manualClauseSeed",
+        "manualRequirementSeed",
+        "reportIntegrity"
+      ],
+      "properties": {
+        "parserTerminal": { "type": "boolean" },
+        "minimumPageCount": { "type": "integer", "minimum": 0 },
+        "minimumClauseCount": { "type": "integer", "minimum": 0 },
+        "minimumAutomaticRequirementCount": { "type": "integer", "minimum": 0 },
+        "manualClauseSeed": { "type": "integer", "const": 0 },
+        "manualRequirementSeed": { "type": "integer", "const": 0 },
+        "reportIntegrity": { "type": "string" },
+        "knowledgeJobTerminal": { "type": "boolean" },
+        "minimumEntityCount": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nanobase.local/schemas/corpus-ground-truth.schema.json",
+  "title": "NanobaseCorpusGroundTruth",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["fixtureCode", "annotationVersion", "clauses", "requirements", "tables", "knowledge", "review"],
+  "properties": {
+    "fixtureCode": { "type": "string" },
+    "annotationVersion": { "type": "integer", "minimum": 1 },
+    "clauses": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["annotationId", "pageStart", "pageEnd", "critical"],
+        "properties": {
+          "annotationId": { "type": "string" },
+          "title": { "type": ["string", "null"] },
+          "pageStart": { "type": "integer" },
+          "pageEnd": { "type": "integer" },
+          "sourceRegions": { "type": "array" },
+          "normalizedSummary": { "type": ["string", "null"] },
+          "critical": { "type": "boolean" }
+        }
+      }
+    },
+    "requirements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["annotationId", "critical", "source"],
+        "properties": {
+          "annotationId": { "type": "string" },
+          "normalizedText": { "type": ["string", "null"] },
+          "modality": { "type": ["string", "null"] },
+          "critical": { "type": "boolean" },
+          "source": { "type": "object" },
+          "numericConstraints": { "type": "array" },
+          "units": { "type": "array" }
+        }
+      }
+    },
+    "tables": { "type": "array" },
+    "knowledge": {
+      "type": "object",
+      "properties": {
+        "entities": { "type": "array" },
+        "attributes": { "type": "array" },
+        "capabilities": { "type": "array" },
+        "claims": { "type": "array" }
+      }
+    },
+    "review": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["DRAFT", "FIRST_REVIEW", "SECOND_REVIEW", "APPROVED", "REJECTED"]
+        },
+        "reviewer": { "type": ["string", "null"] },
+        "reviewedAt": { "type": ["string", "null"] },
+        "singleReviewOnly": { "type": "boolean" }
+      }
+    }
+  }
+}
