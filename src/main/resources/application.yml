@@ -167,6 +167,9 @@ specai:
   document-intelligence:
     enabled: ${DOCUMENT_INTELLIGENCE_ENABLED:true}
     minimum-quality-score: ${DOCUMENT_MINIMUM_QUALITY_SCORE:0.50}
+    poll-interval: ${DOCUMENT_PARSER_POLL_INTERVAL:PT15S}
+    orchestration-timeout: ${DOCUMENT_PARSER_ORCHESTRATION_TIMEOUT:PT12H}
+    stall-timeout: ${DOCUMENT_PARSER_STALL_TIMEOUT:PT45M}
     docling:
       enabled: ${DOCLING_ENABLED:true}
       base-url: ${DOCLING_BASE_URL:http://localhost:8090}

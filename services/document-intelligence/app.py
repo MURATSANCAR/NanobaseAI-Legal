@@ -22,7 +22,13 @@ DATABASE_PATH = Path(os.getenv("JOB_DATABASE_PATH", "/var/lib/specai/jobs.sqlite
 TEMPORARY_DIRECTORY = Path(os.getenv("TEMPORARY_DIRECTORY", "/tmp/specai-docling"))
 MAX_FILE_SIZE = int(os.getenv("MAX_FILE_SIZE_BYTES", str(100 * 1024 * 1024)))
 MAX_PAGE_COUNT = int(os.getenv("MAX_PAGE_COUNT", "500"))
+# Legacy single-shot ceiling retained for non-PDF / emergency path only.
 PROCESSING_TIMEOUT_SECONDS = int(os.getenv("PROCESSING_TIMEOUT_SECONDS", "900"))
+BOUNDED_PARSING_ENABLED = os.getenv("BOUNDED_PARSING_ENABLED", "true").lower() in {
+    "1",
+    "true",
+    "yes",
+}
 ALLOWED_KEY = re.compile(
     r"^specai-original/[0-9a-fA-F-]{36}/[0-9a-fA-F-]{36}/"
     r"[0-9a-fA-F-]{36}/[0-9a-fA-F-]{36}/[^/]+$"
@@ -97,6 +103,9 @@ def initialize_database() -> None:
             )
             """
         )
+    from parser_checkpoint import ParserCheckpointStore
+
+    ParserCheckpointStore(DATABASE_PATH, database_lock).initialize()
 
 
 @asynccontextmanager
@@ -295,8 +304,8 @@ def process_document(job_id: str, request: ParseRequest) -> None:
         update_job(
             job_id,
             status="RUNNING",
-            stage="PARSING",
-            progress=15,
+            stage="DOWNLOAD_OR_OBJECT_READ",
+            progress=10,
             message="Downloading source document",
         )
         client = s3_client()
@@ -315,28 +324,34 @@ def process_document(job_id: str, request: ParseRequest) -> None:
             raise SafeProcessingError("SOURCE_SIZE_MISMATCH", "Downloaded file size differs")
         if cancelled(job_id):
             return
-        update_job(
-            job_id,
-            status="RUNNING",
-            stage="PARSING",
-            progress=35,
-            message="Parsing document with Docling",
-        )
-        future = executor.submit(convert_with_docling, local_path, request)
-        try:
-            result = future.result(timeout=PROCESSING_TIMEOUT_SECONDS)
-        except TimeoutError as exception:
-            future.cancel()
-            raise SafeProcessingError("PARSER_TIMEOUT", "Document parsing timed out") from exception
+        if BOUNDED_PARSING_ENABLED and request.mimeType == "application/pdf":
+            result = process_pdf_bounded(job_id, local_path, request)
+        else:
+            update_job(
+                job_id,
+                status="RUNNING",
+                stage="DOCLING_CONVERSION",
+                progress=35,
+                message="Parsing document with Docling",
+            )
+            future = executor.submit(convert_with_docling, local_path, request)
+            try:
+                result = future.result(timeout=PROCESSING_TIMEOUT_SECONDS)
+            except TimeoutError as exception:
+                future.cancel()
+                raise SafeProcessingError(
+                    "PARSER_TIMEOUT", "Document parsing timed out"
+                ) from exception
         if cancelled(job_id):
             return
         page_count = int(result["pageCount"])
         if page_count > MAX_PAGE_COUNT:
             raise SafeProcessingError("PAGE_COUNT_LIMIT", "Document exceeds the page limit")
+        terminal = str((result.get("metadata") or {}).get("terminalStatus") or "READY")
         update_job(
             job_id,
             status="COMPLETED",
-            stage="READY",
+            stage=terminal,
             progress=100,
             message="Document parsing completed",
             result=result,
@@ -364,6 +379,49 @@ def process_document(job_id: str, request: ParseRequest) -> None:
             local_path.unlink(missing_ok=True)
 
 
+def process_pdf_bounded(job_id: str, local_path: Path, request: ParseRequest) -> dict[str, Any]:
+    from bounded_parser import BoundedParseError, run_bounded_parse
+    from parser_checkpoint import ParserCheckpointStore
+
+    store = ParserCheckpointStore(DATABASE_PATH, database_lock)
+
+    def on_progress(event: dict[str, Any]) -> None:
+        message = str(event.get("message") or "Parsing document")
+        extras = []
+        for key in (
+            "totalPages",
+            "processedPages",
+            "failedPages",
+            "currentPage",
+            "currentBatch",
+            "estimatedRemainingBatches",
+        ):
+            if key in event and event[key] is not None:
+                extras.append(f"{key}={event[key]}")
+        if extras:
+            message = f"{message} | " + " ".join(extras)
+        update_job(
+            job_id,
+            status="RUNNING",
+            stage=str(event.get("currentStage") or event.get("stage") or "PARSING"),
+            progress=int(event.get("progress") or 35),
+            message=message,
+        )
+
+    try:
+        return run_bounded_parse(
+            path=local_path,
+            request=request,
+            job_id=job_id,
+            checkpoint_store=store,
+            executor=executor,
+            on_progress=on_progress,
+            is_cancelled=lambda: cancelled(job_id),
+        )
+    except BoundedParseError as exception:
+        raise SafeProcessingError(exception.code, exception.message) from exception
+
+
 class SafeProcessingError(Exception):
     def __init__(self, code: str, safe_message: str):
         super().__init__(safe_message)
@@ -373,13 +431,19 @@ class SafeProcessingError(Exception):
 
 def convert_with_docling(path: Path, request: ParseRequest) -> dict[str, Any]:
     from docling.datamodel.base_models import InputFormat
-    from docling.datamodel.pipeline_options import PdfPipelineOptions
+    from docling.datamodel.pipeline_options import EasyOcrOptions, PdfPipelineOptions
     from docling.document_converter import DocumentConverter, PdfFormatOption
 
     if request.mimeType == "application/pdf":
         options = PdfPipelineOptions()
-        options.do_ocr = request.ocrMode != "DISABLED"
+        # Legacy single-shot path: FORCED always OCR; DISABLED never; AUTO defaults off
+        # and relies on Docling bitmap detection unless explicitly forced.
+        options.do_ocr = request.ocrMode == "FORCED"
         options.do_table_structure = request.extractTables
+        if options.do_ocr:
+            hint = (request.languageHint or "tr").lower()
+            lang = ["tr", "en"] if hint.startswith("tr") else ["en"]
+            options.ocr_options = EasyOcrOptions(lang=lang, force_full_page_ocr=True)
         converter = DocumentConverter(
             format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=options)}
         )

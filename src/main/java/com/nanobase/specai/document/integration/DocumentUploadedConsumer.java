@@ -11,6 +11,7 @@ import com.nanobase.specai.document.integration.DocumentEvents.DocumentUploaded;
 import com.nanobase.specai.document.integration.DocumentEvents.EventEnvelope;
 import com.nanobase.specai.document.integration.DocumentIntelligencePort.DocumentProcessingCommand;
 import com.nanobase.specai.document.integration.DocumentIntelligencePort.ExternalProcessingReference;
+import com.nanobase.specai.document.integration.DocumentIntelligencePort.ProcessingStatusResult;
 import com.nanobase.specai.document.integration.DocumentIntelligencePort.ProcessingSubmission;
 import com.nanobase.specai.document.segmentation.ClauseSegmentationService;
 import com.nanobase.specai.integration.outbox.ConsumerIdempotencyService;
@@ -25,6 +26,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.time.Duration;
+import java.time.Instant;
 
 @Component
 public class DocumentUploadedConsumer {
@@ -43,6 +47,9 @@ public class DocumentUploadedConsumer {
     private final PlatformMetrics metrics;
     private final int maximumRetries;
     private final double minimumQualityScore;
+    private final Duration pollInterval;
+    private final Duration orchestrationTimeout;
+    private final Duration stallTimeout;
 
     public DocumentUploadedConsumer(
         ObjectMapper objectMapper,
@@ -56,7 +63,11 @@ public class DocumentUploadedConsumer {
         PlatformMetrics metrics,
         @Value("${specai.messaging.maximum-consumer-retries:3}") int maximumRetries,
         @Value("${specai.document-intelligence.minimum-quality-score:0.50}")
-        double minimumQualityScore) {
+        double minimumQualityScore,
+        @Value("${specai.document-intelligence.poll-interval:PT15S}") Duration pollInterval,
+        @Value("${specai.document-intelligence.orchestration-timeout:PT12H}")
+        Duration orchestrationTimeout,
+        @Value("${specai.document-intelligence.stall-timeout:PT45M}") Duration stallTimeout) {
         this.objectMapper = objectMapper;
         this.intelligence = intelligence;
         this.processing = processing;
@@ -68,6 +79,9 @@ public class DocumentUploadedConsumer {
         this.metrics = metrics;
         this.maximumRetries = maximumRetries;
         this.minimumQualityScore = minimumQualityScore;
+        this.pollInterval = pollInterval;
+        this.orchestrationTimeout = orchestrationTimeout;
+        this.stallTimeout = stallTimeout;
     }
 
     @RabbitListener(queues = RabbitConfiguration.DOCUMENT_QUEUE)
@@ -130,17 +144,8 @@ public class DocumentUploadedConsumer {
             reference = new ExternalProcessingReference(job.provider(), job.externalReference(),
                 event.organizationId(), payload.documentVersionId());
         }
-        var status = intelligence.getStatus(reference);
-        if (!status.terminal()) {
-            DocumentStatus current = processing.get(event.organizationId(), job.id()).status();
-            if (status.status() != current
-                && com.nanobase.specai.document.domain.ProcessingStateMachine.canTransition(
-                    current, status.status())) {
-                processing.transition(event.organizationId(), job.id(), status.status(),
-                    safeMessage(status.message()), null, null);
-            }
-            throw new ProviderUnavailableException("Document parser job is still running");
-        }
+        ProcessingStatusResult status = awaitTerminalStatus(
+            event.organizationId(), job.id(), reference);
         if (status.status() != DocumentStatus.READY) {
             processing.transition(event.organizationId(), job.id(), status.status(),
                 safeMessage(status.message()), safeCode(status.errorCode()),
@@ -169,6 +174,59 @@ public class DocumentUploadedConsumer {
             null, null, null);
         processing.transition(event.organizationId(), job.id(), DocumentStatus.READY,
             null, null, null);
+    }
+
+    private ProcessingStatusResult awaitTerminalStatus(
+        java.util.UUID organizationId,
+        java.util.UUID jobId,
+        ExternalProcessingReference reference) {
+        Instant started = Instant.now();
+        Instant lastProgressAt = started;
+        String lastFingerprint = null;
+        while (true) {
+            DocumentProcessingJob current = processing.get(organizationId, jobId);
+            if (current.status() == DocumentStatus.CANCELLED) {
+                intelligence.cancel(reference);
+                return new ProcessingStatusResult(
+                    DocumentStatus.CANCELLED,
+                    "CANCELLED",
+                    100,
+                    "Document processing cancelled",
+                    "CANCELLED");
+            }
+            ProcessingStatusResult status = intelligence.getStatus(reference);
+            if (status.terminal()) {
+                return status;
+            }
+            DocumentStatus mapped = status.status();
+            if (mapped != current.status()
+                && com.nanobase.specai.document.domain.ProcessingStateMachine.canTransition(
+                    current.status(), mapped)) {
+                processing.transition(organizationId, jobId, mapped,
+                    safeMessage(status.message()), null, null);
+            }
+            String fingerprint = status.progress() + "|" + safeMessage(status.message())
+                + "|" + String.valueOf(status.errorCode());
+            if (!fingerprint.equals(lastFingerprint)) {
+                lastFingerprint = fingerprint;
+                lastProgressAt = Instant.now();
+            }
+            Duration elapsed = Duration.between(started, Instant.now());
+            if (elapsed.compareTo(orchestrationTimeout) > 0) {
+                throw new ProviderUnavailableException(
+                    "Document parser orchestration timeout exceeded");
+            }
+            if (Duration.between(lastProgressAt, Instant.now()).compareTo(stallTimeout) > 0) {
+                throw new ProviderUnavailableException(
+                    "Document parser progress stalled");
+            }
+            try {
+                Thread.sleep(pollInterval.toMillis());
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new ProviderUnavailableException("Document parser wait interrupted");
+            }
+        }
     }
 
     private void prepare(java.util.UUID organizationId, DocumentProcessingJob job) {

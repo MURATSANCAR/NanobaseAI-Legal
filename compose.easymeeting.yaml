@@ -30,7 +30,16 @@ services:
       S3_SOURCE_BUCKET: specai-original
       TEMPORARY_DIRECTORY: /var/lib/specai/tmp
       WORKER_THREADS: "1"
+      # Legacy single-shot ceiling (non-PDF / emergency). Bounded PDF path uses layered timeouts.
       PROCESSING_TIMEOUT_SECONDS: "1200"
+      BOUNDED_PARSING_ENABLED: "true"
+      PARSER_BATCH_SIZE: "1"
+      PARSER_BATCH_TIMEOUT_SECONDS: "900"
+      PARSER_PAGE_TIMEOUT_SECONDS: "360"
+      PARSER_DOCUMENT_ORCHESTRATION_TIMEOUT_SECONDS: "43200"
+      PARSER_MAX_BATCH_ATTEMPTS: "3"
+      PARSER_NATIVE_TEXT_MIN_CHARS: "40"
+      PARSER_IMAGES_SCALE: "0.85"
     deploy:
       resources:
         limits:

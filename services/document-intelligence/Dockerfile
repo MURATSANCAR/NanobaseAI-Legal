@@ -10,7 +10,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir --requirement requirements.txt
 
-COPY app.py .
+COPY app.py page_capability.py parser_checkpoint.py bounded_parser.py ./
 RUN mkdir -p /var/lib/specai /tmp/specai-docling \
     && chown -R docling:docling /var/lib/specai /tmp/specai-docling /app
 
