@@ -92,6 +92,81 @@ def _default_queue_wait(profile: str) -> float:
     return 60.0 if profile.strip().upper() == "FAST" else 180.0
 
 
+def parse_iso8601_duration_seconds(value: str) -> float:
+    """Parse a subset of ISO-8601 durations used in ops env (e.g. PT720S, PT12M).
+
+    Does not hardcode product timeouts; callers supply the configured string.
+    """
+    raw = (value or "").strip().upper()
+    if not raw.startswith("PT") or len(raw) < 3:
+        raise ValueError(f"Unsupported duration: {value!r}")
+    body = raw[2:]
+    total = 0.0
+    number = ""
+    for char in body:
+        if char.isdigit() or char == ".":
+            number += char
+            continue
+        if not number:
+            raise ValueError(f"Unsupported duration: {value!r}")
+        amount = float(number)
+        number = ""
+        if char == "H":
+            total += amount * 3600.0
+        elif char == "M":
+            total += amount * 60.0
+        elif char == "S":
+            total += amount
+        else:
+            raise ValueError(f"Unsupported duration: {value!r}")
+    if number or total <= 0:
+        raise ValueError(f"Unsupported duration: {value!r}")
+    return total
+
+
+def balanced_generation_timeout_override_seconds() -> float | None:
+    """Optional env override for BALANCED generation timeout only."""
+    raw = os.getenv("AI_ORCHESTRATOR_BALANCED_GENERATION_TIMEOUT", "").strip()
+    if not raw:
+        return None
+    return parse_iso8601_duration_seconds(raw)
+
+
+def apply_balanced_generation_timeout_override(
+    deployments: tuple[Deployment, ...],
+) -> tuple[Deployment, ...]:
+    override = balanced_generation_timeout_override_seconds()
+    if override is None:
+        return deployments
+    updated: list[Deployment] = []
+    for item in deployments:
+        if item.profile.strip().upper() == "BALANCED":
+            LOG.info(
+                "event=BALANCED_GENERATION_TIMEOUT_OVERRIDE seconds=%.1f source=AI_ORCHESTRATOR_BALANCED_GENERATION_TIMEOUT",
+                override,
+            )
+            updated.append(
+                Deployment(
+                    profile=item.profile,
+                    base_url=item.base_url,
+                    runtime_model=item.runtime_model,
+                    api_key=item.api_key,
+                    timeout_seconds=override,
+                    temperature=item.temperature,
+                    top_p=item.top_p,
+                    reasoning=item.reasoning,
+                    default_max_tokens=item.default_max_tokens,
+                    deployment_alias=item.deployment_alias,
+                    max_concurrency=item.max_concurrency,
+                    max_queue_depth=item.max_queue_depth,
+                    queue_wait_timeout_seconds=item.queue_wait_timeout_seconds,
+                )
+            )
+        else:
+            updated.append(item)
+    return tuple(updated)
+
+
 @dataclass
 class ProfileSlotManager:
     """Per-profile semaphore + bounded wait queue (FAST and BALANCED stay isolated)."""
@@ -297,7 +372,7 @@ def load_deployments() -> tuple[Deployment, ...]:
                 ),
             )
         )
-    return tuple(deployments)
+    return apply_balanced_generation_timeout_override(tuple(deployments))
 
 
 DEPLOYMENTS = load_deployments()
@@ -425,6 +500,10 @@ def ready() -> dict[str, Any] | JSONResponse:
         "providerReachable": reachable,
         "leaseOperationsHealthy": leases_ok,
         "orchestratorInstanceId": ORCHESTRATOR_INSTANCE_ID,
+        "balancedGenerationTimeoutSeconds": next(
+            (d.timeout_seconds for d in DEPLOYMENTS if d.profile.strip().upper() == "BALANCED"),
+            None,
+        ),
         "detail": probe.get("detail"),
     }
     if not ready_ok:
