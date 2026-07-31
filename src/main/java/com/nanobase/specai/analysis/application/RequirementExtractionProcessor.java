@@ -361,7 +361,7 @@ public class RequirementExtractionProcessor {
                 }
             } catch (RuntimeException failure) {
                 String message = String.valueOf(failure.getMessage()).toLowerCase(Locale.ROOT);
-                if (message.contains("timeout")) {
+                if (message.contains("timeout") || message.contains("timed out")) {
                     timedOut = true;
                 } else {
                     modelFailed = true;

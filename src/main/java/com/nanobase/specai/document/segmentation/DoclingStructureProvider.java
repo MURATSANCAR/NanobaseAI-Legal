@@ -24,11 +24,7 @@ public class DoclingStructureProvider implements ClauseSegmentationProvider {
             return ClauseSegmentationResult.empty(providerCode());
         }
         // Page-sized fallback clauses should be refined by later providers / chunking.
-        boolean onlyCoarsePages = clauses.stream().allMatch(clause ->
-            "PAGE".equalsIgnoreCase(clause.clauseType())
-                || (clause.metadata() != null
-                    && Boolean.TRUE.equals(clause.metadata().get("fallback"))));
-        if (onlyCoarsePages) {
+        if (!context.hasUsableStructuredClauses()) {
             return ClauseSegmentationResult.empty(providerCode());
         }
         List<LayoutBlockDraft> blocks = new ArrayList<>();

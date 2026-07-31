@@ -2,12 +2,15 @@ package com.nanobase.specai.analysis.application;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.net.http.HttpClient;
 import java.sql.Timestamp;
 import java.time.Clock;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
@@ -20,12 +23,22 @@ public class PromptSecurityService {
     private final Clock clock = Clock.systemUTC();
 
     public PromptSecurityService(
-        RestClient.Builder builder,
         JdbcTemplate jdbc,
         ObjectMapper mapper,
-        @Value("${specai.ai-orchestrator.base-url:http://localhost:8092}") String baseUrl
+        @Value("${specai.ai-orchestrator.base-url:http://localhost:8092}") String baseUrl,
+        @Value("${specai.ai-orchestrator.connect-timeout:PT5S}") Duration connectTimeout,
+        @Value("${specai.ai-orchestrator.prompt-security-read-timeout:PT30S}") Duration readTimeout
     ) {
-        this.client = builder.baseUrl(baseUrl).build();
+        HttpClient httpClient = HttpClient.newBuilder()
+            .version(HttpClient.Version.HTTP_1_1)
+            .connectTimeout(connectTimeout)
+            .build();
+        JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(httpClient);
+        requestFactory.setReadTimeout(readTimeout);
+        this.client = RestClient.builder()
+            .baseUrl(baseUrl)
+            .requestFactory(requestFactory)
+            .build();
         this.jdbc = jdbc;
         this.mapper = mapper;
     }

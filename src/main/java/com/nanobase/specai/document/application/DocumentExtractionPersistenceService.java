@@ -115,6 +115,8 @@ public class DocumentExtractionPersistenceService {
                 page.rotation(), nullToEmpty(page.rawText()), nullToEmpty(page.normalizedText()),
                 BigDecimal.valueOf(page.textQualityScore()), page.thumbnailObjectKey(), now);
         }).toList());
+        // Layout/recurring inserts use JDBC and FK to document_page — flush first.
+        pages.flush();
         Map<String, UUID> sourceIds = new HashMap<>();
         result.clauses().stream()
             .sorted(Comparator.comparingInt(clause -> clause.sortOrder()))
@@ -171,6 +173,10 @@ public class DocumentExtractionPersistenceService {
                                String providerVersion, List<LayoutBlockDraft> blocks,
                                Map<Integer, UUID> pageIds) {
         for (LayoutBlockDraft block : blocks) {
+            UUID pageId = pageIds.get(block.pageNumber());
+            if (pageId == null) {
+                continue;
+            }
             jdbc.update("""
                 insert into document_layout_block (
                     id, organization_id, document_version_id, page_id, block_index,
@@ -180,7 +186,7 @@ public class DocumentExtractionPersistenceService {
                 ) values (?, ?, ?, ?, ?, ?, ?, ?, '[]'::jsonb, '{}'::jsonb, '{}'::jsonb,
                           '{}'::jsonb, ?, ?, ?, ?, now())
                 """, UUID.randomUUID(), organizationId, versionId,
-                pageIds.get(block.pageNumber()), block.blockIndex(),
+                pageId, block.blockIndex(),
                 nullToEmpty(block.blockTypeCode()), nullToEmpty(block.textContent()),
                 nullToEmpty(block.normalizedText()), block.readingOrder(),
                 nullToEmpty(provider), providerVersion,

@@ -18,4 +18,25 @@ record ClauseSegmentationContext(
     DocumentExtractionResult extraction,
     List<ExtractedClause> currentClauses
 ) {
+    /**
+     * True when earlier extraction already produced refined clauses that later providers
+     * must not replace. Coarse PAGE / fallback-only sets are not usable and should be refined.
+     */
+    boolean hasUsableStructuredClauses() {
+        if (currentClauses == null || currentClauses.isEmpty()) {
+            return false;
+        }
+        return !currentClauses.stream().allMatch(ClauseSegmentationContext::isCoarsePageOrFallback);
+    }
+
+    static boolean isCoarsePageOrFallback(ExtractedClause clause) {
+        if (clause == null) {
+            return true;
+        }
+        if ("PAGE".equalsIgnoreCase(clause.clauseType())) {
+            return true;
+        }
+        return clause.metadata() != null
+            && Boolean.TRUE.equals(clause.metadata().get("fallback"));
+    }
 }

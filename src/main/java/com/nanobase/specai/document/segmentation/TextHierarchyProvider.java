@@ -35,7 +35,9 @@ public class TextHierarchyProvider implements ClauseSegmentationProvider {
 
     @Override
     public ClauseSegmentationResult segment(ClauseSegmentationContext context) {
-        if (context.currentClauses() != null && !context.currentClauses().isEmpty()) {
+        // Skip only when refined structured clauses already exist. Coarse PAGE/fallback
+        // sets from Docling must still be refined here (otherwise the chain yields 0 clauses).
+        if (context.hasUsableStructuredClauses()) {
             return ClauseSegmentationResult.empty(providerCode());
         }
         List<ExtractedPage> pages = context.extraction().pages();

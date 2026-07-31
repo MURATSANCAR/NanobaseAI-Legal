@@ -41,6 +41,8 @@ TEMPLATE = "70000000-0000-0000-0000-000000000111"
 EVALUATION_REVIEWED = "50000000-0000-0000-0000-00000000001c"
 COMPLIANT = "50000000-0000-0000-0000-00000000000b"
 PARTIALLY = "50000000-0000-0000-0000-00000000000c"
+NON_COMPLIANT = "50000000-0000-0000-0000-00000000000d"
+INSUFFICIENT_INFORMATION = "50000000-0000-0000-0000-00000000000e"
 
 T0 = time.time()
 TIMINGS: dict[str, float] = {}
@@ -154,7 +156,7 @@ def poll_doc(tok: str, doc_id: str, max_wait: int = 1800) -> dict:
     raise SystemExit(f"document not READY after {max_wait}s: {last}")
 
 
-def poll_job(tok: str, path: str, label: str, max_wait: int = 2400) -> tuple[dict, str]:
+def poll_job(tok: str, path: str, label: str, max_wait: int = 7200) -> tuple[dict, str]:
     start = time.time()
     last: dict = {}
     while time.time() - start < max_wait:
@@ -182,6 +184,20 @@ def page_items(payload) -> list:
             if isinstance(payload.get(key), list):
                 return payload[key]
     return []
+
+
+def page_total(payload, items: list | None = None) -> int:
+    resolved = items if items is not None else page_items(payload)
+    if isinstance(payload, list):
+        return len(payload)
+    if isinstance(payload, dict):
+        for key in ("totalElements", "total", "count"):
+            if payload.get(key) is not None:
+                try:
+                    return int(payload[key])
+                except (TypeError, ValueError):
+                    pass
+    return len(resolved)
 
 
 def proxy_download(tok: str, url_path: str, dest: Path) -> tuple[int, int]:
@@ -217,6 +233,22 @@ def sql(query: str) -> str:
 
 
 def main() -> int:
+    try:
+        return _run()
+    except SystemExit:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        fail(f"unhandled: {exc}", "REQUIREMENT_EXTRACTION")
+        REPORT["error"] = str(exc)
+        try:
+            OUT.write_text(json.dumps(REPORT, indent=2, ensure_ascii=False), encoding="utf-8")
+            log(f"REPORT_WRITTEN {OUT} ok={REPORT['ok']} blockers={REPORT['blockers']}")
+        except Exception:  # noqa: BLE001
+            pass
+        raise
+
+
+def _run() -> int:
     ART_DIR.mkdir(parents=True, exist_ok=True)
     if not PDF_PATH.is_file():
         raise SystemExit(f"PDF missing: {PDF_PATH}")
@@ -463,27 +495,49 @@ def main() -> int:
     else:
         fail(f"knowledge start failed http={kcode}", "KNOWLEDGE_EXTRACTION")
 
+    compliance_id = None
     jcode, job = api("POST", f"/api/v1/tenders/{project_id}/compliance-analyses", tok)
     if jcode not in (200, 201, 202):
-        raise SystemExit(f"compliance start failed: {jcode} {job}")
-    compliance_id = job.get("id") or job.get("jobId")
-    job_done, tok = poll_job(
-        tok, f"/api/v1/compliance-analyses/{compliance_id}", "compliance", max_wait=7200
-    )
-    step("9_compliance", jobId=compliance_id, status=job_done.get("status"),
-         processed=job_done.get("processedRequirementCount") or job_done.get("processed_requirement_count"),
-         completed=job_done.get("completedCount") or job_done.get("completed_count"),
-         failed=job_done.get("failedCount") or job_done.get("failed_count"))
-    if job_done.get("status") != "COMPLETED":
-        fail(f"compliance not COMPLETED: {job_done.get('status')}", "COMPLIANCE")
+        fail(f"compliance start failed: {jcode} {job}", "COMPLIANCE")
+        job_done = {}
+    else:
+        compliance_id = job.get("id") or job.get("jobId")
+        job_done, tok = poll_job(
+            tok, f"/api/v1/compliance-analyses/{compliance_id}", "compliance", max_wait=7200
+        )
+        step("9_compliance", jobId=compliance_id, status=job_done.get("status"),
+             processed=job_done.get("processedRequirementCount") or job_done.get("processed_requirement_count"),
+             completed=job_done.get("completedCount") or job_done.get("completed_count"),
+             failed=job_done.get("failedCount") or job_done.get("failed_count"))
+        if job_done.get("status") != "COMPLETED":
+            fail(f"compliance not COMPLETED: {job_done.get('status')}", "COMPLIANCE")
 
     ecode2, evals = api("GET", f"/api/v1/tenders/{project_id}/compliance-evaluations", tok)
     eval_items = page_items(evals)
-    evaluation_count = int(evals.get("totalElements") or len(eval_items) or 0)
-    sample = eval_items[0] if eval_items else {}
+    evaluation_count = page_total(evals, eval_items)
+    # Prefer a grounded/evidence-backed evaluation for positive review; otherwise
+    # use INSUFFICIENT_INFORMATION (positive decisions require grounded evidence).
+    sample = next(
+        (item for item in eval_items
+         if (item.get("evidenceCount") or 0) > 0
+         and str(item.get("groundingStatus") or "").upper() in {"GROUNDED", "PARTIAL"}),
+        None,
+    )
+    if sample is None:
+        sample = next(
+            (item for item in eval_items if (item.get("evidenceCount") or 0) > 0),
+            eval_items[0] if eval_items else {},
+        )
     review_id = None
     if sample.get("id"):
-        decision = COMPLIANT if sample.get("evidenceCount") else PARTIALLY
+        evidence_count = int(sample.get("evidenceCount") or 0)
+        grounding = str(sample.get("groundingStatus") or "").upper()
+        if evidence_count > 0 and grounding in {"GROUNDED", "PARTIAL"}:
+            decision = COMPLIANT
+        elif evidence_count > 0:
+            decision = PARTIALLY
+        else:
+            decision = INSUFFICIENT_INFORMATION
         rv, reviewed = api(
             "POST",
             f"/api/v1/compliance-evaluations/{sample['id']}/review",
@@ -496,9 +550,16 @@ def main() -> int:
             },
         )
         review_id = sample["id"]
-        step("9b_human_review", http=rv, evaluationId=review_id)
+        step(
+            "9b_human_review",
+            http=rv,
+            evaluationId=review_id,
+            decision=decision,
+            evidenceCount=evidence_count,
+            groundingStatus=grounding,
+        )
         if rv >= 300:
-            fail(f"review failed http={rv}", "COMPLIANCE")
+            fail(f"review failed http={rv} body={reviewed}", "COMPLIANCE")
 
     risk_id = None
     risk_count = 0
@@ -515,8 +576,8 @@ def main() -> int:
 
     rscode, risks = api("GET", f"/api/v1/tenders/{project_id}/risks", tok)
     cfcode, conflicts = api("GET", f"/api/v1/tenders/{project_id}/conflicts", tok)
-    risk_count = int(risks.get("totalElements") or len(page_items(risks)) or 0)
-    conflict_count = int(conflicts.get("totalElements") or len(page_items(conflicts)) or 0)
+    risk_count = page_total(risks)
+    conflict_count = page_total(conflicts)
     step("10_risks_conflicts", riskCount=risk_count, conflictCount=conflict_count,
          risksHttp=rscode, conflictsHttp=cfcode)
 
@@ -605,7 +666,7 @@ def main() -> int:
 
     acode, audit = api("GET", "/api/v1/audit-events?page=0&size=50&sort=createdAt,desc", tok)
     audit_items = page_items(audit)
-    audit_count = int(audit.get("totalElements") or len(audit_items) or 0)
+    audit_count = page_total(audit, audit_items)
     audit_result = "PASS" if audit_count > 0 and acode < 300 else "FAIL"
     if audit_result != "PASS":
         fail("audit empty", "AUDIT")

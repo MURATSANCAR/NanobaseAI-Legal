@@ -29,7 +29,7 @@ class ObligationAwareFallbackProviderTest {
     // ── no-op when clauses already exist ─────────────────────────────────────
 
     @Test
-    void returnsEmptyWhenCurrentClausesExist() {
+    void returnsEmptyWhenUsableStructuredClausesExist() {
         List<ExtractedClause> existing = List.of(
             makeClause("existing-1", "Already extracted content here."));
         ClauseSegmentationContext ctx = new ClauseSegmentationContext(
@@ -37,6 +37,24 @@ class ObligationAwareFallbackProviderTest {
         ClauseSegmentationResult result = provider.segment(ctx);
         assertThat(result.clauses()).isEmpty();
         assertThat(result.providerCode()).isEqualTo("OBLIGATION_AWARE_FALLBACK");
+    }
+
+    @Test
+    void refinesWhenOnlyCoarsePageFallbackClausesExist() {
+        String pageText = "The contractor shall provide a detailed schedule within 10 days. "
+            + "All materials must meet the specified quality standards for irrigation networks.";
+        ExtractedPage page = makePage(1, pageText);
+        ExtractedClause coarse = new ExtractedClause(
+            "page-fallback-1", null, "PF1.1", "Sayfa 1", pageText, pageText,
+            "PAGE", 1, 1, List.of(), "hash-page", 0,
+            Map.of("fallback", true, "segmentationProvider", "DOCLING"));
+        ClauseSegmentationContext ctx = new ClauseSegmentationContext(
+            extractionWithPages(List.of(page)), List.of(coarse));
+
+        ClauseSegmentationResult result = provider.segment(ctx);
+
+        assertThat(result.clauses()).isNotEmpty();
+        assertThat(result.usedFallback()).isTrue();
     }
 
     // ── empty pages ───────────────────────────────────────────────────────────

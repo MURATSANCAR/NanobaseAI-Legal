@@ -38,7 +38,9 @@ public class ObligationAwareFallbackProvider implements ClauseSegmentationProvid
 
     @Override
     public ClauseSegmentationResult segment(ClauseSegmentationContext context) {
-        if (context.currentClauses() != null && !context.currentClauses().isEmpty()) {
+        // Skip only when refined structured clauses already exist. Coarse PAGE/fallback
+        // sets deferred by DoclingStructure must still be refined here.
+        if (context.hasUsableStructuredClauses()) {
             return ClauseSegmentationResult.empty(providerCode());
         }
         List<ExtractedPage> pages = context.extraction().pages();

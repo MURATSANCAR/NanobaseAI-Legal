@@ -188,6 +188,9 @@ specai:
     base-url: ${AI_ORCHESTRATOR_BASE_URL:${SPECAI_AI_ORCHESTRATOR_BASE_URL:http://localhost:8090}}
     connect-timeout: ${AI_ORCHESTRATOR_CONNECT_TIMEOUT:PT5S}
     knowledge-read-timeout: ${AI_ORCHESTRATOR_KNOWLEDGE_READ_TIMEOUT:PT60S}
+    # Requirement extraction must not hang forever holding a Rabbit ack / DB connection.
+    extraction-read-timeout: ${AI_ORCHESTRATOR_EXTRACTION_READ_TIMEOUT:PT300S}
+    prompt-security-read-timeout: ${AI_ORCHESTRATOR_PROMPT_SECURITY_READ_TIMEOUT:PT30S}
     # Compliance must not inherit DOCUMENT_PROVIDER_READ_TIMEOUT (PT180S). Align with
     # host llama-server timeoutSeconds and knowledge extraction budget.
     # Must exceed BALANCED queueWait(180s)+generation(600s)+margin.
