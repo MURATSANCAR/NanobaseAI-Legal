@@ -1,0 +1,54 @@
+{
+  "fixtureCode": "KNOWLEDGE_DATASHEET_001",
+  "displayName": "Product Datasheet 001",
+  "slice": {
+    "documentPurpose": "PRODUCT_DATASHEET",
+    "format": "PDF",
+    "contentMode": "TABLE_DOMINANT",
+    "layoutMode": "STANDARD",
+    "language": "tr",
+    "gate": "E2E-05B-datasheet"
+  },
+  "asset": {
+    "relativePath": "knowledge/datasheet_001.pdf",
+    "sha256": null,
+    "mediaType": "application/pdf",
+    "expectedPageCount": null,
+    "required": true
+  },
+  "provenance": {
+    "sourceType": "USER_PROVIDED",
+    "sourceReference": null,
+    "organizationOwner": null,
+    "acquiredAt": null
+  },
+  "license": {
+    "status": "PENDING",
+    "type": null,
+    "reference": null,
+    "commercialEvaluationAllowed": false,
+    "redistributionAllowed": false
+  },
+  "privacy": {
+    "containsPersonalData": "UNKNOWN",
+    "containsConfidentialData": "UNKNOWN",
+    "redactionStatus": "NOT_REVIEWED"
+  },
+  "groundTruth": {
+    "status": "PENDING",
+    "annotationPath": null,
+    "reviewedBy": null,
+    "reviewedAt": null
+  },
+  "expectedBehavior": {
+    "parserTerminal": true,
+    "minimumPageCount": 1,
+    "minimumClauseCount": 0,
+    "minimumAutomaticRequirementCount": 0,
+    "manualClauseSeed": 0,
+    "manualRequirementSeed": 0,
+    "reportIntegrity": "PASS",
+    "knowledgeJobTerminal": true,
+    "minimumEntityCount": 1
+  }
+}

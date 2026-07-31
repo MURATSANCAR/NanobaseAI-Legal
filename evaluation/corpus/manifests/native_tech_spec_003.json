@@ -1,0 +1,52 @@
+{
+  "fixtureCode": "NATIVE_TECH_SPEC_003",
+  "displayName": "Native Technical Specification 003",
+  "slice": {
+    "documentPurpose": "TENDER_SPECIFICATION",
+    "format": "PDF",
+    "contentMode": "NATIVE_TEXT",
+    "layoutMode": "STANDARD",
+    "language": "tr",
+    "gate": "E2E-native"
+  },
+  "asset": {
+    "relativePath": "native/native_tech_spec_003.pdf",
+    "sha256": null,
+    "mediaType": "application/pdf",
+    "expectedPageCount": null,
+    "required": true
+  },
+  "provenance": {
+    "sourceType": "USER_PROVIDED",
+    "sourceReference": null,
+    "organizationOwner": null,
+    "acquiredAt": null
+  },
+  "license": {
+    "status": "PENDING",
+    "type": null,
+    "reference": null,
+    "commercialEvaluationAllowed": false,
+    "redistributionAllowed": false
+  },
+  "privacy": {
+    "containsPersonalData": "UNKNOWN",
+    "containsConfidentialData": "UNKNOWN",
+    "redactionStatus": "NOT_REVIEWED"
+  },
+  "groundTruth": {
+    "status": "PENDING",
+    "annotationPath": null,
+    "reviewedBy": null,
+    "reviewedAt": null
+  },
+  "expectedBehavior": {
+    "parserTerminal": true,
+    "minimumPageCount": 1,
+    "minimumClauseCount": 1,
+    "minimumAutomaticRequirementCount": 1,
+    "manualClauseSeed": 0,
+    "manualRequirementSeed": 0,
+    "reportIntegrity": "PASS"
+  }
+}

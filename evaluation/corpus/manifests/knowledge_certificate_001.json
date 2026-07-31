@@ -1,0 +1,54 @@
+{
+  "fixtureCode": "KNOWLEDGE_CERTIFICATE_001",
+  "displayName": "Company Certificate 001",
+  "slice": {
+    "documentPurpose": "CERTIFICATE",
+    "format": "PDF",
+    "contentMode": "FORM_DOMINANT",
+    "layoutMode": "STANDARD",
+    "language": "tr",
+    "gate": "E2E-05A-certificate"
+  },
+  "asset": {
+    "relativePath": "knowledge/certificate_001.pdf",
+    "sha256": null,
+    "mediaType": "application/pdf",
+    "expectedPageCount": null,
+    "required": true
+  },
+  "provenance": {
+    "sourceType": "USER_PROVIDED",
+    "sourceReference": null,
+    "organizationOwner": null,
+    "acquiredAt": null
+  },
+  "license": {
+    "status": "PENDING",
+    "type": null,
+    "reference": null,
+    "commercialEvaluationAllowed": false,
+    "redistributionAllowed": false
+  },
+  "privacy": {
+    "containsPersonalData": "UNKNOWN",
+    "containsConfidentialData": "UNKNOWN",
+    "redactionStatus": "NOT_REVIEWED"
+  },
+  "groundTruth": {
+    "status": "PENDING",
+    "annotationPath": null,
+    "reviewedBy": null,
+    "reviewedAt": null
+  },
+  "expectedBehavior": {
+    "parserTerminal": true,
+    "minimumPageCount": 1,
+    "minimumClauseCount": 0,
+    "minimumAutomaticRequirementCount": 0,
+    "manualClauseSeed": 0,
+    "manualRequirementSeed": 0,
+    "reportIntegrity": "PASS",
+    "knowledgeJobTerminal": true,
+    "minimumEntityCount": 1
+  }
+}

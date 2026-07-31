@@ -1,0 +1,52 @@
+{
+  "fixtureCode": "SCANNED_TECH_SPEC_003",
+  "displayName": "Scanned Technical Specification 003",
+  "slice": {
+    "documentPurpose": "TENDER_SPECIFICATION",
+    "format": "PDF",
+    "contentMode": "SCANNED_IMAGE",
+    "layoutMode": "MIXED",
+    "language": "tr",
+    "gate": "E2E-02-scanned"
+  },
+  "asset": {
+    "relativePath": "scanned/scanned_tech_spec_003.pdf",
+    "sha256": null,
+    "mediaType": "application/pdf",
+    "expectedPageCount": null,
+    "required": true
+  },
+  "provenance": {
+    "sourceType": "USER_PROVIDED",
+    "sourceReference": null,
+    "organizationOwner": null,
+    "acquiredAt": null
+  },
+  "license": {
+    "status": "PENDING",
+    "type": null,
+    "reference": null,
+    "commercialEvaluationAllowed": false,
+    "redistributionAllowed": false
+  },
+  "privacy": {
+    "containsPersonalData": "UNKNOWN",
+    "containsConfidentialData": "UNKNOWN",
+    "redactionStatus": "NOT_REVIEWED"
+  },
+  "groundTruth": {
+    "status": "PENDING",
+    "annotationPath": null,
+    "reviewedBy": null,
+    "reviewedAt": null
+  },
+  "expectedBehavior": {
+    "parserTerminal": true,
+    "minimumPageCount": 1,
+    "minimumClauseCount": 1,
+    "minimumAutomaticRequirementCount": 1,
+    "manualClauseSeed": 0,
+    "manualRequirementSeed": 0,
+    "reportIntegrity": "PASS"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "fixtureCode": "SCANNED_TECH_SPEC_001",
+  "annotationVersion": 1,
+  "clauses": [],
+  "requirements": [],
+  "tables": [],
+  "knowledge": {
+    "entities": [],
+    "attributes": [],
+    "capabilities": [],
+    "claims": []
+  },
+  "review": {
+    "status": "DRAFT",
+    "reviewer": null,
+    "reviewedAt": null,
+    "singleReviewOnly": true
+  }
+}
