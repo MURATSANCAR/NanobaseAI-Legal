@@ -9,7 +9,9 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.nanobase.specai.audit.application.AuditService;
 import com.nanobase.specai.document.application.ObjectStorage;
+import com.nanobase.specai.document.capability.SpecIntelligenceV11Flags;
 import com.nanobase.specai.integration.outbox.OutboxService;
+import com.nanobase.specai.operations.application.FeatureFlagService;
 import com.nanobase.specai.shared.observability.PlatformMetrics;
 import com.nanobase.specai.shared.security.CurrentTenant;
 import com.nanobase.specai.shared.security.TenantPrincipal;
@@ -38,6 +40,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -55,6 +58,8 @@ public class DynamicReportingService {
     private final OutboxService outbox;
     private final PlatformMetrics metrics;
     private final ReportIntegrityValidator integrityValidator;
+    private final FeatureFlagService featureFlags;
+    private final ObjectProvider<ReportVisualStructureValidator> visualValidator;
 
     public DynamicReportingService(JdbcTemplate jdbc, ObjectMapper mapper,
                                    CurrentTenant currentTenant,
@@ -63,7 +68,9 @@ public class DynamicReportingService {
                                    WorkflowConditionEngine conditions,
                                    ObjectStorage storage, AuditService audit,
                                    OutboxService outbox, PlatformMetrics metrics,
-                                   ReportIntegrityValidator integrityValidator) {
+                                   ReportIntegrityValidator integrityValidator,
+                                   FeatureFlagService featureFlags,
+                                   ObjectProvider<ReportVisualStructureValidator> visualValidator) {
         this.jdbc = jdbc;
         this.mapper = mapper;
         this.currentTenant = currentTenant;
@@ -75,6 +82,8 @@ public class DynamicReportingService {
         this.outbox = outbox;
         this.metrics = metrics;
         this.integrityValidator = integrityValidator;
+        this.featureFlags = featureFlags;
+        this.visualValidator = visualValidator;
     }
 
     @Transactional
@@ -239,6 +248,38 @@ public class DynamicReportingService {
                 audit.record("report.generation.failed.v1", "ReportGenerationJob", jobId,
                     null, Map.of("errorCode", validation.errorCode()));
                 return job(jobId);
+            }
+            if (featureFlags.enabled(principal.tenantId(), projectId,
+                SpecIntelligenceV11Flags.REPORT_VISUAL_VALIDATION)) {
+                ReportVisualStructureValidator validator = visualValidator.getIfAvailable();
+                if (validator != null) {
+                    ReportVisualStructureValidator.VisualValidationResult visual =
+                        validator.validate(bytes, validation.requiredSections());
+                    jdbc.update("""
+                        insert into report_visual_validation_result (
+                            id, organization_id, report_generation_job_id, report_artifact_id,
+                            status_code, page_count, overflow_page_count, cut_text_count,
+                            missing_section_count, turkish_glyph_issues, details_json, created_at
+                        ) values (?, ?, ?, null, ?, ?, ?, ?, ?, ?, ?::jsonb, now())
+                        """, UUID.randomUUID(), principal.tenantId(), jobId,
+                        visual.statusCode(), visual.pageCount(), visual.overflowSignals(),
+                        visual.cutTextSignals(), visual.issues().size(),
+                        visual.turkishGlyphIssues(),
+                        "{\"issues\":" + quote(String.join(",", visual.issues())) + "}");
+                    if (!"PASS".equals(visual.statusCode())) {
+                        UUID failed = concept("REPORT_JOB_FAILED", "REPORT_JOB_STATUS");
+                        jdbc.update("""
+                            update report_generation_job set status_concept_id = ?, progress = 100,
+                                   completed_at = now(), error_code = ?, error_message = ?,
+                                   updated_at = now(), version = version + 1
+                             where id = ?
+                            """, failed, "REPORT_VISUAL_REGRESSION_FAILED",
+                            "Visual structure validation failed", jobId);
+                        audit.record("report.generation.failed.v1", "ReportGenerationJob", jobId,
+                            null, Map.of("errorCode", "REPORT_VISUAL_REGRESSION_FAILED"));
+                        return job(jobId);
+                    }
+                }
             }
             String hash = sha256(bytes);
             String fileName = safeFileName(reportName) + "-v1." + rendered.extension();

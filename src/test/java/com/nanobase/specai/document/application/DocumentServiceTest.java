@@ -13,9 +13,11 @@ import com.nanobase.specai.document.domain.DocumentRepository;
 import com.nanobase.specai.document.domain.DocumentProcessingJob;
 import com.nanobase.specai.document.domain.DocumentType;
 import com.nanobase.specai.document.domain.DocumentVersionRepository;
+import com.nanobase.specai.document.delivery.ObjectDeliveryStrategy;
 import com.nanobase.specai.document.security.FileSecurityService;
 import com.nanobase.specai.integration.outbox.OutboxService;
 import com.nanobase.specai.operations.application.BackpressureService;
+import com.nanobase.specai.operations.application.FeatureFlagService;
 import com.nanobase.specai.operations.application.QuotaService;
 import com.nanobase.specai.shared.security.CurrentTenant;
 import com.nanobase.specai.shared.security.TenantPrincipal;
@@ -54,6 +56,8 @@ class DocumentServiceTest {
     @Mock QuotaService quotas;
     @Mock BackpressureService backpressure;
     @Mock JdbcTemplate jdbc;
+    @Mock FeatureFlagService featureFlags;
+    @Mock ObjectDeliveryStrategy objectDelivery;
     private DocumentService service;
 
     @BeforeEach
@@ -61,8 +65,8 @@ class DocumentServiceTest {
         when(currentTenant.require()).thenReturn(
             new TenantPrincipal(ORGANIZATION, "manager-1", Set.of("TENDER_MANAGER")));
         service = new DocumentService(documents, versions, access, audit, outbox, storage,
-            currentTenant, fileTypeInspector, clauses, processingJobs, fileSecurity, quotas,
-            backpressure, jdbc, 10_000_000,
+            currentTenant, fileTypeInspector, fileSecurity, quotas, backpressure, clauses,
+            processingJobs, jdbc, featureFlags, objectDelivery, 10_000_000,
             Clock.fixed(Instant.parse("2026-07-27T12:00:00Z"), ZoneOffset.UTC));
     }
 

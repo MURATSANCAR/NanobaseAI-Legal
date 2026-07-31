@@ -16,6 +16,12 @@ import com.nanobase.specai.document.domain.DocumentVersionRepository;
 import com.nanobase.specai.document.domain.DocumentProcessingJob;
 import com.nanobase.specai.document.integration.DocumentEvents.DocumentUploaded;
 import com.nanobase.specai.document.security.FileSecurityService;
+import com.nanobase.specai.document.delivery.ObjectDeliveryContext;
+import com.nanobase.specai.document.delivery.ObjectDeliveryMode;
+import com.nanobase.specai.document.delivery.ObjectDeliveryResult;
+import com.nanobase.specai.document.delivery.ObjectDeliveryStrategy;
+import com.nanobase.specai.document.capability.SpecIntelligenceV11Flags;
+import com.nanobase.specai.operations.application.FeatureFlagService;
 import com.nanobase.specai.integration.outbox.OutboxService;
 import com.nanobase.specai.operations.application.BackpressureService;
 import com.nanobase.specai.operations.application.QuotaService;
@@ -65,6 +71,8 @@ public class DocumentService {
     private final ClauseRepository clauses;
     private final ProcessingJobService processingJobs;
     private final JdbcTemplate jdbc;
+    private final FeatureFlagService featureFlags;
+    private final ObjectDeliveryStrategy objectDelivery;
     private final long maximumFileSize;
     private final Clock clock;
 
@@ -75,21 +83,23 @@ public class DocumentService {
                            FileTypeInspector fileTypeInspector, ClauseRepository clauses,
                            ProcessingJobService processingJobs, FileSecurityService fileSecurity,
                            QuotaService quotas, BackpressureService backpressure,
-                           JdbcTemplate jdbc,
+                           JdbcTemplate jdbc, FeatureFlagService featureFlags,
+                           ObjectDeliveryStrategy objectDelivery,
                            @Value("${specai.documents.max-file-size-bytes:104857600}")
                            long maximumFileSize) {
         this(documents, versions, access, audit, outbox, storage, currentTenant,
-            fileTypeInspector, clauses, processingJobs, fileSecurity, quotas, backpressure,
-            jdbc, maximumFileSize, Clock.systemUTC());
+            fileTypeInspector, fileSecurity, quotas, backpressure, clauses, processingJobs,
+            jdbc, featureFlags, objectDelivery, maximumFileSize, Clock.systemUTC());
     }
 
     DocumentService(DocumentRepository documents, DocumentVersionRepository versions,
                     ProjectAccessService access, AuditService audit, OutboxService outbox,
                     ObjectStorage storage, CurrentTenant currentTenant,
-                    FileTypeInspector fileTypeInspector, ClauseRepository clauses,
-                    ProcessingJobService processingJobs, FileSecurityService fileSecurity,
+                    FileTypeInspector fileTypeInspector, FileSecurityService fileSecurity,
                     QuotaService quotas, BackpressureService backpressure,
-                    JdbcTemplate jdbc, long maximumFileSize, Clock clock) {
+                    ClauseRepository clauses, ProcessingJobService processingJobs,
+                    JdbcTemplate jdbc, FeatureFlagService featureFlags,
+                    ObjectDeliveryStrategy objectDelivery, long maximumFileSize, Clock clock) {
         this.documents = documents;
         this.versions = versions;
         this.access = access;
@@ -104,6 +114,8 @@ public class DocumentService {
         this.clauses = clauses;
         this.processingJobs = processingJobs;
         this.jdbc = jdbc;
+        this.featureFlags = featureFlags;
+        this.objectDelivery = objectDelivery;
         this.maximumFileSize = maximumFileSize;
         this.clock = clock;
     }
@@ -254,11 +266,49 @@ public class DocumentService {
         access.requireDocumentView(document.projectId(), principal);
         DocumentVersion version = currentVersion(document, principal.tenantId());
         Duration validity = Duration.ofMinutes(5);
+        Instant expiresAt = clock.instant().plus(validity);
+        if (featureFlags.enabled(principal.tenantId(), document.projectId(),
+            SpecIntelligenceV11Flags.OBJECT_DELIVERY_STRATEGY)) {
+            ObjectDeliveryResult delivery = objectDelivery.createDelivery(
+                new ObjectDeliveryContext(
+                    principal.tenantId(), documentId, "DOCUMENT",
+                    version.objectStorageKey(), version.mimeType(), expiresAt, null));
+            if (delivery.mode() == ObjectDeliveryMode.BACKEND_PROXY_ONLY
+                || delivery.url() == null) {
+                audit.record("DOCUMENT_DOWNLOAD_PROXY_FALLBACK", "Document", documentId, null,
+                    Map.of("documentVersionId", version.id(),
+                        "telemetryCode", delivery.telemetryCode(),
+                        "fallbackUsed", delivery.fallbackUsed()));
+                jdbc.update("""
+                    insert into document_access_url_audit (
+                        id, organization_id, subject_type, subject_id, access_mode,
+                        public_host, expires_at, requested_by, correlation_id, created_at
+                    ) values (?, ?, 'DOCUMENT', ?, 'PROXY_FALLBACK', ?, null, ?, ?, now())
+                    """, UUID.randomUUID(), principal.tenantId(), documentId,
+                    delivery.telemetryCode(), principal.subject(),
+                    RequestContext.current().correlationId());
+                throw new IllegalStateException(
+                    "Presigned browser delivery unavailable; use backend proxy download. code="
+                        + delivery.telemetryCode());
+            }
+            audit.record("DOCUMENT_DOWNLOADED", "Document", documentId, null,
+                Map.of("documentVersionId", version.id(), "expiresInSeconds", 300,
+                    "accessMode", delivery.mode().name(),
+                    "telemetryCode", delivery.telemetryCode()));
+            jdbc.update("""
+                insert into document_access_url_audit (
+                    id, organization_id, subject_type, subject_id, access_mode,
+                    public_host, expires_at, requested_by, correlation_id, created_at
+                ) values (?, ?, 'DOCUMENT', ?, ?, ?, ?, ?, ?, now())
+                """, UUID.randomUUID(), principal.tenantId(), documentId,
+                delivery.mode().name(), delivery.publicHost(), expiresAt, principal.subject(),
+                RequestContext.current().correlationId());
+            return delivery.url();
+        }
         URI url = storage.signedDownloadUrl(version.objectStorageKey(), validity);
         audit.record("DOCUMENT_DOWNLOADED", "Document", documentId, null,
             Map.of("documentVersionId", version.id(), "expiresInSeconds", 300,
                 "accessMode", "PRESIGNED"));
-        Instant expiresAt = clock.instant().plus(validity);
         jdbc.update("""
             insert into document_access_url_audit (
                 id, organization_id, subject_type, subject_id, access_mode,

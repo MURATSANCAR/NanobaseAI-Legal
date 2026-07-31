@@ -3,6 +3,7 @@ package com.nanobase.specai.document.integration;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nanobase.specai.document.application.DocumentExtractionPersistenceService;
+import com.nanobase.specai.document.application.DocumentV11EnrichmentService;
 import com.nanobase.specai.document.application.ProcessingJobService;
 import com.nanobase.specai.document.domain.DocumentProcessingJob;
 import com.nanobase.specai.document.domain.DocumentStatus;
@@ -35,6 +36,7 @@ public class DocumentUploadedConsumer {
     private final DocumentIntelligencePort intelligence;
     private final ProcessingJobService processing;
     private final DocumentExtractionPersistenceService extraction;
+    private final DocumentV11EnrichmentService v11Enrichment;
     private final ClauseSegmentationService clauseSegmentation;
     private final ConsumerIdempotencyService idempotency;
     private final RabbitTemplate rabbit;
@@ -47,6 +49,7 @@ public class DocumentUploadedConsumer {
         DocumentIntelligencePort intelligence,
         ProcessingJobService processing,
         DocumentExtractionPersistenceService extraction,
+        DocumentV11EnrichmentService v11Enrichment,
         ClauseSegmentationService clauseSegmentation,
         ConsumerIdempotencyService idempotency,
         RabbitTemplate rabbit,
@@ -58,6 +61,7 @@ public class DocumentUploadedConsumer {
         this.intelligence = intelligence;
         this.processing = processing;
         this.extraction = extraction;
+        this.v11Enrichment = v11Enrichment;
         this.clauseSegmentation = clauseSegmentation;
         this.idempotency = idempotency;
         this.rabbit = rabbit;
@@ -147,6 +151,12 @@ public class DocumentUploadedConsumer {
         ensureStage(event.organizationId(), job.id(), DocumentStatus.STRUCTURE_DETECTION);
         var enriched = clauseSegmentation.enrich(intelligence.getResult(reference));
         extraction.persist(event.organizationId(), job.id(), enriched, payload.ocrRequired());
+        v11Enrichment.enrich(
+            event.organizationId(),
+            payload.projectId(),
+            payload.documentVersionId(),
+            enriched.result(),
+            payload.ocrRequired());
         var result = enriched.result();
         if (result.textQualityScore() < minimumQualityScore) {
             processing.transition(event.organizationId(), job.id(),

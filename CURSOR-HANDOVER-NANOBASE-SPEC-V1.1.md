@@ -8,7 +8,15 @@
 
 ## 2. Değiştirilen bileşenler
 
-Additive only: V33 schema, capability/OCR/table/delivery/validity/timing/guardrail/report-visual packages, corpus manifests, docs. Compliance lease/fencing/Redis untouched.
+Additive only: V33 schema, capability/OCR/table/delivery/validity/timing/guardrail/report-visual packages, corpus manifests, docs.
+
+Runtime wiring (feature-flag default OFF):
+- `DocumentUploadedConsumer` → `DocumentV11EnrichmentService` (capability/OCR/table cells/DOCX blocks)
+- `DocumentService.downloadUrl` → `ObjectDeliveryStrategy` when `OBJECT_DELIVERY_STRATEGY_ENABLED`
+- `RequirementExtractionProcessor` → stage timing when `REQUIREMENT_EXTRACTION_TIMING_ENABLED`
+- `DynamicReportingService` → visual structure gate when `REPORT_VISUAL_VALIDATION_ENABLED`
+
+Compliance lease/fencing/Redis untouched.
 
 ## 3. Document capability profile
 

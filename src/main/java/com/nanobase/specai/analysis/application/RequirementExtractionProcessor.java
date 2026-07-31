@@ -33,7 +33,9 @@ import com.nanobase.specai.analysis.domain.RequirementRevision;
 import com.nanobase.specai.analysis.domain.RequirementRevisionRepository;
 import com.nanobase.specai.analysis.infrastructure.AnalysisPersistenceStore;
 import com.nanobase.specai.analysis.integration.AnalysisEvents.AnalysisProgress;
+import com.nanobase.specai.analysis.performance.RequirementExtractionTimingRecorder;
 import com.nanobase.specai.audit.application.AuditService;
+import com.nanobase.specai.document.capability.SpecIntelligenceV11Flags;
 import com.nanobase.specai.document.domain.Clause;
 import com.nanobase.specai.document.domain.ClauseRepository;
 import com.nanobase.specai.integration.outbox.OutboxService;
@@ -51,6 +53,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -83,6 +86,7 @@ public class RequirementExtractionProcessor {
     private final RequirementConditionExtractor conditionExtractor;
     private final AuditService audit;
     private final JdbcTemplate jdbc;
+    private final ObjectProvider<RequirementExtractionTimingRecorder> timingRecorder;
     private final Clock clock = Clock.systemUTC();
 
     public RequirementExtractionProcessor(
@@ -111,7 +115,8 @@ public class RequirementExtractionProcessor {
         RequirementClassificationValidator classificationValidator,
         RequirementConditionExtractor conditionExtractor,
         AuditService audit,
-        JdbcTemplate jdbc) {
+        JdbcTemplate jdbc,
+        ObjectProvider<RequirementExtractionTimingRecorder> timingRecorder) {
         this.tenantDatabase = tenantDatabase;
         this.jobs = jobs;
         this.profiles = profiles;
@@ -138,6 +143,7 @@ public class RequirementExtractionProcessor {
         this.conditionExtractor = conditionExtractor;
         this.audit = audit;
         this.jdbc = jdbc;
+        this.timingRecorder = timingRecorder;
     }
 
     @Transactional
@@ -423,10 +429,14 @@ public class RequirementExtractionProcessor {
                     "signals", promptAssessment.signals()), clock.instant());
         }
         Instant modelStarted = clock.instant();
+        long modelStartMs = System.nanoTime();
         ExtractionResponse response = aiGateway.extract(new ExtractionRequest(
             job.id(), profile.organizationId(), clause.id(), AiGateway.LOGICAL_MODEL,
             routing.profileCode(), List.copyOf(assembledPrompt), schema, context,
             strategy.maximumOutputTokens(), job.correlationId()));
+        recordTiming(profile.organizationId(), job, clause.id(), "MODEL_GENERATION",
+            (System.nanoTime() - modelStartMs) / 1_000_000L, routing.profileCode(),
+            response.inputTokens(), response.outputTokens());
         List<String> schemaErrors = schemaValidator.validate(schema, response.output());
         store.modelRun(profile.organizationId(), job.id(), clause, routingId,
             profile.promptPackageVersionId(), profile.outputSchemaVersionId(), response,
@@ -786,6 +796,32 @@ public class RequirementExtractionProcessor {
             return mapper.readTree(value);
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("Stored analysis JSON is invalid", exception);
+        }
+    }
+
+    private void recordTiming(
+        UUID organizationId,
+        RequirementExtractionJob job,
+        UUID clauseId,
+        String stage,
+        long durationMs,
+        String modelProfile,
+        Integer inputTokens,
+        Integer outputTokens
+    ) {
+        if (!featureFlags.enabled(organizationId, job.projectId(),
+            SpecIntelligenceV11Flags.REQUIREMENT_EXTRACTION_TIMING)) {
+            return;
+        }
+        RequirementExtractionTimingRecorder recorder = timingRecorder.getIfAvailable();
+        if (recorder == null) {
+            return;
+        }
+        try {
+            recorder.record(organizationId, job.id(), null, clauseId, null, stage,
+                durationMs, null, null, inputTokens, outputTokens, modelProfile);
+        } catch (RuntimeException ignored) {
+            // Telemetry must not fail extraction.
         }
     }
 

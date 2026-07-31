@@ -52,9 +52,7 @@ public class DefaultNumericOcrIntegrityValidator implements NumericOcrIntegrityV
 
     private static boolean containsLookalike(String token) {
         String upper = token.toUpperCase(Locale.ROOT);
-        return (upper.contains("O") && upper.chars().anyMatch(Character::isDigit))
-            || (upper.contains("I") && upper.chars().anyMatch(Character::isDigit))
-            || (upper.contains("L") && upper.chars().anyMatch(Character::isDigit))
-            || (upper.contains("S") && upper.chars().anyMatch(Character::isDigit));
+        // Adjacent digit/letter confusions only — do not flag clean codes like IP65.
+        return upper.matches(".*(?:O\\d|\\dO|[IL]\\d|\\d[IL]|S\\d|\\dS).*");
     }
 }
