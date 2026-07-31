@@ -28,7 +28,19 @@
 
 ## 9. DSİ v1.0 regression
 
-Started after V33 + integration skip=0 gates. Fresh parser job `fa1f112c-…` READY; requirement job `0423ea52-…` long-running (status may remain QUEUED until mega-transaction commits). Final PASS/FAIL recorded in `/tmp/nanobase-v11-recovery/dsi-regression.json` when complete — do not invent IDs.
+**FAIL** (classification=`COMPLIANCE`).
+
+- Fresh project `f197608a-…` / document `d8347477-…`
+- Parser READY `fa1f112c-…`
+- Requirements PARTIALLY_COMPLETED `0423ea52-…` → 24 clauses / 21 automatic requirements / manual seeds 0
+- Compliance PARTIALLY_COMPLETED `47d7ac4e-…` (19 completed / 2 failed) — gate requires COMPLETED
+- Report job COMPLETED with integrity PASS `9f8b3943-…`
+- Artifact: `/tmp/nanobase-v11-recovery/dsi-regression.json` (`ok=false`)
+
+```text
+V1_0_REGRESSION = FAIL
+V1_1_CANDIDATE_ACCEPTED = false
+```
 
 ## 10–15. Multi-format E2Es
 
@@ -62,7 +74,7 @@ NOT_SCORED.
 
 1. Licensed corpus binaries (15)
 2. Privacy + APPROVED ground truth
-3. Finish/confirm DSİ regression artifact
+3. DSİ compliance terminal COMPLETED (currently PARTIALLY_COMPLETED on 2 tasks)
 4. Live E2E-02–07
 
 ## 24. BROAD_DOCUMENT_GA_READY
