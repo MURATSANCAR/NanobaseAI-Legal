@@ -199,7 +199,8 @@ specai:
     prompt-security-read-timeout: ${AI_ORCHESTRATOR_PROMPT_SECURITY_READ_TIMEOUT:PT30S}
     # Compliance must not inherit DOCUMENT_PROVIDER_READ_TIMEOUT (PT180S). Align with
     # host llama-server timeoutSeconds and knowledge extraction budget.
-    # Must exceed BALANCED queueWait(180s)+generation(600s)+margin.
+    # Must exceed BALANCED queueWait(180s)+generation(720s)+margin.
+    # Generation timeout lives in AI_MODEL_DEPLOYMENTS_JSON timeoutSeconds (720).
     # Backend must not close before orchestrator returns a controlled error.
     compliance-read-timeout: ${AI_ORCHESTRATOR_COMPLIANCE_READ_TIMEOUT:PT780S}
     compliance-global-deadline: ${AI_ORCHESTRATOR_COMPLIANCE_GLOBAL_DEADLINE:PT820S}
