@@ -1,23 +1,7 @@
-# Known Issues
+# Known Issues (v1.1)
 
-## Residual (post-production hardening — not go-live blockers)
-
-Priority:
-
-1. Scheduler HA (two reclaim instances) live gate
-2. Retry-limit live exhaustion (`WORKER_REPEATEDLY_INTERRUPTED`)
-3. Optional 12-job stress observation
-
-## Operational guidance (enforced)
-
-- `databasePoolSize >= workerConcurrency + operationalHeadroom`
-- Keep Redis capacity + FAIL_CLOSED; never ship process-local capacity as multi-instance production
-- Fault injection must stay off in production
-- Startup guardrail: `ComplianceDeploymentGuardrails`
-
-## Closed
-
-- Compliance orchestration Phase 1–6 mandatory gates
-- Hikari pool=5 × 8-job pressure
-- Global Redis capacity / multi-orchestrator
-- Crash/reclaim, stale-worker, cancel/persist, same-event/same-job
+1. Licensed corpus binaries not checked in — fixtures SKIPPED.
+2. Live scanned/DOCX/table/knowledge E2Es not executed.
+3. MinIO browser presign still needs real public host for DIRECT_PUBLIC profile.
+4. Requirement extraction wall-clock remains high on local model path.
+5. Host JDK unavailable in some agent shells — compile via Docker image build.
