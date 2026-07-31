@@ -1,0 +1,62 @@
+{
+  "gate": "E2E-01-AUTONOMOUS-DSI",
+  "ok": true,
+  "executionTimestamp": "2026-07-31T16:41:58Z",
+  "artifactGeneratedAt": "2026-07-31T19:32:39Z",
+  "dsiPdfSha256": "82d312e7900954f592537e377993d978e5f219ca9d473cb8271ea793fefb3743",
+  "dsiPdfBytes": 876237,
+  "projectId": "f31977f3-ea4c-4967-97d5-15ebdad1bee6",
+  "documentId": "0722f37b-efc6-480f-89d5-9421ce0cbcf4",
+  "documentVersionId": "5aa793b6-9959-4e33-9a3a-48d22d36c3eb",
+  "parserJobId": "7b5d1b1a-f311-4452-8cd1-f6e65dc418a1",
+  "requirementJobId": "2b2a469a-dcc2-42a1-88c1-540989108b6b",
+  "knowledgeJobId": "f65d4bf2-d287-444f-9c38-da6698e5ebc3",
+  "knowledgeTerminalStatus": "SKIPPED_NOT_APPLICABLE",
+  "complianceJobId": "83e5bf4a-c488-405b-a6a9-d8019fdc6585",
+  "reportJobId": "82bfde6a-b4a3-48a3-a8d7-4b832eda1255",
+  "riskAnalysisJobId": "c44cad53-e11b-4cbe-b385-dd4b2ad45799",
+  "clauseCount": 24,
+  "layoutBlockCount": 24,
+  "automaticRequirementCount": 17,
+  "manualClauseSeed": 0,
+  "manualRequirementSeed": 0,
+  "evaluationCount": 17,
+  "timeoutEmpty": 4,
+  "suspiciousEmpty": 0,
+  "schemaFailures": 0,
+  "emptyOutcomeCode": "TIMEOUT_EMPTY",
+  "compliance": {
+    "status": "COMPLETED",
+    "processed": 17,
+    "completed": 17,
+    "failed": 0
+  },
+  "reportIntegrity": "PASS",
+  "reportBytes": 3191,
+  "documentDownload": "PASS",
+  "reportDownload": "PASS",
+  "tenantIsolationSmoke": "PASS",
+  "audit": "PASS",
+  "auditEventCount": 1336,
+  "blockers": [],
+  "forbiddenActions": [
+    "SQL_SEED_CLAUSES",
+    "SQL_SEED_REQUIREMENTS",
+    "FIXTURE_PROJECT_REUSE"
+  ],
+  "timings": {
+    "requirementsCompletedAt": "2026-07-31T17:33:04Z",
+    "complianceCompletedAt": "2026-07-31T17:36:20Z",
+    "reportCompletedAt": "2026-07-31T17:36:35Z"
+  },
+  "sanitizedFailureHistory": [
+    {
+      "event": "LLM_GENERATION_TIMEOUT_PRE_FIX",
+      "note": "Prior run compliance PARTIALLY_COMPLETED with 2 failures at ~600s generation timeout before PT720S"
+    }
+  ],
+  "notes": [
+    "Sanitized artifact: no auth material, raw document/evidence text, or signed download URLs.",
+    "Validated BALANCED generation timeout for current local-model profile: PT720S (not claimed universal optimum)."
+  ]
+}
