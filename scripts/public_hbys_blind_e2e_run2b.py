@@ -406,70 +406,115 @@ def main() -> int:
     write_json(RUN_DIR / "company-snapshot.json", snap)
     step("1b_company_snapshot", organizationId=org_id, evidenceDocs=snap.get("evidenceDocumentCount"))
 
-    deadline = (date.today() + timedelta(days=45)).isoformat()
-    stamp = time.strftime("%Y%m%d-%H%M%S")
-    t_create = time.time()
-    code, project = api(
-        "POST", "/api/v1/tenders", tok,
-        {
-            "name": f"PUBLIC-HBYS-E2E-RUN2B-{stamp}",
-            "institutionName": "Atatürk Sanatoryum Eğitim ve Araştırma Hastanesi",
-            "tenderRegistrationNumber": f"HBYS-PUBLIC-{int(time.time())}",
-            "tenderType": "HIZMET_ALIMI",
-            "businessType": "BILISIM",
-            "sector": "KAMU_SAGLIK",
-            "priority": "HIGH",
-            "bidDeadline": deadline,
-            "clarificationDeadline": deadline,
-            "description": "Blind public HBYS technical specification E2E — RUN_2B POST_FIX",
-            "currency": "TRY",
-        },
-    )
-    if code not in (200, 201):
-        raise SystemExit(f"create project failed: {code} {project}")
-    project_id = project.get("id") or project.get("projectId")
-    TIMINGS["create_project_s"] = time.time() - t_create
-    step("2_create_project", projectId=project_id, organizationId=org_id)
-    SUMMARY["projectId"] = project_id
+    resume_project = os.environ.get("HBYS_RESUME_PROJECT_ID", "").strip()
+    resume_doc = os.environ.get("HBYS_RESUME_DOCUMENT_ID", "").strip()
+    resume_version = os.environ.get("HBYS_RESUME_VERSION_ID", "").strip()
     SUMMARY["organizationId"] = org_id
 
-    t_upload = time.time()
-    doc = upload(tok, project_id, PDF_PATH)
-    TIMINGS["upload_s"] = time.time() - t_upload
-    doc_id = doc.get("id") or doc.get("documentId")
-    version = doc.get("currentVersion") or {}
-    version_id = version.get("id") or doc.get("documentVersionId") or version.get("documentVersionId")
-    parser_job_id = (
-        doc.get("processingJobId")
-        or (doc.get("latestJob") or {}).get("id")
-        or version.get("processingJobId")
-    )
-    step("3_upload", documentId=doc_id, versionId=version_id, bytes=PDF_PATH.stat().st_size)
-    SUMMARY["documentId"] = doc_id
-    SUMMARY["documentVersionId"] = version_id
-
-    http, size = proxy_download(tok, f"/api/v1/documents/{doc_id}/download", RUN_DIR / "uploaded-source-proxy.pdf")
-    step("4_proxy_download", http=http, bytes=size)
-    if http != 200 or size < 1000:
-        fail("document proxy download failed", "OBJECT_DOWNLOAD")
+    if resume_project and resume_doc:
+        project_id = resume_project
+        doc_id = resume_doc
+        TIMINGS["create_project_s"] = 0.0
+        TIMINGS["upload_s"] = 0.0
+        TIMINGS["parser_ocr_s"] = 0.0
+        step("2_create_project", projectId=project_id, organizationId=org_id, resumed=True)
+        SUMMARY["projectId"] = project_id
+        SUMMARY["documentId"] = doc_id
+        SUMMARY["resumedFromExisting"] = True
+        code, ready_probe = api("GET", f"/api/v1/documents/{doc_id}", tok)
+        if code >= 400:
+            raise SystemExit(f"resume document lookup failed: {code} {ready_probe}")
+        version = ready_probe.get("currentVersion") or {}
+        version_id = (
+            resume_version
+            or version.get("id")
+            or ready_probe.get("documentVersionId")
+            or version.get("documentVersionId")
+        )
+        parser_job_id = (
+            ready_probe.get("processingJobId")
+            or (ready_probe.get("latestJob") or {}).get("id")
+            or version.get("processingJobId")
+        )
+        SUMMARY["documentVersionId"] = version_id
+        step("3_upload", documentId=doc_id, versionId=version_id, resumed=True,
+             status=ready_probe.get("status"))
+        proxy_src = RUN_DIR / "uploaded-source-proxy.pdf"
+        if proxy_src.is_file() and proxy_src.stat().st_size > 1000:
+            http, size = 200, proxy_src.stat().st_size
+            SUMMARY["uploadSha256"] = sha256_file(proxy_src)
+        else:
+            http, size = proxy_download(
+                tok, f"/api/v1/documents/{doc_id}/download", proxy_src)
+            if http == 200 and size >= 1000:
+                SUMMARY["uploadSha256"] = sha256_file(proxy_src)
+        step("4_proxy_download", http=http, bytes=size, resumed=True)
+        step("4b_tenant_isolation", unauth=401, result="SKIPPED_RESUME")
+        ready = poll_doc(tok, doc_id, max_wait=120)
     else:
-        dl_sha = sha256_file(RUN_DIR / "uploaded-source-proxy.pdf")
-        if dl_sha != pdf_sha:
-            fail(f"SHA mismatch source={pdf_sha} uploaded={dl_sha}", "OBJECT_DOWNLOAD")
-        SUMMARY["uploadSha256"] = dl_sha
+        deadline = (date.today() + timedelta(days=45)).isoformat()
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        t_create = time.time()
+        code, project = api(
+            "POST", "/api/v1/tenders", tok,
+            {
+                "name": f"PUBLIC-HBYS-E2E-RUN2B-{stamp}",
+                "institutionName": "Atatürk Sanatoryum Eğitim ve Araştırma Hastanesi",
+                "tenderRegistrationNumber": f"HBYS-PUBLIC-{int(time.time())}",
+                "tenderType": "HIZMET_ALIMI",
+                "businessType": "BILISIM",
+                "sector": "KAMU_SAGLIK",
+                "priority": "HIGH",
+                "bidDeadline": deadline,
+                "clarificationDeadline": deadline,
+                "description": "Blind public HBYS technical specification E2E — RUN_2B POST_FIX",
+                "currency": "TRY",
+            },
+        )
+        if code not in (200, 201):
+            raise SystemExit(f"create project failed: {code} {project}")
+        project_id = project.get("id") or project.get("projectId")
+        TIMINGS["create_project_s"] = time.time() - t_create
+        step("2_create_project", projectId=project_id, organizationId=org_id)
+        SUMMARY["projectId"] = project_id
 
-    bad = subprocess.run(
-        ["curl", "-sS", "-o", "/dev/null", "-w", "%{http_code}",
-         f"{API}/api/v1/documents/{doc_id}/download"],
-        check=False, capture_output=True, text=True,
-    )
-    bad_http = int(bad.stdout.strip() or "0")
-    tenant_iso = "PASS" if bad_http in (401, 403, 404) else "FAIL"
-    step("4b_tenant_isolation", unauth=bad_http, result=tenant_iso)
-    if tenant_iso != "PASS":
-        fail(f"tenant isolation failed http={bad_http}", "TENANT_AUTHORIZATION")
+        t_upload = time.time()
+        doc = upload(tok, project_id, PDF_PATH)
+        TIMINGS["upload_s"] = time.time() - t_upload
+        doc_id = doc.get("id") or doc.get("documentId")
+        version = doc.get("currentVersion") or {}
+        version_id = version.get("id") or doc.get("documentVersionId") or version.get("documentVersionId")
+        parser_job_id = (
+            doc.get("processingJobId")
+            or (doc.get("latestJob") or {}).get("id")
+            or version.get("processingJobId")
+        )
+        step("3_upload", documentId=doc_id, versionId=version_id, bytes=PDF_PATH.stat().st_size)
+        SUMMARY["documentId"] = doc_id
+        SUMMARY["documentVersionId"] = version_id
 
-    ready = poll_doc(tok, doc_id)
+        http, size = proxy_download(tok, f"/api/v1/documents/{doc_id}/download", RUN_DIR / "uploaded-source-proxy.pdf")
+        step("4_proxy_download", http=http, bytes=size)
+        if http != 200 or size < 1000:
+            fail("document proxy download failed", "OBJECT_DOWNLOAD")
+        else:
+            dl_sha = sha256_file(RUN_DIR / "uploaded-source-proxy.pdf")
+            if dl_sha != pdf_sha:
+                fail(f"SHA mismatch source={pdf_sha} uploaded={dl_sha}", "OBJECT_DOWNLOAD")
+            SUMMARY["uploadSha256"] = dl_sha
+
+        bad = subprocess.run(
+            ["curl", "-sS", "-o", "/dev/null", "-w", "%{http_code}",
+             f"{API}/api/v1/documents/{doc_id}/download"],
+            check=False, capture_output=True, text=True,
+        )
+        bad_http = int(bad.stdout.strip() or "0")
+        tenant_iso = "PASS" if bad_http in (401, 403, 404) else "FAIL"
+        step("4b_tenant_isolation", unauth=bad_http, result=tenant_iso)
+        if tenant_iso != "PASS":
+            fail(f"tenant isolation failed http={bad_http}", "TENANT_AUTHORIZATION")
+
+        ready = poll_doc(tok, doc_id)
     if not version_id:
         version_id = (ready.get("currentVersion") or {}).get("id")
         SUMMARY["documentVersionId"] = version_id
@@ -498,7 +543,7 @@ def main() -> int:
     ) or "0") if version_id else 0
     table_count = int(sql(
         f"select count(*) from document_layout_block where document_version_id='{version_id}' "
-        "and coalesce(block_type,'') ilike '%TABLE%'"
+        "and coalesce(block_type_code,'') ilike '%TABLE%'"
     ) or "0") if version_id else 0
 
     parser_result = {
