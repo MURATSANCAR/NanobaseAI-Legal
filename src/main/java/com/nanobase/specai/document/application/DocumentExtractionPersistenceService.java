@@ -26,9 +26,11 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -118,6 +120,7 @@ public class DocumentExtractionPersistenceService {
         // Layout/recurring inserts use JDBC and FK to document_page — flush first.
         pages.flush();
         Map<String, UUID> sourceIds = new HashMap<>();
+        Set<String> usedClauseNumbers = new HashSet<>();
         result.clauses().stream()
             .sorted(Comparator.comparingInt(clause -> clause.sortOrder()))
             .forEach(clause -> {
@@ -130,8 +133,10 @@ public class DocumentExtractionPersistenceService {
                             "Clause parent must precede its child");
                     }
                 }
+                String clauseNumber = uniqueClauseNumber(
+                    clause.clauseNumber(), clause.sortOrder(), usedClauseNumbers);
                 clauses.save(new Clause(id, organizationId, version.id(), parentId,
-                    clause.clauseNumber(), clause.title(), nullToEmpty(clause.rawText()),
+                    clauseNumber, clause.title(), nullToEmpty(clause.rawText()),
                     nullToEmpty(clause.normalizedText()), clause.clauseType(),
                     clause.pageStart(), clause.pageEnd(), json(clause.boundingBoxes()),
                     hashOrCalculate(clause.contentHash(), clause.normalizedText()),
@@ -243,6 +248,25 @@ public class DocumentExtractionPersistenceService {
 
     private String nullToEmpty(String value) {
         return value == null ? "" : value;
+    }
+
+    /**
+     * Docling/OCR headings often repeat section labels (e.g. many "1" / "15.11").
+     * DB enforces unique (document_version_id, clause_number), including empty strings.
+     */
+    static String uniqueClauseNumber(String raw, int sortOrder, Set<String> used) {
+        String base = raw == null || raw.isBlank() ? "C" + sortOrder : raw.trim();
+        if (base.length() > 90) {
+            base = base.substring(0, 90);
+        }
+        String candidate = base;
+        int n = 2;
+        while (!used.add(candidate)) {
+            String suffix = "#" + n++;
+            int maxBase = Math.max(1, 100 - suffix.length());
+            candidate = base.substring(0, Math.min(base.length(), maxBase)) + suffix;
+        }
+        return candidate;
     }
 
     private String json(Object value) {
