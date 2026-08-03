@@ -607,14 +607,20 @@ def main() -> int:
         fail("clauses=0", "CLAUSE_SEGMENTATION")
 
     # Requirements
-    rcode, req_job = api("POST", f"/api/v1/documents/{doc_id}/requirement-extractions", tok, {})
-    if rcode not in (200, 201, 202):
-        fail(f"requirement start failed: {rcode}", "REQUIREMENT_EXTRACTION")
-        req_job_id = None
-        req_done = {}
-    else:
-        req_job_id = req_job.get("id") or req_job.get("jobId")
+    resume_req = os.environ.get("HBYS_RESUME_REQUIREMENT_JOB_ID", "").strip()
+    if resume_req:
+        req_job_id = resume_req
+        step("7_requirements_resume", jobId=req_job_id)
         req_done, tok = poll_job(tok, f"/api/v1/requirement-extractions/{req_job_id}", "requirements")
+    else:
+        rcode, req_job = api("POST", f"/api/v1/documents/{doc_id}/requirement-extractions", tok, {})
+        if rcode not in (200, 201, 202):
+            fail(f"requirement start failed: {rcode}", "REQUIREMENT_EXTRACTION")
+            req_job_id = None
+            req_done = {}
+        else:
+            req_job_id = req_job.get("id") or req_job.get("jobId")
+            req_done, tok = poll_job(tok, f"/api/v1/requirement-extractions/{req_job_id}", "requirements")
     SUMMARY["requirementJobId"] = req_job_id
     extracted = int(req_done.get("extractedRequirementCount") or 0)
     suspicious = int(req_done.get("suspiciousEmptyCount") or req_done.get("suspicious_empty_count") or 0)
