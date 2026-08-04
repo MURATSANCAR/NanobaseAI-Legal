@@ -36,6 +36,10 @@ def http_json(method: str, url: str, body: dict | None = None, timeout: float = 
         with urllib.request.urlopen(request, timeout=timeout) as response:
             raw = response.read().decode("utf-8")
             return response.status, (json.loads(raw) if raw else {})
+    except TimeoutError:
+        return 598, {"error": "client_timeout"}
+    except urllib.error.URLError as error:
+        return 599, {"error": str(error.reason)}
     except urllib.error.HTTPError as error:
         raw = error.read().decode("utf-8")
         try:
