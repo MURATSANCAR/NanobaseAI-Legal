@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import time
 import uuid
@@ -14,11 +15,17 @@ from typing import Any, Callable
 from page_capability import PageCapability, build_batches
 from parser_checkpoint import ParserCheckpointStore
 
+logger = logging.getLogger("specai.document.bounded_parser")
+
 try:
     from page_capability_pdf_inspector import (
         classify_pdf_pages as classify_pdf_pages_enhanced,
     )
     from pdf_inspector_bridge import health_check as pdf_inspector_health
+    from markdown_short_circuit import (
+        run_markdown_short_circuit,
+        should_short_circuit,
+    )
 
     _PDF_INSPECTOR_AVAILABLE = True
 except ImportError:  # pragma: no cover
@@ -28,6 +35,12 @@ except ImportError:  # pragma: no cover
 
     def pdf_inspector_health() -> dict:
         return {"enabled": False, "library_loaded": False}
+
+    def should_short_circuit(*args, **kwargs):  # type: ignore[misc]
+        return False
+
+    def run_markdown_short_circuit(*args, **kwargs):  # type: ignore[misc]
+        raise RuntimeError("markdown short-circuit unavailable")
 
 
 def classify_pdf_pages(*args, **kwargs):
@@ -445,8 +458,6 @@ def run_bounded_parse(
                 "error": inspector_result.error,
             }
         )
-    # Optional fast-path hook: pure text_based + markdown is available for
-    # a future clause extractor short-circuit (Docling path remains default).
     if (
         inspector_result
         and inspector_result.is_usable
@@ -462,6 +473,33 @@ def run_bounded_parse(
                 "markdownChars": len(inspector_result.markdown),
             }
         )
+
+    # High-confidence text_based + Markdown → skip Docling entirely.
+    if should_short_circuit(inspector_result, ocr_mode=str(request.ocrMode or "AUTO")):
+        try:
+            return run_markdown_short_circuit(
+                document_version_id=str(request.documentVersionId),
+                inspector_result=inspector_result,
+                language=request.languageHint or "und",
+                ocr_mode=str(request.ocrMode or "AUTO"),
+                extract_tables=bool(getattr(request, "extractTables", True)),
+                progress_callback=on_progress,
+                started_monotonic=started,
+            )
+        except Exception:
+            # Never fail the job because short-circuit crashed; fall back to Docling.
+            logger.exception(
+                "markdown short-circuit failed – falling back to Docling path"
+            )
+            on_progress(
+                {
+                    "stage": "pdf_inspector",
+                    "progress": 24,
+                    "message": "markdown short-circuit failed – continuing with Docling",
+                    "currentStage": "MARKDOWN_SHORT_CIRCUIT_FALLBACK",
+                }
+            )
+
     capabilities = apply_ocr_mode(capabilities, request.ocrMode)
     total_pages = len(capabilities)
     if total_pages == 0:

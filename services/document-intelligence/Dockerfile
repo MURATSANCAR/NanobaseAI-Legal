@@ -11,7 +11,8 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --requirement requirements.txt
 
 COPY app.py page_capability.py page_capability_pdf_inspector.py \
-     parser_checkpoint.py bounded_parser.py pdf_inspector_bridge.py ./
+     parser_checkpoint.py bounded_parser.py pdf_inspector_bridge.py \
+     markdown_short_circuit.py ./
 RUN mkdir -p /var/lib/specai /tmp/specai-docling \
     && chown -R docling:docling /var/lib/specai /tmp/specai-docling /app
 
