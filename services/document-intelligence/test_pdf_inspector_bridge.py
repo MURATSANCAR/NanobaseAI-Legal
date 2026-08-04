@@ -106,6 +106,66 @@ def test_enrich_page_capabilities_overlays_ocr_flag():
     assert enriched[1].capability == "MIXED_TEXT_IMAGE"
 
 
+def test_enrich_softens_ocr_flags_for_high_conf_text_based():
+    from page_capability import classify_page_signals
+    from pdf_inspector_bridge import decide_ocr_mode
+
+    pages = [
+        classify_page_signals(
+            page_number=i,
+            text="native paragraph one\nnative paragraph two\nnative paragraph three",
+            font_count=2,
+        )
+        for i in range(1, 4)
+    ]
+    inspector = PdfInspectorResult(
+        available=True,
+        pdf_type="text_based",
+        confidence=1.0,
+        page_count=3,
+        pages_needing_ocr=[0, 1, 2],
+        markdown="",
+        duration_ms=17,
+    )
+    enriched = enrich_page_capabilities_from_inspector(pages, inspector)
+    assert all(p.ocrRequired is False for p in enriched)
+    assert all(p.capability == "NATIVE_TEXT" for p in enriched)
+    assert decide_ocr_mode(inspector) == "AUTO"
+
+
+def test_decide_ocr_mode_matrix():
+    from pdf_inspector_bridge import decide_ocr_mode
+
+    assert (
+        decide_ocr_mode(
+            PdfInspectorResult(
+                available=True,
+                pdf_type="text_based",
+                confidence=1.0,
+                page_count=1,
+                pages_needing_ocr=[],
+                markdown="# hi",
+                duration_ms=1,
+            )
+        )
+        == "DISABLED"
+    )
+    assert (
+        decide_ocr_mode(
+            PdfInspectorResult(
+                available=True,
+                pdf_type="scanned",
+                confidence=0.99,
+                page_count=1,
+                pages_needing_ocr=[0],
+                markdown=None,
+                duration_ms=1,
+            )
+        )
+        == "FORCED"
+    )
+
+
 def test_normalize_ocr_page_indexes_one_based():
     from pdf_inspector_bridge import _normalize_ocr_page_indexes
 
@@ -130,6 +190,27 @@ def test_text_based_fast_path_builds_native_pages():
     assert len(pages) == 3
     assert all(p.capability == "NATIVE_TEXT" for p in pages)
     assert all(p.ocrRequired is False for p in pages)
+
+
+def test_text_based_empty_markdown_prefers_docling_native_capability():
+    from page_capability_pdf_inspector import _build_native_pages_from_inspector
+    from page_capability import build_batches
+
+    inspector = PdfInspectorResult(
+        available=True,
+        pdf_type="text_based",
+        confidence=1.0,
+        page_count=2,
+        pages_needing_ocr=[0, 1],
+        markdown="",
+        duration_ms=10,
+    )
+    pages = _build_native_pages_from_inspector(inspector, native_min_chars=40)
+    assert all(p.capability == "VECTOR_COMPLEX" for p in pages)
+    assert all(p.ocrRequired is False for p in pages)
+    batches = build_batches(pages, batch_size=5)
+    assert batches[0]["route"] == "DOCLING"
+    assert batches[0]["ocrRequired"] is False
 
 
 @pytest.mark.skipif(

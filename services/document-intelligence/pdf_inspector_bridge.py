@@ -270,21 +270,67 @@ def inspect_pdf(
     )
 
 
+def decide_ocr_mode(inspector: PdfInspectorResult | None) -> str:
+    """Map inspector signals to OCR mode without hard-forcing text_based PDFs.
+
+    Returns: DISABLED | AUTO | FORCED
+    """
+    if inspector is None or not getattr(inspector, "is_usable", False):
+        return "AUTO"
+
+    pdf_type = str(getattr(inspector, "pdf_type", "") or "")
+    conf = float(getattr(inspector, "confidence", 0.0) or 0.0)
+    markdown = getattr(inspector, "markdown", None)
+    has_md = bool(markdown and str(markdown).strip())
+
+    # Clean digital with markdown → short-circuit handled upstream; keep OCR off.
+    if pdf_type == "text_based" and conf >= 0.90 and has_md:
+        return "DISABLED"
+
+    # text_based, high conf, empty markdown (weak/broken text layer encoding)
+    # → do NOT force OCR on every page; let Docling try native first.
+    if pdf_type == "text_based" and conf >= 0.90 and not has_md:
+        return "AUTO"
+
+    if pdf_type == "mixed":
+        return "AUTO"
+
+    if pdf_type in {"scanned", "image_based"}:
+        return "FORCED"
+
+    return "AUTO"
+
+
 def enrich_page_capabilities_from_inspector(
     pages: list[Any],
     inspector: PdfInspectorResult,
 ) -> list[Any]:
     """Overlay OCR-required flags coming from pdf-inspector onto existing PageCapability list.
 
-    This keeps the rest of the pipeline (batch builder, OCR mode application)
-    completely unchanged.
+    For high-confidence text_based PDFs, pages_needing_ocr is treated as a soft
+    signal and is not applied as a hard per-page OCR force.
     """
     if not inspector.is_usable or not pages:
         return pages
 
     from page_capability import PageCapability
 
-    ocr_set = set(inspector.pages_needing_ocr)
+    soft_text_based = (
+        inspector.pdf_type == "text_based"
+        and float(inspector.confidence or 0.0) >= 0.90
+    )
+    # Soft signal: ignore inspector OCR page list for high-conf text_based.
+    ocr_set: set[int] = set() if soft_text_based else set(inspector.pages_needing_ocr)
+    if soft_text_based and inspector.pages_needing_ocr:
+        logger.info(
+            "pdf-inspector OCR page flags softened for text_based document",
+            extra={
+                "confidence": inspector.confidence,
+                "ignored_ocr_pages": len(inspector.pages_needing_ocr),
+                "markdown_chars": len(inspector.markdown or ""),
+            },
+        )
+
     enriched = []
     for page in pages:
         # page is a PageCapability dataclass or dict-like

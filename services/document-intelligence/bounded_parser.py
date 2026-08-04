@@ -573,7 +573,33 @@ def _run_bounded_batch_path(
     inspector_result: Any,
     mctx: dict[str, Any],
 ) -> dict[str, Any]:
-    capabilities = apply_ocr_mode(capabilities, request.ocrMode)
+    from pdf_inspector_bridge import decide_ocr_mode
+
+    requested_ocr = str(getattr(request, "ocrMode", None) or "AUTO").upper()
+    force_mode = str(getattr(request, "forceMode", None) or "AUTO").upper()
+    if force_mode == "FORCE_OCR":
+        effective_ocr = "FORCED"
+    elif requested_ocr in {"DISABLED", "FORCED"}:
+        effective_ocr = requested_ocr
+    else:
+        # AUTO (default): let inspector decide; text_based+empty-md must not hard-force OCR.
+        effective_ocr = decide_ocr_mode(inspector_result)
+    if effective_ocr != requested_ocr:
+        on_progress(
+            {
+                "stage": "ocr_mode",
+                "progress": 28,
+                "message": (
+                    f"OCR mode resolved {requested_ocr} → {effective_ocr} "
+                    f"(pdf_type={getattr(inspector_result, 'pdf_type', None)}, "
+                    f"conf={getattr(inspector_result, 'confidence', None)})"
+                ),
+                "currentStage": "OCR_MODE_RESOLVED",
+                "requestedOcrMode": requested_ocr,
+                "effectiveOcrMode": effective_ocr,
+            }
+        )
+    capabilities = apply_ocr_mode(capabilities, effective_ocr)
     total_pages = len(capabilities)
     if total_pages == 0:
         mctx["outcome"] = "error"
@@ -594,6 +620,11 @@ def _run_bounded_batch_path(
     fallback_pages: list[int] = []
     checkpoint_count = 0
     slowest_batch: dict[str, Any] | None = None
+    routing_meta = {
+        "requestedOcrMode": requested_ocr,
+        "effectiveOcrMode": effective_ocr,
+        "forceMode": force_mode,
+    }
 
     on_progress(
         {
@@ -614,6 +645,8 @@ def _run_bounded_batch_path(
                 len(inspector_result.pages_needing_ocr) if inspector_result else None
             ),
             "usable": getattr(inspector_result, "is_usable", None) if inspector_result else None,
+            "requestedOcrMode": routing_meta["requestedOcrMode"],
+            "effectiveOcrMode": routing_meta["effectiveOcrMode"],
         }
     )
 
@@ -823,6 +856,9 @@ def _run_bounded_batch_path(
         "checkpointCount": checkpoint_count,
         "failedPages": [],
         "slowestBatch": slowest_batch,
+        "requestedOcrMode": routing_meta["requestedOcrMode"],
+        "effectiveOcrMode": routing_meta["effectiveOcrMode"],
+        "forceMode": routing_meta["forceMode"],
         "capabilities": [page.to_dict() for page in capabilities],
         "batches": [
             {

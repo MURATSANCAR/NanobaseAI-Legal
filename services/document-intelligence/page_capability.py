@@ -224,14 +224,18 @@ def build_batches(
     while index < len(pages):
         seed = pages[index]
         route = "OCR" if seed.ocrRequired else (
-            "TABLE" if seed.capability == "TABLE_DOMINANT" else "NATIVE"
+            "TABLE" if seed.capability == "TABLE_DOMINANT"
+            else "DOCLING" if seed.capability == "VECTOR_COMPLEX"
+            else "NATIVE"
         )
         members = [seed]
         cursor = index + 1
         while cursor < len(pages) and len(members) < batch_size:
             candidate = pages[cursor]
             candidate_route = "OCR" if candidate.ocrRequired else (
-                "TABLE" if candidate.capability == "TABLE_DOMINANT" else "NATIVE"
+                "TABLE" if candidate.capability == "TABLE_DOMINANT"
+                else "DOCLING" if candidate.capability == "VECTOR_COMPLEX"
+                else "NATIVE"
             )
             if candidate_route != route:
                 break

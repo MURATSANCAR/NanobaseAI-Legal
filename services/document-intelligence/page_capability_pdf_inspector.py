@@ -103,24 +103,34 @@ def _build_native_pages_from_inspector(
     """Construct PageCapability list for a confirmed text-based PDF without re-parsing."""
     pages: list[PageCapability] = []
     synthetic = _synthetic_native_text(native_min_chars)
+    has_md = bool(inspector.markdown and str(inspector.markdown).strip())
+    prefer_docling_native = (not has_md) and float(inspector.confidence or 0.0) >= 0.90
     for i in range(1, inspector.page_count + 1):
         # We do not have per-page character counts from the high-level API,
         # so we assume healthy digital text (the classifier already confirmed it).
-        pages.append(
-            classify_page_signals(
-                page_number=i,
-                text=synthetic,
-                image_count=0,
-                font_count=2,
-                rotation=0,
-                text_extraction_ms=0,
-                render_ms=0,
-                image_coverage=0.0,
-                vector_complexity=0.0,
-                native_min_chars=native_min_chars,
-            )
+        page = classify_page_signals(
+            page_number=i,
+            text=synthetic,
+            image_count=0,
+            font_count=2,
+            rotation=0,
+            text_extraction_ms=0,
+            render_ms=0,
+            image_coverage=0.0,
+            vector_complexity=0.0,
+            native_min_chars=native_min_chars,
         )
-    # Overlay any residual OCR signals (should be empty for pure text_based)
+        if prefer_docling_native:
+            # Empty markdown + high-conf text_based: pypdf page dumps are weak;
+            # prefer Docling layout extract with OCR disabled.
+            data = page.to_dict()
+            data["capability"] = "VECTOR_COMPLEX"
+            signals = dict(data.get("qualitySignals") or {})
+            signals["preferDoclingNative"] = True
+            data["qualitySignals"] = signals
+            page = PageCapability(**data)
+        pages.append(page)
+    # Overlay any residual OCR signals (softened for high-conf text_based).
     return enrich_page_capabilities_from_inspector(pages, inspector)
 
 
