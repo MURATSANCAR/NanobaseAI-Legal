@@ -83,19 +83,33 @@ def classify_pdf_pages(
     return pages, inspector
 
 
+def _synthetic_native_text(native_min_chars: int) -> str:
+    """Multi-line non-whitespace text that satisfies NATIVE_TEXT thresholds.
+
+    Whitespace-only strings strip to empty and incorrectly become LOW_CONTENT.
+    """
+    line = "native digital text sample "
+    # Ensure enough characters after strip + at least NATIVE_MIN_BLOCKS lines.
+    body = "\n".join([line * 2, line * 2, line * 2])
+    if len(body.strip()) < native_min_chars + 10:
+        body = (line * ((native_min_chars // len(line)) + 3)) + "\n" + body
+    return body
+
+
 def _build_native_pages_from_inspector(
     inspector: PdfInspectorResult,
     native_min_chars: int,
 ) -> list[PageCapability]:
     """Construct PageCapability list for a confirmed text-based PDF without re-parsing."""
     pages: list[PageCapability] = []
+    synthetic = _synthetic_native_text(native_min_chars)
     for i in range(1, inspector.page_count + 1):
         # We do not have per-page character counts from the high-level API,
         # so we assume healthy digital text (the classifier already confirmed it).
         pages.append(
             classify_page_signals(
                 page_number=i,
-                text=" " * (native_min_chars + 10),  # synthetic healthy signal
+                text=synthetic,
                 image_count=0,
                 font_count=2,
                 rotation=0,

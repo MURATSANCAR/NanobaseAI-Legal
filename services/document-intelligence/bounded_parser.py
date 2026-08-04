@@ -493,6 +493,14 @@ def run_bounded_parse(
             "processedPages": 0,
             "failedPages": 0,
             "estimatedRemainingBatches": len(batches),
+            # Durable routing signal (PDF_INSPECTOR stage is ~sub-second and easy to miss).
+            "pdf_type": getattr(inspector_result, "pdf_type", None) if inspector_result else None,
+            "confidence": getattr(inspector_result, "confidence", None) if inspector_result else None,
+            "duration_ms": getattr(inspector_result, "duration_ms", None) if inspector_result else None,
+            "pages_needing_ocr": (
+                len(inspector_result.pages_needing_ocr) if inspector_result else None
+            ),
+            "usable": getattr(inspector_result, "is_usable", None) if inspector_result else None,
         }
     )
 

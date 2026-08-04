@@ -405,6 +405,12 @@ def process_pdf_bounded(job_id: str, local_path: Path, request: ParseRequest) ->
             "currentPage",
             "currentBatch",
             "estimatedRemainingBatches",
+            "pdf_type",
+            "confidence",
+            "duration_ms",
+            "pages_needing_ocr",
+            "usable",
+            "markdownChars",
         ):
             if key in event and event[key] is not None:
                 extras.append(f"{key}={event[key]}")

@@ -106,6 +106,32 @@ def test_enrich_page_capabilities_overlays_ocr_flag():
     assert enriched[1].capability == "MIXED_TEXT_IMAGE"
 
 
+def test_normalize_ocr_page_indexes_one_based():
+    from pdf_inspector_bridge import _normalize_ocr_page_indexes
+
+    assert _normalize_ocr_page_indexes([1, 2, 3], 3) == [0, 1, 2]
+    assert _normalize_ocr_page_indexes([0, 1], 3) == [0, 1]
+    assert _normalize_ocr_page_indexes([], 3) == []
+
+
+def test_text_based_fast_path_builds_native_pages():
+    from page_capability_pdf_inspector import _build_native_pages_from_inspector
+
+    inspector = PdfInspectorResult(
+        available=True,
+        pdf_type="text_based",
+        confidence=1.0,
+        page_count=3,
+        pages_needing_ocr=[],
+        markdown="# hello",
+        duration_ms=10,
+    )
+    pages = _build_native_pages_from_inspector(inspector, native_min_chars=40)
+    assert len(pages) == 3
+    assert all(p.capability == "NATIVE_TEXT" for p in pages)
+    assert all(p.ocrRequired is False for p in pages)
+
+
 @pytest.mark.skipif(
     os.getenv("PDF_INSPECTOR_LIVE") != "1",
     reason="Set PDF_INSPECTOR_LIVE=1 and provide a real PDF to run live test",

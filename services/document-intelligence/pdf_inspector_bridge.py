@@ -125,6 +125,21 @@ def _unavailable(error: str, *, duration_ms: int = 0) -> PdfInspectorResult:
     )
 
 
+def _normalize_ocr_page_indexes(pages: list[int], page_count: int) -> list[int]:
+    """Normalize library page indexes to 0-based.
+
+    Live pdf-inspector 0.2.x returns 1-based indexes (e.g. [1,2,3] for a 3-page
+    scanned PDF). Older bindings may already be 0-based.
+    """
+    if not pages or page_count <= 0:
+        return pages
+    if 0 in pages:
+        return [p for p in pages if 0 <= p < page_count]
+    if min(pages) >= 1 and max(pages) <= page_count:
+        return [p - 1 for p in pages]
+    return [p for p in pages if 0 <= p < page_count]
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -219,6 +234,8 @@ def inspect_pdf(
 
     pages_needing = [int(p) for p in raw.get("pages_needing_ocr") or []]
     page_count = int(raw.get("page_count") or 0)
+    # pdf-inspector 0.2.x returns 1-based page numbers; normalize to 0-based.
+    pages_needing = _normalize_ocr_page_indexes(pages_needing, page_count)
 
     # Safety: if the document is huge we may have skipped full Markdown
     markdown = raw.get("markdown")
