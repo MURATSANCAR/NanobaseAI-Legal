@@ -190,11 +190,21 @@ def health_live() -> dict[str, str]:
 
 
 @app.get("/health/ready")
-def health_ready() -> dict[str, str]:
+def health_ready() -> dict[str, object]:
     try:
         with connection() as database:
             database.execute("SELECT 1").fetchone()
-        return {"status": "UP"}
+        try:
+            from pdf_inspector_bridge import health_check as pdf_inspector_health
+
+            pdf_inspector = pdf_inspector_health()
+        except Exception as exception:  # noqa: BLE001
+            pdf_inspector = {
+                "enabled": False,
+                "library_loaded": False,
+                "import_error": f"{type(exception).__name__}: {exception}",
+            }
+        return {"status": "UP", "pdf_inspector": pdf_inspector}
     except sqlite3.Error as exception:
         raise HTTPException(status_code=503, detail="Job database is unavailable") from exception
 

@@ -11,8 +11,31 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-from page_capability import PageCapability, build_batches, classify_pdf_pages
+from page_capability import PageCapability, build_batches
 from parser_checkpoint import ParserCheckpointStore
+
+try:
+    from page_capability_pdf_inspector import (
+        classify_pdf_pages as classify_pdf_pages_enhanced,
+    )
+    from pdf_inspector_bridge import health_check as pdf_inspector_health
+
+    _PDF_INSPECTOR_AVAILABLE = True
+except ImportError:  # pragma: no cover
+    from page_capability import classify_pdf_pages as classify_pdf_pages_enhanced
+
+    _PDF_INSPECTOR_AVAILABLE = False
+
+    def pdf_inspector_health() -> dict:
+        return {"enabled": False, "library_loaded": False}
+
+
+def classify_pdf_pages(*args, **kwargs):
+    """Compatibility wrapper: enhanced path returns (pages, inspector); mocks may return list."""
+    result = classify_pdf_pages_enhanced(*args, **kwargs)
+    if isinstance(result, tuple) and len(result) == 2:
+        return result
+    return result, None
 
 
 def env_int(name: str, default: int) -> int:
@@ -401,10 +424,45 @@ def run_bounded_parse(
             "currentStage": "PAGE_ENUMERATION",
         }
     )
-    capabilities = apply_ocr_mode(
-        classify_pdf_pages(path, native_min_chars=NATIVE_MIN_CHARS),
-        request.ocrMode,
-    )
+    classified = classify_pdf_pages(path, native_min_chars=NATIVE_MIN_CHARS)
+    if isinstance(classified, tuple) and len(classified) == 2:
+        capabilities, inspector_result = classified
+    else:
+        # Unit tests / legacy mocks may still return a bare page list.
+        capabilities, inspector_result = classified, None
+    if inspector_result is not None:
+        on_progress(
+            {
+                "stage": "pdf_inspector",
+                "progress": 22,
+                "message": "pdf-inspector classification complete",
+                "currentStage": "PDF_INSPECTOR",
+                "pdf_type": inspector_result.pdf_type,
+                "confidence": inspector_result.confidence,
+                "duration_ms": inspector_result.duration_ms,
+                "pages_needing_ocr": len(inspector_result.pages_needing_ocr),
+                "usable": inspector_result.is_usable,
+                "error": inspector_result.error,
+            }
+        )
+    # Optional fast-path hook: pure text_based + markdown is available for
+    # a future clause extractor short-circuit (Docling path remains default).
+    if (
+        inspector_result
+        and inspector_result.is_usable
+        and inspector_result.pdf_type == "text_based"
+        and inspector_result.markdown
+    ):
+        on_progress(
+            {
+                "stage": "pdf_inspector",
+                "progress": 23,
+                "message": "pdf-inspector markdown available for text_based document",
+                "currentStage": "PDF_INSPECTOR_MARKDOWN",
+                "markdownChars": len(inspector_result.markdown),
+            }
+        )
+    capabilities = apply_ocr_mode(capabilities, request.ocrMode)
     total_pages = len(capabilities)
     if total_pages == 0:
         raise BoundedParseError("EMPTY_DOCUMENT", "PDF has no pages")
