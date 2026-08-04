@@ -209,6 +209,15 @@ def health_ready() -> dict[str, object]:
         raise HTTPException(status_code=503, detail="Job database is unavailable") from exception
 
 
+@app.get("/metrics")
+def metrics():
+    from fastapi.responses import Response
+    from parser_metrics import metrics_payload
+
+    body, content_type = metrics_payload()
+    return Response(content=body, media_type=content_type)
+
+
 @app.post("/v1/documents/parse", response_model=ParseResponse, status_code=202)
 def parse_document(request: ParseRequest, background_tasks: BackgroundTasks) -> ParseResponse:
     if request.mimeType not in SUPPORTED_MIME_TYPES:

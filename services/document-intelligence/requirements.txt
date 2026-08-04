@@ -6,4 +6,5 @@ boto3==1.40.10
 docling==2.43.0
 # Fast native PDF classification + Markdown (optional at runtime; graceful fallback)
 pdf-inspector>=0.1.0
+prometheus_client>=0.20.0
 

@@ -45,6 +45,20 @@ except ImportError:  # pragma: no cover
     def run_markdown_short_circuit(*args, **kwargs):  # type: ignore[misc]
         raise RuntimeError("markdown short-circuit unavailable")
 
+try:
+    from parser_metrics import track_parse
+except ImportError:  # pragma: no cover
+    from contextlib import contextmanager
+
+    @contextmanager
+    def track_parse(path: str, pdf_type: str | None = None):  # type: ignore[misc]
+        yield {
+            "page_count": 0,
+            "clause_count": 0,
+            "table_count": 0,
+            "outcome": "success",
+        }
+
 
 def classify_pdf_pages(*args, **kwargs):
     """Compatibility wrapper: enhanced path returns (pages, inspector); mocks may return list."""
@@ -478,36 +492,87 @@ def run_bounded_parse(
         )
 
     # High-confidence text_based + Markdown → skip Docling entirely.
+    short_circuit_failed = False
     if should_short_circuit(inspector_result, ocr_mode=str(request.ocrMode or "AUTO")):
-        try:
-            return run_markdown_short_circuit(
-                document_version_id=str(request.documentVersionId),
-                inspector_result=inspector_result,
-                language=request.languageHint or "und",
-                ocr_mode=str(request.ocrMode or "AUTO"),
-                extract_tables=bool(getattr(request, "extractTables", True)),
-                progress_callback=on_progress,
-                started_monotonic=started,
-            )
-        except Exception:
-            # Never fail the job because short-circuit crashed; fall back to Docling.
-            logger.exception(
-                "markdown short-circuit failed – falling back to Docling path"
-            )
-            on_progress(
-                {
-                    "stage": "pdf_inspector",
-                    "progress": 24,
-                    "message": "markdown short-circuit failed – continuing with Docling",
-                    "currentStage": "MARKDOWN_SHORT_CIRCUIT_FALLBACK",
-                }
-            )
+        with track_parse(
+            "pdf_inspector_short_circuit",
+            getattr(inspector_result, "pdf_type", None),
+        ) as mctx:
+            try:
+                short_result = run_markdown_short_circuit(
+                    document_version_id=str(request.documentVersionId),
+                    inspector_result=inspector_result,
+                    language=request.languageHint or "und",
+                    ocr_mode=str(request.ocrMode or "AUTO"),
+                    extract_tables=bool(getattr(request, "extractTables", True)),
+                    progress_callback=on_progress,
+                    started_monotonic=started,
+                )
+                mctx["page_count"] = int(short_result.get("pageCount") or 0)
+                mctx["clause_count"] = len(short_result.get("clauses") or [])
+                mctx["table_count"] = len(short_result.get("tables") or [])
+                mctx["outcome"] = "success"
+                return short_result
+            except Exception:
+                mctx["outcome"] = "error"
+                short_circuit_failed = True
+                logger.exception(
+                    "markdown short-circuit failed – falling back to Docling path"
+                )
+                on_progress(
+                    {
+                        "stage": "pdf_inspector",
+                        "progress": 24,
+                        "message": "markdown short-circuit failed – continuing with Docling",
+                        "currentStage": "MARKDOWN_SHORT_CIRCUIT_FALLBACK",
+                    }
+                )
 
+    pdf_type_label = str(getattr(inspector_result, "pdf_type", None) or "unknown")
+    if short_circuit_failed:
+        path_label = "fallback"
+    elif inspector_result is not None and getattr(inspector_result, "is_usable", False):
+        path_label = "docling"
+    else:
+        path_label = "legacy"
+
+    with track_parse(path_label, pdf_type_label) as mctx:
+        return _run_bounded_batch_path(
+            path=path,
+            request=request,
+            job_id=job_id,
+            checkpoint_store=checkpoint_store,
+            executor=executor,
+            on_progress=on_progress,
+            is_cancelled=is_cancelled,
+            started=started,
+            capabilities=capabilities,
+            inspector_result=inspector_result,
+            mctx=mctx,
+        )
+
+
+def _run_bounded_batch_path(
+    *,
+    path: Path,
+    request: Any,
+    job_id: str,
+    checkpoint_store: ParserCheckpointStore,
+    executor: ThreadPoolExecutor,
+    on_progress: ProgressCallback,
+    is_cancelled: CancelCallback,
+    started: float,
+    capabilities: list[PageCapability],
+    inspector_result: Any,
+    mctx: dict[str, Any],
+) -> dict[str, Any]:
     capabilities = apply_ocr_mode(capabilities, request.ocrMode)
     total_pages = len(capabilities)
     if total_pages == 0:
+        mctx["outcome"] = "error"
         raise BoundedParseError("EMPTY_DOCUMENT", "PDF has no pages")
     if total_pages > env_int("MAX_PAGE_COUNT", 500):
+        mctx["outcome"] = "error"
         raise BoundedParseError("PAGE_COUNT_LIMIT", "Document exceeds the page limit")
 
     batches = build_batches(capabilities, batch_size=BATCH_SIZE)
@@ -547,8 +612,10 @@ def run_bounded_parse(
 
     for batch in batches:
         if is_cancelled():
+            mctx["outcome"] = "cancelled"
             raise BoundedParseError("CANCELLED", "Parser cancellation requested")
         if time.monotonic() - started > DOCUMENT_ORCHESTRATION_TIMEOUT_SECONDS:
+            mctx["outcome"] = "error"
             raise BoundedParseError(
                 "DOCUMENT_ORCHESTRATION_TIMEOUT",
                 "Document orchestration timeout exceeded",
@@ -575,6 +642,7 @@ def run_bounded_parse(
         pending = list(units)
         while pending and attempt <= MAX_BATCH_ATTEMPTS:
             if is_cancelled():
+                mctx["outcome"] = "cancelled"
                 raise BoundedParseError("CANCELLED", "Parser cancellation requested")
             next_pending: list[dict[str, Any]] = []
             for unit in pending:
@@ -728,6 +796,7 @@ def run_bounded_parse(
             number for number in batch["pageNumbers"] if number not in provider_per_page
         ]
         if unfinished:
+            mctx["outcome"] = "error"
             raise BoundedParseError(
                 "PARTIAL_PARSE_FAILED",
                 f"Failed pages remain after retries: {unfinished[:30]}",
@@ -773,10 +842,15 @@ def run_bounded_parse(
             "estimatedRemainingBatches": 0,
         }
     )
-    return merge_batch_results(
+    merged = merge_batch_results(
         str(request.documentVersionId),
         request.languageHint or "und",
         batch_results,
         expected_page_count=total_pages,
         plan=plan,
     )
+    mctx["page_count"] = int(merged.get("pageCount") or 0)
+    mctx["clause_count"] = len(merged.get("clauses") or [])
+    mctx["table_count"] = len(merged.get("tables") or [])
+    mctx["outcome"] = "success"
+    return merged
