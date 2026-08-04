@@ -22,10 +22,6 @@ try:
         classify_pdf_pages as classify_pdf_pages_enhanced,
     )
     from pdf_inspector_bridge import health_check as pdf_inspector_health
-    from markdown_short_circuit import (
-        run_markdown_short_circuit,
-        should_short_circuit,
-    )
 
     _PDF_INSPECTOR_AVAILABLE = True
 except ImportError:  # pragma: no cover
@@ -35,6 +31,13 @@ except ImportError:  # pragma: no cover
 
     def pdf_inspector_health() -> dict:
         return {"enabled": False, "library_loaded": False}
+
+try:
+    from markdown_short_circuit import (
+        run_markdown_short_circuit,
+        should_short_circuit,
+    )
+except ImportError:  # pragma: no cover
 
     def should_short_circuit(*args, **kwargs):  # type: ignore[misc]
         return False

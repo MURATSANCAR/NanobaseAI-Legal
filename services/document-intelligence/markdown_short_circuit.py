@@ -168,6 +168,7 @@ def _build_clauses(markdown: str, page_count: int) -> list[dict[str, Any]]:
                     "provider": "PDF_INSPECTOR",
                     "source": "PDF_INSPECTOR_MARKDOWN",
                     "shortCircuited": True,
+                    "fallback": True,
                 },
             }
         current["rawText"] += stripped + "\n"

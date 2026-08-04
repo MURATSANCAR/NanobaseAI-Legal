@@ -323,4 +323,11 @@ def health_check() -> dict[str, Any]:
         "library_loaded": lib is not None,
         "import_error": _import_error,
         "timeout_seconds": PDF_INSPECTOR_TIMEOUT_SECONDS,
+        "markdown_short_circuit": os.getenv(
+            "PDF_INSPECTOR_MARKDOWN_SHORT_CIRCUIT", "true"
+        ).lower()
+        in {"1", "true", "yes"},
+        "markdown_min_confidence": float(
+            os.getenv("PDF_INSPECTOR_MARKDOWN_MIN_CONFIDENCE", "0.90")
+        ),
     }
