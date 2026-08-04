@@ -1,0 +1,26 @@
+{
+  "documents": [
+    {
+      "documentId": "example-tender-id",
+      "sourcePdf": "example.pdf",
+      "annotator": "human@example.com",
+      "annotatedAt": "2026-08-05",
+      "notes": "4–8 kritik madde; title tam heading metni olmalı",
+      "expectedClauses": [
+        {
+          "title": "1. GENEL HÜKÜMLER",
+          "contentContains": ["kapsam", "yüklenici"],
+          "pageStart": 1,
+          "pageEnd": 3
+        },
+        {
+          "title": "3. TEMİNAT",
+          "contentContains": ["kesin teminat", "%6"],
+          "pageStart": 5,
+          "pageEnd": 6
+        }
+      ],
+      "forbiddenPatterns": ["lorem ipsum", "\ufffd\ufffd\ufffd"]
+    }
+  ]
+}

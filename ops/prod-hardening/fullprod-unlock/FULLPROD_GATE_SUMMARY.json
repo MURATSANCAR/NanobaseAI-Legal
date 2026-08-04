@@ -1,0 +1,59 @@
+{
+  "passedCount": 9,
+  "totalCount": 9,
+  "allPassed": true,
+  "gates": [
+    {
+      "gate": "health_ready_pdf_inspector",
+      "passed": true
+    },
+    {
+      "gate": "short_circuit_flag_on",
+      "passed": true
+    },
+    {
+      "gate": "metrics_parser_series",
+      "passed": true
+    },
+    {
+      "gate": "metrics_short_circuit_gauge",
+      "passed": true
+    },
+    {
+      "gate": "core_functions_import",
+      "passed": true
+    },
+    {
+      "gate": "golden_pass_rate",
+      "passed": true,
+      "detail": "passRate=1.0 docs=8"
+    },
+    {
+      "gate": "golden_diversity",
+      "passed": true,
+      "detail": "uniqueDocumentIds=8"
+    },
+    {
+      "gate": "soak_thresholds",
+      "passed": true,
+      "detail": "success=1.0 p95=1.5255 shortCircuit=1.0"
+    },
+    {
+      "gate": "rollback_drill_recorded",
+      "passed": true
+    }
+  ],
+  "evidence": {
+    "image": "specai-legal-document-intelligence:latest rebuilt 2026-08-05",
+    "rollback": "/data/nanobaseai/legal/ops/prod-hardening/fullprod-unlock/rollback/ROLLBACK_DRILL_RESULT.md",
+    "grafana": "http://127.0.0.1:3002/d/nanobase-parser-routing/nanobase-legal-e28093-parser-routing",
+    "golden": "/data/fixtures/golden/expected.json",
+    "goldenReport": "/tmp/clause-quality-report.json",
+    "prometheusJob": "specai-document-intelligence"
+  },
+  "notes": [
+    "Golden set: 8 distinct documentIds (HBYS, DSİ variants, synthetic, MDA, scanned, mini idari). Not the prior 10-slot DSİ clone.",
+    "Worker scale still optional (uvicorn workers=1); soak conc=1 already green.",
+    "Pilot unlock: no remaining automatic gate failures."
+  ]
+}
