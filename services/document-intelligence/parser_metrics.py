@@ -81,6 +81,11 @@ if _PROM_AVAILABLE:
         "specai_parser_short_circuit_enabled",
         "1 when markdown short-circuit feature flag is enabled",
     )
+    PARSER_GUARD_TOTAL = Counter(
+        "specai_parser_guard_total",
+        "Pre-parse guard rejections by error code",
+        ["error_code"],
+    )
     PARSER_SHORT_CIRCUIT_ENABLED.set(1.0 if _short_circuit_enabled() else 0.0)
 else:  # pragma: no cover
     PARSER_PATH_TOTAL = None
@@ -89,6 +94,16 @@ else:  # pragma: no cover
     PARSER_TABLES_TOTAL = None
     PARSER_PAGES_TOTAL = None
     PARSER_SHORT_CIRCUIT_ENABLED = None
+    PARSER_GUARD_TOTAL = None
+
+
+def record_guard(error_code: str) -> None:
+    if PARSER_GUARD_TOTAL is None:
+        return
+    try:
+        PARSER_GUARD_TOTAL.labels(error_code=(error_code or "UNKNOWN")).inc()
+    except Exception:  # noqa: BLE001
+        logger.exception("failed to record guard metric")
 
 
 def refresh_short_circuit_gauge() -> None:

@@ -343,6 +343,23 @@ def process_document(job_id: str, request: ParseRequest) -> None:
             raise SafeProcessingError("SOURCE_SIZE_MISMATCH", "Downloaded file size differs")
         if cancelled(job_id):
             return
+        if request.mimeType == "application/pdf":
+            try:
+                from error_path_guards import ParserGuardError, guard_before_parse
+                from parser_metrics import record_guard, record_parse
+
+                guard_before_parse(local_path, mime_type=request.mimeType)
+            except ParserGuardError as guard_error:
+                try:
+                    record_guard(guard_error.code)
+                    record_parse("legacy", "unknown", 0.0, outcome="error")
+                except Exception:  # noqa: BLE001
+                    pass
+                raise SafeProcessingError(
+                    guard_error.code, guard_error.message
+                ) from guard_error
+            except ImportError:
+                pass
         if BOUNDED_PARSING_ENABLED and request.mimeType == "application/pdf":
             result = process_pdf_bounded(job_id, local_path, request)
         else:

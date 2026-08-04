@@ -239,6 +239,17 @@ def inspect_pdf(
 
     # Safety: if the document is huge we may have skipped full Markdown
     markdown = raw.get("markdown")
+    try:
+        from error_path_guards import guard_markdown_size
+
+        markdown = guard_markdown_size(markdown if isinstance(markdown, str) else None)
+    except Exception:  # noqa: BLE001
+        if (
+            markdown
+            and page_count > PDF_INSPECTOR_MAX_PAGES_FOR_FULL_EXTRACT
+            and extract_markdown
+        ):
+            markdown = None
     if (
         markdown
         and page_count > PDF_INSPECTOR_MAX_PAGES_FOR_FULL_EXTRACT
