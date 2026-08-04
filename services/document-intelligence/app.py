@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import re
 import sqlite3
@@ -17,6 +18,8 @@ import boto3
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
+
+logger = logging.getLogger("specai.document.app")
 
 DATABASE_PATH = Path(os.getenv("JOB_DATABASE_PATH", "/var/lib/specai/jobs.sqlite3"))
 TEMPORARY_DIRECTORY = Path(os.getenv("TEMPORARY_DIRECTORY", "/tmp/specai-docling"))
@@ -57,12 +60,23 @@ class ParseRequest(BaseModel):
     ocrMode: Literal["DISABLED", "AUTO", "FORCED"] = "AUTO"
     extractTables: bool = True
     extractImages: bool = False
+    forceMode: Literal[
+        "AUTO", "FORCE_DOCLING", "FORCE_SHORT_CIRCUIT", "FORCE_OCR"
+    ] = "AUTO"
     correlationId: uuid.UUID
 
 
 class ParseResponse(BaseModel):
     jobId: uuid.UUID
     status: str
+
+
+class ReprocessRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    forceMode: Literal[
+        "AUTO", "FORCE_DOCLING", "FORCE_SHORT_CIRCUIT", "FORCE_OCR"
+    ] = "AUTO"
+    correlationId: uuid.UUID
 
 
 class JobResponse(BaseModel):
@@ -254,6 +268,43 @@ def parse_document(request: ParseRequest, background_tasks: BackgroundTasks) -> 
     return ParseResponse(jobId=job_id, status="QUEUED")
 
 
+@app.post("/v1/jobs/{job_id}/reprocess", response_model=ParseResponse, status_code=202)
+def reprocess_job(
+    job_id: uuid.UUID,
+    body: ReprocessRequest,
+    background_tasks: BackgroundTasks,
+) -> ParseResponse:
+    """Create a new parse job from a prior job. Previous result_json is never overwritten."""
+    from reprocess_policy import apply_plan_to_parse_options, decide_reprocess_plan
+
+    with connection() as database:
+        row = database.execute(
+            """
+            SELECT id, document_version_id, request_json, status, error_code, result_json
+            FROM processing_job WHERE id = ?
+            """,
+            (str(job_id),),
+        ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Job was not found")
+
+    previous = ParseRequest.model_validate_json(row["request_json"])
+    plan = decide_reprocess_plan(
+        force_mode=body.forceMode,
+        previous_status=row["status"],
+        previous_error_code=row["error_code"],
+    )
+    options = apply_plan_to_parse_options(plan)
+    new_request = previous.model_copy(
+        update={
+            "correlationId": body.correlationId,
+            "forceMode": options["forceMode"],
+            "ocrMode": options["ocrMode"],
+        }
+    )
+    return parse_document(new_request, background_tasks)
+
+
 @app.get("/v1/jobs/{job_id}", response_model=JobResponse)
 def get_job(job_id: uuid.UUID) -> JobResponse:
     with connection() as database:
@@ -300,7 +351,9 @@ def cancel_job(job_id: uuid.UUID) -> dict[str, str]:
                 current_stage = 'CANCELLED', progress = 100,
                 message = 'Document processing cancelled',
                 updated_at = CURRENT_TIMESTAMP
-            WHERE id = ? AND status NOT IN ('COMPLETED', 'FAILED', 'CANCELLED')
+            WHERE id = ? AND status NOT IN (
+                'COMPLETED', 'FAILED', 'CANCELLED', 'MANUAL_REVIEW_REQUIRED'
+            )
             """,
             (str(job_id),),
         ).rowcount
@@ -393,22 +446,47 @@ def process_document(job_id: str, request: ParseRequest) -> None:
             result=result,
         )
     except SafeProcessingError as exception:
+        from error_to_state import build_audit_event, resolve_error_state
+
+        decision = resolve_error_state(
+            exception.code, safe_message=exception.safe_message
+        )
+        audit = build_audit_event(
+            decision,
+            job_id=job_id,
+            document_version_id=str(request.documentVersionId),
+            correlation_id=str(request.correlationId),
+        )
+        logger.info(
+            "parser error routed",
+            extra={"audit": audit, "portal_message_key": decision.portalMessageKey},
+        )
         update_job(
             job_id,
-            status="FAILED",
-            stage="FAILED",
+            status=decision.jobStatus,
+            stage=decision.terminalStatus,
             progress=100,
-            message=exception.safe_message,
-            error_code=exception.code,
+            message=decision.safeMessage,
+            error_code=decision.errorCode,
         )
     except Exception:
+        from error_to_state import build_audit_event, resolve_error_state
+
+        decision = resolve_error_state("PARSER_FAILED")
+        audit = build_audit_event(
+            decision,
+            job_id=job_id,
+            document_version_id=str(request.documentVersionId),
+            correlation_id=str(request.correlationId),
+        )
+        logger.exception("parser failed", extra={"audit": audit})
         update_job(
             job_id,
-            status="FAILED",
-            stage="FAILED",
+            status=decision.jobStatus,
+            stage=decision.terminalStatus,
             progress=100,
-            message="Document parser failed",
-            error_code="PARSER_FAILED",
+            message=decision.safeMessage,
+            error_code=decision.errorCode,
         )
     finally:
         if local_path is not None:

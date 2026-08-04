@@ -36,21 +36,33 @@ def _env_int(name: str, default: str) -> int:
     return int(os.getenv(name, default))
 
 
-def should_short_circuit(inspector_result: Any, *, ocr_mode: str = "AUTO") -> bool:
+def should_short_circuit(
+    inspector_result: Any,
+    *,
+    ocr_mode: str = "AUTO",
+    allow_short_circuit: bool = True,
+    force_mode: str = "AUTO",
+) -> bool:
     """Pure decision function – easy to unit-test."""
-    if not _env_bool("PDF_INSPECTOR_MARKDOWN_SHORT_CIRCUIT", "true"):
+    mode = str(force_mode or "AUTO").upper()
+    if mode in {"FORCE_DOCLING", "FORCE_OCR"}:
         return False
-    if str(ocr_mode or "AUTO").upper() == "FORCED":
+    if not allow_short_circuit:
+        return False
+    if not _env_bool("PDF_INSPECTOR_MARKDOWN_SHORT_CIRCUIT", "true") and mode != "FORCE_SHORT_CIRCUIT":
+        return False
+    if str(ocr_mode or "AUTO").upper() == "FORCED" and mode != "FORCE_SHORT_CIRCUIT":
         return False
     if inspector_result is None:
         return False
-    if not getattr(inspector_result, "is_usable", False):
+    if mode != "FORCE_SHORT_CIRCUIT" and not getattr(inspector_result, "is_usable", False):
         return False
-    if getattr(inspector_result, "pdf_type", None) != "text_based":
+    if mode != "FORCE_SHORT_CIRCUIT" and getattr(inspector_result, "pdf_type", None) != "text_based":
         return False
-    min_conf = _env_float("PDF_INSPECTOR_MARKDOWN_MIN_CONFIDENCE", "0.90")
-    if float(getattr(inspector_result, "confidence", 0.0)) < min_conf:
-        return False
+    if mode != "FORCE_SHORT_CIRCUIT":
+        min_conf = _env_float("PDF_INSPECTOR_MARKDOWN_MIN_CONFIDENCE", "0.90")
+        if float(getattr(inspector_result, "confidence", 0.0)) < min_conf:
+            return False
     markdown = getattr(inspector_result, "markdown", None)
     if not markdown or not isinstance(markdown, str):
         return False
@@ -267,7 +279,22 @@ def run_markdown_short_circuit(
             }
         )
 
-    clauses = _build_clauses(markdown, page_count)
+    try:
+        from markdown_clause_parser import parse_markdown_clauses
+
+        clauses, parsed_tables = parse_markdown_clauses(
+            markdown, page_count=page_count, provider="PDF_INSPECTOR"
+        )
+        for clause in clauses:
+            meta = dict(clause.get("metadata") or {})
+            meta["shortCircuited"] = True
+            clause["metadata"] = meta
+        tables = parsed_tables if extract_tables else []
+    except Exception:
+        logger.exception("hierarchical clause parser failed – using legacy splitter")
+        clauses = _build_clauses(markdown, page_count)
+        tables = _build_tables(markdown, page_count) if extract_tables else []
+
     if not clauses:
         # Keep persistence usable even when Markdown has no headings.
         body = markdown.strip()
@@ -294,8 +321,6 @@ def run_markdown_short_circuit(
                     },
                 }
             ]
-
-    tables = _build_tables(markdown, page_count) if extract_tables else []
     warnings: list[dict[str, Any]] = [
         {
             "warningCode": "MARKDOWN_SHORT_CIRCUIT",
@@ -372,7 +397,7 @@ def run_markdown_short_circuit(
         },
     )
 
-    return {
+    result = {
         "documentVersionId": document_version_id,
         "provider": "PDF_INSPECTOR",
         "providerVersion": "pdf-inspector-short-circuit",
@@ -399,3 +424,10 @@ def run_markdown_short_circuit(
             "extractTables": extract_tables,
         },
     }
+    try:
+        from requirement_from_clauses import attach_requirements_to_result
+
+        return attach_requirements_to_result(result)
+    except Exception:
+        logger.exception("requirement attachment failed – returning clauses only")
+        return result

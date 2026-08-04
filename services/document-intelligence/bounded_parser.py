@@ -493,7 +493,14 @@ def run_bounded_parse(
 
     # High-confidence text_based + Markdown → skip Docling entirely.
     short_circuit_failed = False
-    if should_short_circuit(inspector_result, ocr_mode=str(request.ocrMode or "AUTO")):
+    force_mode = str(getattr(request, "forceMode", None) or "AUTO").upper()
+    allow_short_circuit = force_mode not in {"FORCE_DOCLING", "FORCE_OCR"}
+    if should_short_circuit(
+        inspector_result,
+        ocr_mode=str(request.ocrMode or "AUTO"),
+        allow_short_circuit=allow_short_circuit,
+        force_mode=force_mode,
+    ):
         with track_parse(
             "pdf_inspector_short_circuit",
             getattr(inspector_result, "pdf_type", None),
@@ -849,6 +856,12 @@ def _run_bounded_batch_path(
         expected_page_count=total_pages,
         plan=plan,
     )
+    try:
+        from requirement_from_clauses import attach_requirements_to_result
+
+        merged = attach_requirements_to_result(merged)
+    except Exception:
+        logger.exception("requirement attachment failed after Docling merge")
     mctx["page_count"] = int(merged.get("pageCount") or 0)
     mctx["clause_count"] = len(merged.get("clauses") or [])
     mctx["table_count"] = len(merged.get("tables") or [])
