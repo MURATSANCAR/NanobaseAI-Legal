@@ -232,6 +232,43 @@ def metrics():
     return Response(content=body, media_type=content_type)
 
 
+class CompanyFitIngestRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    organizationId: str
+    documents: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class CompanyFitEvaluateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    organizationId: str
+    tenderDocumentId: str
+    requirements: list[dict[str, Any]] = Field(default_factory=list)
+    capabilities: list[dict[str, Any]] = Field(default_factory=list)
+
+
+@app.post("/v1/organizations/{organization_id}/capabilities/ingest")
+def company_capabilities_ingest(
+    organization_id: str, request: CompanyFitIngestRequest
+) -> dict[str, Any]:
+    if request.organizationId != organization_id:
+        raise HTTPException(status_code=400, detail="organizationId mismatch")
+    from company_fit.api.fit_service import handle_ingest
+
+    return handle_ingest(request.model_dump())
+
+
+@app.post("/v1/tenders/{document_id}/company-fit")
+def company_fit_evaluate(
+    document_id: str, request: CompanyFitEvaluateRequest
+) -> dict[str, Any]:
+    payload = request.model_dump()
+    if payload.get("tenderDocumentId") != document_id:
+        payload["tenderDocumentId"] = document_id
+    from company_fit.api.fit_service import handle_fit
+
+    return handle_fit(payload)
+
+
 @app.post("/v1/documents/parse", response_model=ParseResponse, status_code=202)
 def parse_document(request: ParseRequest, background_tasks: BackgroundTasks) -> ParseResponse:
     if request.mimeType not in SUPPORTED_MIME_TYPES:

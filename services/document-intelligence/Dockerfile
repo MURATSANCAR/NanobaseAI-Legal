@@ -19,6 +19,7 @@ COPY app.py page_capability.py page_capability_pdf_inspector.py \
      error_to_state.py reprocess_policy.py ./
 COPY textambiguity/ ./textambiguity/
 COPY categorizer_lexicons/ ./categorizer_lexicons/
+COPY company_fit/ ./company_fit/
 RUN mkdir -p /var/lib/specai /tmp/specai-docling \
     && chown -R docling:docling /var/lib/specai /tmp/specai-docling /app
 
