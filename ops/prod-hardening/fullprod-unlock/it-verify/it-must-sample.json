@@ -1,0 +1,197 @@
+[
+  {
+    "requirementId": "req-22a58c740dc363d6",
+    "category": "OTHER",
+    "confidence": null,
+    "pageStart": 1,
+    "pageEnd": 8,
+    "sourceClauseIds": [
+      "md-bc68a8082905df43"
+    ],
+    "text": "belirtilecek olan zam anda ve belirtilecek yerde yapılacaktır. YÜKLENİCİ, cihazların kullanıma açılması için ihtiyaç duyulabilecek her türlü yazılımı yüklemek ve cihazları diğer büt ün don anımla r ile uyumlu bir şekilde çalışacak biçimde kurmak ile yüküm lüdür. YÜKLENİCİ, kurulu",
+    "title": "Section 4",
+    "obligationLevel": "MUST"
+  },
+  {
+    "requirementId": "req-4a409a65919d2849",
+    "category": "OTHER",
+    "confidence": null,
+    "pageStart": 1,
+    "pageEnd": 8,
+    "sourceClauseIds": [
+      "md-33227009643e0a89"
+    ],
+    "text": "2.12 Çalışmalar sırasında malzem elerin taşınması, yerleştirilmesi ve bu çalışmalardan dolayı yapılması gere ken temizlik işleri YÜKLENİCİ personeli tarafın dan yapılacaktır.",
+    "title": "2.12 Çalışmalar sırasında malzem elerin taşınması, yerleştirilmesi ve bu çalışmalardan dolayı yapılması gere ken temizlik işleri YÜKLENİCİ personeli tarafın dan yapılacaktır.",
+    "obligationLevel": "MUST"
+  },
+  {
+    "requirementId": "req-a491c468d3f77b92",
+    "category": "OTHER",
+    "confidence": null,
+    "pageStart": 1,
+    "pageEnd": 8,
+    "sourceClauseIds": [
+      "md-1492a1b345989eb3"
+    ],
+    "text": "2.13 Şartn am e kapsamın da kurulacak tü m sist eml erde kullanılacak tü m yazılımların sorun suz çalıştığı YÜKLENİCİ taraf ından test edilmiş ve önerilen en son yama ve hizmet paketleri uygulanmış şekilde teslim edilecektir.",
+    "title": "2.13 Şartn am e kapsamın da kurulacak tü m sist eml erde kullanılacak tü m yazılımların sorun suz çalıştığı YÜKLENİCİ taraf ından test edilmiş ve önerilen en son yama ve hizmet paketleri uygulanmış şekilde teslim edilecektir.",
+    "obligationLevel": "MUST"
+  },
+  {
+    "requirementId": "req-361ffc0a463d658c",
+    "category": "OTHER",
+    "confidence": null,
+    "pageStart": 1,
+    "pageEnd": 8,
+    "sourceClauseIds": [
+      "md-693b1fd96ce7b16d"
+    ],
+    "text": "2.14 Tüm ürünlerin ve sistemlerin kurulumları v e ayarları İDARE personellerinin bilgisi ve gözetimin de yapılacaktır.",
+    "title": "2.14 Tüm ürünlerin ve sistemlerin kurulumları v e ayarları İDARE personellerinin bilgisi ve gözetimin de yapılacaktır.",
+    "obligationLevel": "MUST"
+  },
+  {
+    "requirementId": "req-df2ca0769748fcf4",
+    "category": "OTHER",
+    "confidence": null,
+    "pageStart": 1,
+    "pageEnd": 8,
+    "sourceClauseIds": [
+      "md-2eb8ae11a2cd68ac"
+    ],
+    "text": "2.15 Montaj çalışmaları esnasında gerekli iş güvenliği YÜKLENİCİ tarafından sağlanacaktır. Çalışanların veya üçünc ü şahısların uğrayacağı zarar larda n YÜKLENİCİ sorumlu olacaktır.",
+    "title": "2.15 Montaj çalışmaları esnasında gerekli iş güvenliği YÜKLENİCİ tarafından sağlanacaktır. Çalışanların veya üçünc ü şahısların uğrayacağı zarar larda n YÜKLENİCİ sorumlu olacaktır.",
+    "obligationLevel": "MUST"
+  },
+  {
+    "requirementId": "req-1c96ce508e8fabb6",
+    "category": "OTHER",
+    "confidence": null,
+    "pageStart": 1,
+    "pageEnd": 8,
+    "sourceClauseIds": [
+      "md-2a2686278ce6ce88"
+    ],
+    "text": "2.21 YÜKLENİCİ tarafın dan yürütülecek tü m çalışmalar sırasında duvar, zemin ve diğer yüzeyler ile mobilya, altyapı ve benzeri alanlarda oluşacak hasa r ve gene l gö rün üm ü bozan her türlü tahriba t giderilip, çalışma alanı YÜKLENİCİ tarafından eski haline İDARE'nin belirttiği",
+    "title": "2.21 YÜKLENİCİ tarafın dan yürütülecek tü m çalışmalar sırasında duvar, zemin ve diğer yüzeyler ile mobilya, altyapı ve benzeri alanlarda oluşacak hasa r ve gene l gö rün üm ü bozan her türlü tahriba t giderilip, çalışma alanı YÜKLENİCİ tarafından eski haline İDARE'nin belirttiği şekilde yerine getirilecektir.",
+    "obligationLevel": "MUST"
+  },
+  {
+    "requirementId": "req-9e19647b9c994816",
+    "category": "ADMINISTRATIVE",
+    "confidence": null,
+    "pageStart": 1,
+    "pageEnd": 8,
+    "sourceClauseIds": [
+      "md-a1780dffb27859e7"
+    ],
+    "text": "3.1.14 YÜKLENİCİ, Sunucular ile ber abe r KURUM'un e nva nte rin de bulu nan kabinlerden birine uyumlu, kayan raylı kabin m ontaj kiti, güç kablosu v e kablo düzenleyicilerini sağlanacaktır. KURUM envanterind e buluna n kabinlerin uyuml u ol mam ası halind e uyumlu kabin ve yapıs",
+    "title": "3.1.14 YÜKLENİCİ, Sunucular ile ber abe r KURUM'un e nva nte rin de bulu nan kabinlerden birine uyumlu, kayan raylı kabin m ontaj kiti, güç kablosu v e kablo düzenleyicilerini sağlanacaktır. KURUM envanterind e buluna n kabinlerin uyuml u ol mam ası halind e uyumlu kabin ve yapısal kablolaması teklife dâhil edilecektir.",
+    "obligationLevel": "MUST"
+  },
+  {
+    "requirementId": "req-8e5e0e7d210fc12c",
+    "category": "OTHER",
+    "confidence": null,
+    "pageStart": 1,
+    "pageEnd": 8,
+    "sourceClauseIds": [
+      "md-4402a9af24744853"
+    ],
+    "text": "3.2.15 YÜKLENİCİ, Sunu cular ile b era ber KURUM'un en van terind e bulu nan kabinlerden birine uyumlu, kayan raylı kabin mo nta j kiti, güç kablosu v e kablo düzenleyicilerini sağlanacaktır. KURUM env anterin de bulun an kabinlerin uyumlu olm ama sı halinde uyuml u kabin ve yapı",
+    "title": "3.2.15 YÜKLENİCİ, Sunu cular ile b era ber KURUM'un en van terind e bulu nan kabinlerden birine uyumlu, kayan raylı kabin mo nta j kiti, güç kablosu v e kablo düzenleyicilerini sağlanacaktır. KURUM env anterin de bulun an kabinlerin uyumlu olm ama sı halinde uyuml u kabin ve yapısal kablolaması teklife dâhil edilecektir.",
+    "obligationLevel": "MUST"
+  },
+  {
+    "requirementId": "req-ea176214e765a8e7",
+    "category": "LEGAL",
+    "confidence": null,
+    "pageStart": 1,
+    "pageEnd": 8,
+    "sourceClauseIds": [
+      "md-eb664366ff5fb7c9"
+    ],
+    "text": "4.4 Gizlilik konusu bilgilerin yürürlükte olan kanunlar veya mah ke me kararına dayanılarak talep edilmesi halinde bu bilgileri alacak kişilere bilgilerin gizliliği k onusunda gerekli uyarılar yapılacaktır. TARAFLAR karşılıklı yazılı izinleri o lmada n Sözl eşme ve ekleri kapsamı",
+    "title": "4.4 Gizlilik konusu bilgilerin yürürlükte olan kanunlar veya mah ke me kararına dayanılarak talep edilmesi halinde bu bilgileri alacak kişilere bilgilerin gizliliği k onusunda gerekli uyarılar yapılacaktır. TARAFLAR karşılıklı yazılı izinleri o lmada n Sözl eşme ve ekleri kapsamın da elde ettikleri bilgileri, yalnız Sözleşme ve eklerinde belirtilen şartlar ve amaçları doğru ltusunda kullanacaklardır. TARAFLAR'ın birbirlerine verdikleri bilgilerin dışında, işin yapılması sırasında dolaylı ve dola",
+    "obligationLevel": "MUST"
+  },
+  {
+    "requirementId": "req-e068ee1a196955be",
+    "category": "TECHNICAL",
+    "confidence": null,
+    "pageStart": 1,
+    "pageEnd": 8,
+    "sourceClauseIds": [
+      "md-4fdbd24ab3f33f2e"
+    ],
+    "text": "4.5 İDARE tarafında yer alan bilgi güvenliği kurallarına uyulacaktır.\n**5. GA RA NT İ S ÜRESİ VE O N A R IM KOŞ ULL ARI**\n**5.1.** YÜKLENİCİ, teknik şartn am e kapsamına giren tü m ürün ve hizmetler için İDARE tarafından yapılacak mu ayene ve ön kabul tarihini ta kip ed en ilk ta",
+    "title": "4.5 İDARE tarafında yer alan bilgi güvenliği kurallarına uyulacaktır.",
+    "obligationLevel": "MUST"
+  },
+  {
+    "requirementId": "req-08a83fc5ef92448d",
+    "category": "TECHNICAL",
+    "confidence": null,
+    "pageStart": 1,
+    "pageEnd": 8,
+    "sourceClauseIds": [
+      "md-5fa009f4fb4b1fe6"
+    ],
+    "text": "5.3 Garanti süresi içerisinde, teknik şar tnam e kapsamındaki sta ndart yazılımların gelişen yeni teknolojiler doğr ultusund a çıkan tü m üst ürünlerini; İDARE'nin tale p etm esi halind e ücretsiz olarak sağlanacak ve yüklemesi yapılacaktır.",
+    "title": "5.3 Garanti süresi içerisinde, teknik şar tnam e kapsamındaki sta ndart yazılımların gelişen yeni teknolojiler doğr ultusund a çıkan tü m üst ürünlerini; İDARE'nin tale p etm esi halind e ücretsiz olarak sağlanacak ve yüklemesi yapılacaktır.",
+    "obligationLevel": "MUST"
+  },
+  {
+    "requirementId": "req-abf15ae23c42f45b",
+    "category": "OTHER",
+    "confidence": null,
+    "pageStart": 1,
+    "pageEnd": 8,
+    "sourceClauseIds": [
+      "md-ffd15824640912c9"
+    ],
+    "text": "5.4 Satın alınacak tüm donanımlar, bir büt ün olarak %1 00 (yüzde yüz) çalışır vaziyette teslim edilecektir.",
+    "title": "5.4 Satın alınacak tüm donanımlar, bir büt ün olarak %1 00 (yüzde yüz) çalışır vaziyette teslim edilecektir.",
+    "obligationLevel": "MUST"
+  },
+  {
+    "requirementId": "req-ed013d7d783591e0",
+    "category": "OTHER",
+    "confidence": null,
+    "pageStart": 1,
+    "pageEnd": 8,
+    "sourceClauseIds": [
+      "md-993f73b82359ef97"
+    ],
+    "text": "5.6 YÜKLENİCİ; İDARE'nin sor unu bildirdiği zam and an itibaren 72 (Yetmişİki) saat içerisinde sorunu çö zme k zorundadır. Aksi takdirde top lam sözle şme bedelinin %0, 3 (bindeüç)'ü oran ında günlük ceza uygulanacaktır.\n**6. KU RU LU M VE M ON TA J**",
+    "title": "5.6 YÜKLENİCİ; İDARE'nin sor unu bildirdiği zam and an itibaren 72 (Yetmişİki) saat içerisinde sorunu çö zme k zorundadır. Aksi takdirde top lam sözle şme bedelinin %0, 3 (bindeüç)'ü oran ında günlük ceza uygulanacaktır.",
+    "obligationLevel": "MUST"
+  },
+  {
+    "requirementId": "req-f1a7b1717048d991",
+    "category": "OTHER",
+    "confidence": null,
+    "pageStart": 1,
+    "pageEnd": 8,
+    "sourceClauseIds": [
+      "md-97d760d0de10fe71"
+    ],
+    "text": "7.1 Ürünler sözleşm enin imzalanması sonrası en geç 70 (Yetmiş) takvim günü içerisinde yurt içinde İDARE'nin belirleyeceği KURUM hizmet binalarına teslim edilecektir.",
+    "title": "7.1 Ürünler sözleşm enin imzalanması sonrası en geç 70 (Yetmiş) takvim günü içerisinde yurt içinde İDARE'nin belirleyeceği KURUM hizmet binalarına teslim edilecektir.",
+    "obligationLevel": "MUST"
+  },
+  {
+    "requirementId": "req-481da81dad8d5ce2",
+    "category": "OTHER",
+    "confidence": null,
+    "pageStart": 1,
+    "pageEnd": 8,
+    "sourceClauseIds": [
+      "md-7741f80d078e17e0"
+    ],
+    "text": "7.6 Öd em e, mua ye ne ve ön kabul işlemlerinden sonra yapılacaktır.",
+    "title": "7.6 Öd em e, mua ye ne ve ön kabul işlemlerinden sonra yapılacaktır.",
+    "obligationLevel": "MUST"
+  }
+]

@@ -1,0 +1,39 @@
+{
+  "provider": "PDF_INSPECTOR",
+  "shortCircuited": true,
+  "pageCount": 8,
+  "clauseCount": 68,
+  "tableCount": 2,
+  "requirementCount": 60,
+  "mustCount": 16,
+  "effectiveOcrMode": null,
+  "ocrPagesCount": 0,
+  "qualityGate": "PASS",
+  "terminalStatus": "READY",
+  "textQualityScore": 1.0,
+  "timings": {
+    "durationMs": 112,
+    "shortCircuitMs": 9,
+    "inspector": {
+      "pdf_type": "text_based",
+      "confidence": 1.0,
+      "duration_ms": 89,
+      "markdown_chars": 18020
+    }
+  },
+  "mustCategories": {
+    "OTHER": 12,
+    "ADMINISTRATIVE": 1,
+    "LEGAL": 1,
+    "TECHNICAL": 2
+  },
+  "requirementCategories": {
+    "TECHNICAL": 9,
+    "OTHER": 40,
+    "ADMINISTRATIVE": 7,
+    "FINANCIAL": 1,
+    "OPERATIONAL": 1,
+    "LEGAL": 1,
+    "SECURITY": 1
+  }
+}

@@ -240,13 +240,18 @@ export function DocumentReview({ document, token, canWrite, onClose, onProblem }
   return <div className="review-backdrop">
     <section className="document-review" aria-label="Doküman inceleme">
       <header className="review-head">
-        <div><p className="eyebrow">DOKÜMAN İNCELEME</p><h2>{document.logicalName}</h2>
-          <span>{activeJob?.provider || "Parser bekleniyor"} ·
+        <div className="review-head-meta">
+          <p className="eyebrow">DOKÜMAN İNCELEME</p>
+          <h2 title={document.logicalName}>{document.logicalName}</h2>
+          <span className="review-head-status">
+            {activeJob?.provider || "Parser bekleniyor"} ·
             {" "}{activeJob ? statusLabels[activeJob.status] : statusLabels[document.status]}
             {" "}· %{liveEvent?.progress ?? activeJob?.progress ?? 0} ·
             {" "}{!processingStatuses.has(document.status) ? "Tamamlandı"
               : streamState === "live" ? "Canlı" : streamState === "polling"
-              ? "Polling fallback" : "Bağlanıyor"}</span></div>
+              ? "Polling fallback" : "Bağlanıyor"}
+          </span>
+        </div>
         <div className="review-head-actions">
           {canWrite && activeJob && processingStatuses.has(activeJob.status) &&
             <button className="secondary" onClick={cancel}>İptal</button>}

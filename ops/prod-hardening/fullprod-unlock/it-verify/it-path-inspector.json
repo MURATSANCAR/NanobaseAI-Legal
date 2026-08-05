@@ -1,0 +1,97 @@
+{
+  "documentId": "e76581d4-2497-4b18-ba05-62d04194ab1d",
+  "diJobId": "a457cad5-defe-4eda-9018-e0aef255ed32",
+  "inspector": {
+    "pdf_type": "text_based",
+    "confidence": 1.0,
+    "page_count": 8,
+    "pages_needing_ocr_count": 0,
+    "markdown_len": 18020,
+    "should_short_circuit": true,
+    "decide_ocr_mode": "DISABLED",
+    "note": "pre-upload inspect_pdf snapshot",
+    "duration_ms": 89,
+    "markdown_chars": 18020
+  },
+  "plan": {
+    "effectiveOcrMode": null,
+    "requestedOcrMode": null,
+    "ocrPages": [],
+    "nativeTextPages": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "doclingPages": [],
+    "shortCircuited": true,
+    "durationMs": 112,
+    "shortCircuitMs": 9,
+    "inspector": {
+      "pdf_type": "text_based",
+      "confidence": 1.0,
+      "duration_ms": 89,
+      "markdown_chars": 18020
+    }
+  },
+  "processingEvents": [
+    {
+      "stage": "UPLOADED",
+      "progress": 0,
+      "message": "Doküman işleme işi oluşturuldu",
+      "occurred_at": "2026-08-05T00:07:14.658138+00:00"
+    },
+    {
+      "stage": "VIRUS_SCANNING",
+      "progress": 12,
+      "message": "Doküman güvenlik taramasından geçiriliyor",
+      "occurred_at": "2026-08-05T00:07:20.634298+00:00"
+    },
+    {
+      "stage": "CLASSIFYING",
+      "progress": 22,
+      "message": "Doküman sınıflandırılıyor",
+      "occurred_at": "2026-08-05T00:07:20.64616+00:00"
+    },
+    {
+      "stage": "QUEUED",
+      "progress": 30,
+      "message": "Doküman parser kuyruğuna alındı",
+      "occurred_at": "2026-08-05T00:07:20.65577+00:00"
+    },
+    {
+      "stage": "QUEUED",
+      "progress": 30,
+      "message": "Doküman parser servisine gönderildi",
+      "occurred_at": "2026-08-05T00:07:20.758978+00:00"
+    },
+    {
+      "stage": "PARSING",
+      "progress": 45,
+      "message": "Downloading source document",
+      "occurred_at": "2026-08-05T00:07:20.847386+00:00"
+    },
+    {
+      "stage": "STRUCTURE_DETECTION",
+      "progress": 74,
+      "message": "Teknik şartname maddeleri ayrıştırılıyor",
+      "occurred_at": "2026-08-05T00:07:35.940766+00:00"
+    },
+    {
+      "stage": "INDEXING",
+      "progress": 90,
+      "message": "Doküman indeksleniyor",
+      "occurred_at": "2026-08-05T00:07:36.224055+00:00"
+    },
+    {
+      "stage": "READY",
+      "progress": 100,
+      "message": "Doküman hazır",
+      "occurred_at": "2026-08-05T00:07:36.23416+00:00"
+    }
+  ]
+}
