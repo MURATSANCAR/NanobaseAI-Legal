@@ -192,11 +192,25 @@ _SEC = _re(
                     "256 bit",
                     "128 bit",
                     "tls 1",
+                    # Confidentiality / NDA family
+                    "gizlilik",
+                    "confidentiality",
+                    "ticari sır",
+                    "non-disclosure",
+                    "non disclosure",
+                    "gizli tut",
+                    "gizli bilgi",
+                    "gizli veri",
+                    "gizli doküman",
+                    "gizli madde",
+                    "sır saklama",
                 ]
             ),
             r"\bssl\b",
             r"\btls\b",
             r"\bmfa\b",
+            r"\bnda\b",
+            r"gizli\s+(?:bilgi|veri|doküman|madde|tut)",
         ]
     )
     + r")"
@@ -555,3 +569,18 @@ if __name__ == "__main__":
     print(f"self_check {ok}/{total} {'OK' if not fails else 'FAIL'}")
     for text, expected, got in fails:
         print(f"  FAIL expected={expected} got={got} :: {text[:80]}")
+    smoke = [
+        (
+            "4.3 Gizlilik: Taraflar işbu sözleşme kapsamında edindikleri bilgileri gizli tutacaktır.",
+            "SECURITY",
+        ),
+        ("Ticari sır niteliğindeki bilgiler üçüncü kişilere açıklanamaz.", "SECURITY"),
+    ]
+    smoke_fail = 0
+    for text, expected in smoke:
+        got = categorize_requirement(text)
+        status = "OK" if got == expected else "FAIL"
+        if got != expected:
+            smoke_fail += 1
+        print(f"smoke {status} expected={expected} got={got} :: {text[:70]}")
+    raise SystemExit(0 if not fails and smoke_fail == 0 else 1)

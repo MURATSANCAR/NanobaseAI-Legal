@@ -50,14 +50,20 @@ def test_categorizer_compliance_before_other():
     assert categorize_requirement("Ürün TSE ve ISO 9001 sertifikasına uygun olacaktır.") == "COMPLIANCE"
 
 
-def test_categorizer_gizlilik_exception_not_other():
+def test_categorizer_gizlilik_maps_to_security():
     assert (
         categorize_requirement(
             "4.3 Ancak, bu bilgiyi alan Tarafın sorumluluğu gerektirmeden söz konusu bilginin "
             "zaten biliniyor olması veya bilginin bu bilgiyi alan tarafından gizlilik kuralının "
             "ihlali olmaksızın kamuya açık hale gelmesi halinde yukarıdaki şartlar geçerli olmayacaktır."
         )
-        == "COMPLIANCE"
+        == "SECURITY"
+    )
+    assert (
+        categorize_requirement(
+            "4.3 Gizlilik: Taraflar edindikleri bilgileri gizli tutacaktır."
+        )
+        == "SECURITY"
     )
 
 

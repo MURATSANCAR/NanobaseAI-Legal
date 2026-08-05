@@ -1,0 +1,27 @@
+{
+  "jobId": "a4502e4a-c7cf-4f78-af5f-43ad390c26eb",
+  "requirementCount": 60,
+  "mustCount": 36,
+  "otherCount": 0,
+  "mustCategories": {
+    "OPERATIONAL": 9,
+    "SECURITY": 6,
+    "PERSONNEL": 4,
+    "TECHNICAL": 8,
+    "ADMINISTRATIVE": 1,
+    "COMPLIANCE": 4,
+    "SCHEDULE": 2,
+    "FINANCIAL": 2
+  },
+  "allCategories": {
+    "PERSONNEL": 8,
+    "OPERATIONAL": 12,
+    "SECURITY": 10,
+    "FINANCIAL": 5,
+    "TECHNICAL": 11,
+    "DOCUMENT": 1,
+    "ADMINISTRATIVE": 3,
+    "COMPLIANCE": 5,
+    "SCHEDULE": 5
+  }
+}
