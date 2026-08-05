@@ -171,7 +171,8 @@ public class MeasurableFieldsEnricher {
                                       List<String> missing, Extraction extracted) {
         String cat = category == null ? "" : category.toUpperCase(Locale.ROOT);
         String mod = modality == null ? "" : modality.toUpperCase(Locale.ROOT);
-        boolean techSec = cat.contains("TECH") || cat.contains("SECURITY") || cat.equals("SEC");
+        boolean techSec = cat.contains("TECH") || cat.contains("SECURITY") || cat.equals("SEC")
+            || cat.isBlank();
         boolean must = mod.contains("MUST") || mod.contains("MANDATORY") || mod.contains("SHALL");
         if (techSec && must && missing.contains("missingAcceptanceThreshold")) {
             return "HIGH";

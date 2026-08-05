@@ -208,6 +208,27 @@ public class JdbcRiskPersistence implements RiskPersistencePort {
     @Override
     public void clearProjectFindings(UUID organizationId, UUID projectId) {
         jdbc.update("""
+            delete from clarification_source where organization_id = ?
+              and (
+                risk_id in (select id from risk_record where organization_id = ? and project_id = ?)
+                or ambiguity_id in (select id from ambiguity_finding where organization_id = ? and project_id = ?)
+                or conflict_id in (select id from conflict_record where organization_id = ? and project_id = ?)
+              )
+            """, organizationId, organizationId, projectId, organizationId, projectId,
+            organizationId, projectId);
+        jdbc.update("""
+            delete from risk_propagation_candidate where source_risk_id in (
+                select id from risk_record
+                where organization_id = ? and project_id = ?
+            )
+            """, organizationId, projectId);
+        jdbc.update("""
+            delete from mitigation_candidate where risk_id in (
+                select id from risk_record
+                where organization_id = ? and project_id = ?
+            )
+            """, organizationId, projectId);
+        jdbc.update("""
             delete from ambiguity_interpretation where ambiguity_finding_id in (
                 select id from ambiguity_finding
                 where organization_id = ? and project_id = ?
@@ -244,6 +265,18 @@ public class JdbcRiskPersistence implements RiskPersistencePort {
         jdbc.update("""
             delete from risk_record
             where organization_id = ? and project_id = ?
+            """, organizationId, projectId);
+        jdbc.update("""
+            delete from conflict_factor where conflict_id in (
+                select id from conflict_record
+                where organization_id = ? and project_id = ?
+            )
+            """, organizationId, projectId);
+        jdbc.update("""
+            delete from conflict_revision where conflict_id in (
+                select id from conflict_record
+                where organization_id = ? and project_id = ?
+            )
             """, organizationId, projectId);
         jdbc.update("""
             delete from conflict_source where conflict_id in (
