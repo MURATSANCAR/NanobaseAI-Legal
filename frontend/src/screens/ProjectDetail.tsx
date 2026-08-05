@@ -281,6 +281,7 @@ export function ProjectDetail({
               canWrite={canAnalyze}
               onProblem={onProblem}
               onNotify={onNotify}
+              onDocuments={onDocuments}
             />
           )}
           {tab === "activity" && <ActivityHistory events={auditEvents} />}
@@ -383,6 +384,7 @@ export function ProjectDetail({
               canWrite={canAnalyze}
               onProblem={onProblem}
               onNotify={onNotify}
+              onDocuments={onDocuments}
             />
           )}
           {hub === "project" && (

@@ -81,11 +81,13 @@ public class KnowledgeGraphService {
         List<AttributeView> attributes = attributes(organizationId, id);
         List<RelationView> relations = relations(organizationId, id);
         List<CapabilityView> capabilities = capabilities(organizationId, id);
+        // No DISTINCT: EXISTS filters do not multiply rows, and PostgreSQL rejects
+        // SELECT DISTINCT ... ORDER BY fragment.created_at when created_at is not selected.
         List<Map<String, Object>> evidence = normalizedRows(jdbc.queryForList("""
-            select distinct fragment.id, fragment.document_id, fragment.document_version_id,
+            select fragment.id, fragment.document_id, fragment.document_version_id,
                    fragment.clause_id, fragment.page_number, fragment.content_hash,
                    fragment.language, fragment.parser_quality, fragment.ocr_quality,
-                   fragment.valid_from, fragment.valid_until,
+                   fragment.valid_from, fragment.valid_until, fragment.created_at,
                    validity.score as validity_score,
                    validity_concept.concept_code as validity_status
             from evidence_fragment fragment

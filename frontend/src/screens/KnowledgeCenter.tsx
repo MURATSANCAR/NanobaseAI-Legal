@@ -221,9 +221,12 @@ export function KnowledgeCenter({ documents, token, canWrite, onProblem, onNotif
       ]);
       setSelected(detail);
       setConfiguration(config);
-      setActiveTab(config.profile.tabs[0]?.key ?? "overview");
+      setActiveTab(config.profile?.tabs?.[0]?.key ?? "overview");
       setEvidence(undefined);
     } catch (error) {
+      setSelected(undefined);
+      setConfiguration(undefined);
+      setEvidence(undefined);
       onProblem(error);
     }
   }
@@ -378,7 +381,7 @@ export function KnowledgeCenter({ documents, token, canWrite, onProblem, onNotif
               onClick={() => selectEvidence(item.id)}>
               <b>Sayfa {item.page_number ?? "—"}</b>
               <span>{item.validity_status ?? "Değerlendirilmemiş"}</span>
-              <small>{item.content_hash.slice(0, 12)} ·
+              <small>{(item.content_hash ?? "—").toString().slice(0, 12)} ·
                 {" "}%{Math.round((item.validity_score ?? 0) * 100)} validity</small>
             </button>)}
             {!selected.evidence.length && <Empty text="Bağlı evidence bulunmuyor." />}
