@@ -7,6 +7,7 @@ import re
 from typing import Any
 
 from requirement_categorizer_v2 import categorize_many, categorize_requirement
+from textambiguity import apply_auto_resolution, prioritize_ambiguities
 
 MUST_RE = re.compile(
     r"\b("
@@ -87,10 +88,29 @@ def attach_requirements_to_result(result: dict[str, Any]) -> dict[str, Any]:
     enriched = dict(result)
     clauses = list(enriched.get("clauses") or [])
     requirements = requirements_from_clauses(clauses)
+    requirements, ambiguity_events = apply_auto_resolution(requirements)
+    ambiguity_queue = prioritize_ambiguities(requirements)
     enriched["requirements"] = requirements
     metadata = dict(enriched.get("metadata") or {})
     metadata["requirementCount"] = len(requirements)
     metadata["requirementExtractor"] = "requirement_from_clauses"
     metadata["requirementCategorizer"] = "requirement_categorizer_v2"
+    metadata["ambiguityAutoResolved"] = sum(
+        1 for e in ambiguity_events if e.get("type") == "AMBIGUITY_AUTO_RESOLVED"
+    )
+    metadata["ambiguityCandidateCount"] = len(ambiguity_queue)
+    metadata["ambiguityHighCount"] = sum(1 for c in ambiguity_queue if c.priority == "HIGH")
     enriched["metadata"] = metadata
+    enriched["ambiguityEvents"] = ambiguity_events
+    enriched["ambiguityQueue"] = [
+        {
+            "requirementId": c.requirement_id,
+            "priority": c.priority,
+            "missingFields": c.missing_fields,
+            "suggestedFields": c.suggested_fields,
+            "confidence": c.confidence,
+            "status": c.status,
+        }
+        for c in ambiguity_queue
+    ]
     return enriched

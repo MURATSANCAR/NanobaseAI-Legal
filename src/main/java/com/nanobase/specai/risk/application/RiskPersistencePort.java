@@ -37,6 +37,8 @@ public interface RiskPersistencePort {
     Optional<Map<String, Object>> job(UUID organizationId, UUID jobId);
     List<Map<String, Object>> jobEvents(UUID organizationId, UUID jobId);
     List<RequirementCandidate> requirements(UUID organizationId, UUID projectId);
+    void updateRequirementAttributes(UUID organizationId, UUID requirementId, JsonNode attributes);
+    void clearProjectFindings(UUID organizationId, UUID projectId);
     long validEvidenceCount(UUID organizationId, UUID requirementId);
     Optional<UUID> latestKnowledgeSnapshot(UUID organizationId, UUID projectId);
     UUID createRisk(UUID organizationId, UUID projectId, UUID profileId,

@@ -196,6 +196,68 @@ public class JdbcRiskPersistence implements RiskPersistencePort {
     }
 
     @Override
+    public void updateRequirementAttributes(UUID organizationId, UUID requirementId,
+                                            JsonNode attributes) {
+        requireUpdated(jdbc.update("""
+            update requirement
+            set attributes_json = ?::jsonb, updated_at = now(), version = version + 1
+            where id = ? and organization_id = ?
+            """, json(attributes), requirementId, organizationId));
+    }
+
+    @Override
+    public void clearProjectFindings(UUID organizationId, UUID projectId) {
+        jdbc.update("""
+            delete from ambiguity_interpretation where ambiguity_finding_id in (
+                select id from ambiguity_finding
+                where organization_id = ? and project_id = ?
+            )
+            """, organizationId, projectId);
+        jdbc.update("""
+            delete from ambiguity_source where ambiguity_finding_id in (
+                select id from ambiguity_finding
+                where organization_id = ? and project_id = ?
+            )
+            """, organizationId, projectId);
+        jdbc.update("""
+            delete from ambiguity_finding
+            where organization_id = ? and project_id = ?
+            """, organizationId, projectId);
+        jdbc.update("""
+            delete from risk_factor where risk_id in (
+                select id from risk_record
+                where organization_id = ? and project_id = ?
+            )
+            """, organizationId, projectId);
+        jdbc.update("""
+            delete from risk_source where risk_id in (
+                select id from risk_record
+                where organization_id = ? and project_id = ?
+            )
+            """, organizationId, projectId);
+        jdbc.update("""
+            delete from risk_revision where risk_id in (
+                select id from risk_record
+                where organization_id = ? and project_id = ?
+            )
+            """, organizationId, projectId);
+        jdbc.update("""
+            delete from risk_record
+            where organization_id = ? and project_id = ?
+            """, organizationId, projectId);
+        jdbc.update("""
+            delete from conflict_source where conflict_id in (
+                select id from conflict_record
+                where organization_id = ? and project_id = ?
+            )
+            """, organizationId, projectId);
+        jdbc.update("""
+            delete from conflict_record
+            where organization_id = ? and project_id = ?
+            """, organizationId, projectId);
+    }
+
+    @Override
     public long validEvidenceCount(UUID organizationId, UUID requirementId) {
         Long count = jdbc.queryForObject("""
             select count(*) from compliance_evaluation evaluation

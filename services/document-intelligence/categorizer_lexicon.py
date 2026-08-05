@@ -108,6 +108,21 @@ def lexicon_stats(data: dict[str, Any] | None = None) -> dict[str, int]:
     return stats
 
 
+def _split_short_tokens(terms: Iterable[str]) -> tuple[list[str], list[str]]:
+    """Single tokens with len<=3 must use word boundaries (avoid 'nac' in 'sunucuda')."""
+    phrases: list[str] = []
+    shorts: list[str] = []
+    for raw in terms:
+        t = " ".join(str(raw).split()).strip()
+        if not t:
+            continue
+        if " " not in t and len(t) <= 3:
+            shorts.append(t)
+        else:
+            phrases.append(t)
+    return phrases, shorts
+
+
 class CategoryLexicon:
     """Compiled term index for one category (+ optional bounded/extra regex)."""
 
@@ -122,9 +137,15 @@ class CategoryLexicon:
         extra_patterns: list[str] | None = None,
     ) -> None:
         self.name = name
-        self.batches = _compile_term_batches(terms)
+        phrases, auto_short = _split_short_tokens(terms)
+        self.batches = _compile_term_batches(phrases)
         extras: list[re.Pattern[str]] = []
-        for tok in bounded or []:
+        seen_b: set[str] = set()
+        for tok in list(bounded or []) + auto_short:
+            key = tok.casefold()
+            if key in seen_b:
+                continue
+            seen_b.add(key)
             extras.append(re.compile(rf"\b{re.escape(tok)}\b", Flags))
         for pat in extra_patterns or []:
             extras.append(re.compile(pat, Flags))

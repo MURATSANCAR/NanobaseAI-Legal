@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.nanobase.specai.integration.outbox.OutboxService;
 import com.nanobase.specai.integration.outbox.RabbitConfiguration;
 import com.nanobase.specai.risk.application.RiskModels.AmbiguityContext;
+import com.nanobase.specai.risk.application.RiskModels.AmbiguityResult;
 import com.nanobase.specai.risk.application.RiskModels.ConflictCandidateContext;
 import com.nanobase.specai.risk.application.RiskModels.ConflictComparisonContext;
 import com.nanobase.specai.risk.application.RiskModels.ConflictEntity;
@@ -36,6 +37,7 @@ public class RiskAnalysisProcessor {
     private final ConflictCandidateGenerator candidateGenerator;
     private final ConflictStrategyRegistry conflictStrategies;
     private final RiskPropagationEngine propagationEngine;
+    private final MeasurableFieldsEnricher measurableFields;
     private final OutboxService outbox;
     private final ObjectMapper mapper;
 
@@ -47,6 +49,7 @@ public class RiskAnalysisProcessor {
                                  ConflictCandidateGenerator candidateGenerator,
                                  ConflictStrategyRegistry conflictStrategies,
                                  RiskPropagationEngine propagationEngine,
+                                 MeasurableFieldsEnricher measurableFields,
                                  OutboxService outbox, ObjectMapper mapper) {
         this.catalog = catalog;
         this.store = store;
@@ -57,6 +60,7 @@ public class RiskAnalysisProcessor {
         this.candidateGenerator = candidateGenerator;
         this.conflictStrategies = conflictStrategies;
         this.propagationEngine = propagationEngine;
+        this.measurableFields = measurableFields;
         this.outbox = outbox;
         this.mapper = mapper;
     }
@@ -88,6 +92,7 @@ public class RiskAnalysisProcessor {
             JsonNode authority = catalog.authorityPolicy(organizationId,
                 profile.documentAuthorityPolicyId());
             List<RequirementCandidate> requirements = store.requirements(organizationId, projectId);
+            store.clearProjectFindings(organizationId, projectId);
             store.startJob(organizationId, jobId, requirements.size());
             store.event(organizationId, jobId, "STARTED", 0,
                 "Risk analysis started", mapper.createObjectNode());
@@ -103,6 +108,24 @@ public class RiskAnalysisProcessor {
             for (int index = 0; index < requirements.size(); index++) {
                 RequirementCandidate source = requirements.get(index);
                 try {
+                    var enrichment = measurableFields.enrich(
+                        source.text(),
+                        source.attributes(),
+                        source.attributes().path("category").asText(
+                            source.attributes().path("primaryCategory").asText("")),
+                        source.attributes().path("obligation").asText(
+                            source.attributes().path("type").asText(
+                                source.attributes().path("modality").asText(""))));
+                    if (enrichment.changed()) {
+                        store.updateRequirementAttributes(organizationId, source.id(),
+                            enrichment.attributes());
+                    }
+                    source = new RequirementCandidate(
+                        source.id(), source.projectId(), source.documentId(),
+                        source.documentVersionId(), source.clauseId(), source.conceptId(),
+                        source.requirementCode(), source.title(), source.text(),
+                        enrichment.attributes(), source.confidence(), source.groundingCoverage(),
+                        source.testabilityStatus(), source.pageNumber(), source.boundingBoxes());
                     long evidenceCount = store.validEvidenceCount(organizationId, source.id());
                     Map<String, Double> signals = signals(
                         riskPolicy.configuration(), source, evidenceCount);
@@ -129,9 +152,20 @@ public class RiskAnalysisProcessor {
                     var ambiguity = ambiguityEngine.analyze(
                         new AmbiguityContext(source.id(), ambiguityFeatures, Map.of()),
                         ambiguityPolicy);
-                    if (ambiguity.finding() && ambiguity.conceptId() != null) {
+                    if (ambiguity.finding() && ambiguity.conceptId() != null
+                        && !enrichment.missingFields().isEmpty()) {
+                        var prioritized = new AmbiguityResult(
+                            true,
+                            ambiguity.conceptId(),
+                            ambiguity.conceptCode(),
+                            ambiguity.confidence(),
+                            ambiguity.factors(),
+                            List.of(measurableFields.describe(
+                                enrichment.missingFields(),
+                                enrichment.priority(),
+                                enrichment.extraction().suggestedFields())));
                         store.createAmbiguity(organizationId, projectId, profileId,
-                            source, ambiguity, null);
+                            source, prioritized, null);
                         ambiguityCount++;
                     }
                     int retrievalLimit = Math.max(1,
