@@ -3,7 +3,6 @@ package com.nanobase.specai.companyfit.application;
 import com.nanobase.specai.companyfit.domain.CompanyFitModels.CapabilityKind;
 import com.nanobase.specai.companyfit.domain.CompanyFitModels.CompanyCapability;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;

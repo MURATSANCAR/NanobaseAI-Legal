@@ -1,26 +1,31 @@
-# Company Fit — integration
+# Company Fit — integration (wired)
 
-## Package layout
+## Locations
 
-```
-domain/models.py
-extract/capability_extractor.py
-fit/fit_engine.py
-api/fit_service.py
-db/V40__company_capability_fit.sql
-tests/test_company_fit.py
-docs/HARDENING_SNIPPETS.md
-```
+| Piece | Path |
+|---|---|
+| Reference package | `services/nanobase-legal-company-fit/` |
+| DI runtime module | `services/document-intelligence/company_fit/` |
+| Flyway | `src/main/resources/db/migration/V34__company_capability_fit.sql` |
+| Java API | `com.nanobase.specai.companyfit` |
 
-## API
+## API (Java gateway — production)
 
 | Method | Path | Body |
 |--------|------|------|
-| POST | `/v1/organizations/{orgId}/capabilities/ingest` | documents[{documentId, docType, text}] |
-| POST | `/v1/tenders/{documentId}/company-fit` | organizationId, requirements[], capabilities?[] |
+| POST | `/api/v1/organizations/{orgId}/capabilities/ingest` | `{ documents: [{ documentId, docType, title, text }] }` |
+| GET | `/api/v1/organizations/{orgId}/capabilities` | — |
+| POST | `/api/v1/tenders/{documentId}/company-fit` | `{ organizationId?, requirements?, capabilities? }` |
+| GET | `/api/v1/tenders/{documentId}/company-fit` | latest reports |
 
-After company docs pass DI parse, send extracted text to **ingest**.  
-After tender requirements READY, call **company-fit** with org capabilities (DB load preferred).
+Tenant: `orgId` must equal JWT tenant. If `requirements` omitted, loaded from `requirement` for that document. If `capabilities` omitted, loaded from `company_capability`.
+
+## API (document-intelligence — compute/parity)
+
+| Method | Path |
+|--------|------|
+| POST | `/v1/organizations/{organization_id}/capabilities/ingest` |
+| POST | `/v1/tenders/{document_id}/company-fit` |
 
 ## Portal UX (minimal)
 
@@ -30,15 +35,14 @@ After tender requirements READY, call **company-fit** with org capabilities (DB 
 
 ## Policy
 
-- MUST rows drive overall score  
+- MUST / MANDATORY rows drive overall score  
 - No capability invention  
 - EXPIRED cert → PARTIAL, not MET  
 - Empty company inventory → INSUFFICIENT_DATA  
 
 ## Deploy order
 
-1. Flyway V40  
-2. Python module on DI/worker image (or Java port of fit_engine)  
-3. REST endpoints + tenant filter  
-4. Portal screens  
-5. Hardening: SKIP LOCKED, rate limit, RLS (see HARDENING_SNIPPETS.md)
+1. Flyway **V34** (not V40 — repo sequence after V33)  
+2. Rebuild backend + document-intelligence  
+3. Portal screens  
+4. Hardening: SKIP LOCKED, rate limit (see HARDENING_SNIPPETS.md — RLS already on V34 tables)
