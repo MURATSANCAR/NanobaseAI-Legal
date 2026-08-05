@@ -1,0 +1,73 @@
+{
+  "summary": {
+    "jobId": "e6854acd-906c-42d3-9ffd-c62848680485",
+    "mustCount": 36,
+    "requirementCount": 60,
+    "mustCategories": {
+      "OPERATIONAL": 9,
+      "TECHNICAL": 9,
+      "PERSONNEL": 4,
+      "ADMINISTRATIVE": 1,
+      "SECURITY": 4,
+      "COMPLIANCE": 5,
+      "SCHEDULE": 2,
+      "FINANCIAL": 2
+    },
+    "allCategories": {
+      "PERSONNEL": 9,
+      "OPERATIONAL": 13,
+      "TECHNICAL": 12,
+      "FINANCIAL": 5,
+      "DOCUMENT": 2,
+      "ADMINISTRATIVE": 3,
+      "SECURITY": 4,
+      "COMPLIANCE": 6,
+      "OTHER": 1,
+      "SCHEDULE": 5
+    },
+    "otherCount": 1,
+    "version": "2.2"
+  },
+  "mustSample": [
+    {
+      "category": "OPERATIONAL",
+      "title": "Section 4",
+      "text": "belirtilecek olanzamanda ve belirtilecek yerde yapılacaktır. YÜKLENİCİ, cihazların kullanıma açılması için ihtiyaç duyulabilecek her türlü y"
+    },
+    {
+      "category": "TECHNICAL",
+      "title": "2.7 YÜKLENİCİ, teklif edilecek tüm donanım ve yazılımların IPv6 desteği olacaktır. Bunun i",
+      "text": "2.7 YÜKLENİCİ, teklif edilecek tüm donanım ve yazılımların IPv6 desteği olacaktır. Bunun için gerekli olabilecek tüm yazılımlar ve lisanslar"
+    },
+    {
+      "category": "PERSONNEL",
+      "title": "2.8 YÜKLENİCİ, projenin her aşamasından sorumlu bir proje yöneticisi atayacaktır. Bu proje",
+      "text": "2.8 YÜKLENİCİ, projenin her aşamasından sorumlu bir proje yöneticisi atayacaktır. Bu proje yöneticisine tatil günleri dâhil ulaşılabilir ola"
+    },
+    {
+      "category": "PERSONNEL",
+      "title": "2.12 Çalışmalar sırasında malzem elerin taşınması, yerleştirilmesi ve bu çalışmalardan dol",
+      "text": "2.12 Çalışmalar sırasında malzem elerin taşınması, yerleştirilmesi ve bu çalışmalardan dolayı yapılması gereken temizlik işleri YÜKLENİCİ pe"
+    },
+    {
+      "category": "TECHNICAL",
+      "title": "2.13 Şartn ame kapsamın da kurulacak tümsistemlerde kullanılacak tüm yazılımların sorun su",
+      "text": "2.13 Şartn ame kapsamın da kurulacak tümsistemlerde kullanılacak tüm yazılımların sorun suz çalıştığı YÜKLENİCİ taraf ından test edilmiş ve "
+    },
+    {
+      "category": "PERSONNEL",
+      "title": "2.14 Tüm ürünlerin ve sistemlerin kurulumları ve ayarları İDARE personellerinin bilgisi ve",
+      "text": "2.14 Tüm ürünlerin ve sistemlerin kurulumları ve ayarları İDARE personellerinin bilgisi ve gözetimin de yapılacaktır."
+    },
+    {
+      "category": "PERSONNEL",
+      "title": "2.15 Montaj çalışmaları esnasında gerekli iş güvenliği YÜKLENİCİ tarafından sağlanacaktır.",
+      "text": "2.15 Montaj çalışmaları esnasında gerekli iş güvenliği YÜKLENİCİ tarafından sağlanacaktır. Çalışanların veya üçünc ü şahısların uğrayacağı z"
+    },
+    {
+      "category": "OPERATIONAL",
+      "title": "2.17 YÜKLENİCİ, resmi tatiller ve mesai saatleri dışı da dâhil olmak üzere5x8 (5 gün8saat)",
+      "text": "2.17 YÜKLENİCİ, resmi tatiller ve mesai saatleri dışı da dâhil olmak üzere5x8 (5 gün8saat) destek verebilme özelliğine sahip olacaktır."
+    }
+  ]
+}
