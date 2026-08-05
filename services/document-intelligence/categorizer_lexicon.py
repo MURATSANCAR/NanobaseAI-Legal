@@ -110,7 +110,7 @@ def flatten_category(categories: dict[str, Any], name: str) -> list[str]:
 
 
 def lexicon_stats(data: dict[str, Any] | None = None) -> dict[str, int]:
-    data = data or _load_json_files(_LEXICON_DIR)
+    data = data or _load_json_files()
     stats: dict[str, int] = {}
     for cat in data.get("categories") or {}:
         stats[cat] = len({t.casefold() for t in flatten_category(data["categories"], cat)})
@@ -175,7 +175,7 @@ class CategoryLexicon:
 
 @lru_cache(maxsize=1)
 def load_lexicons() -> dict[str, CategoryLexicon]:
-    data = _load_json_files(_LEXICON_DIR)
+    data = _load_json_files()
     cats = data.get("categories") or {}
     bounded = data.get("bounded") or {}
     extras = data.get("extra_patterns") or {}
@@ -192,7 +192,7 @@ def load_lexicons() -> dict[str, CategoryLexicon]:
 
 @lru_cache(maxsize=1)
 def tech_object_pattern() -> re.Pattern[str]:
-    data = _load_json_files(_LEXICON_DIR)
+    data = _load_json_files()
     terms = list(data.get("tech_objects") or [])
     # Always include TECHNICAL family nouns as tech objects for "en az N"
     terms.extend(flatten_category(data.get("categories") or {}, "TECHNICAL"))
@@ -211,12 +211,12 @@ def reload_lexicons() -> dict[str, CategoryLexicon]:
 
 
 def lexicon_dir() -> Path:
-    return _LEXICON_DIR
+    return _lexicon_dir_path()
 
 
 def all_known_terms() -> set[str]:
     """Casefolded set of every lexicon / bounded / tech_object term (for harvest skip)."""
-    data = _load_json_files(_LEXICON_DIR)
+    data = _load_json_files()
     out: set[str] = set()
     for cat, fams in (data.get("categories") or {}).items():
         for terms in (fams or {}).values():

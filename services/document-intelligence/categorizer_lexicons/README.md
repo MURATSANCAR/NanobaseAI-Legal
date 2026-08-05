@@ -6,7 +6,9 @@ Department-agnostic term banks for `requirement_categorizer_v2`.
 
 ```
 categorizer_lexicons/
-  base_v23.json          # seed families (SECURITY, TECHNICAL, …)
+  base_v23.json          # curated seed families
+  learned_overlay.json   # human-accepted organic terms (harvest → accept)
+  candidates.jsonl       # pending queue (local; not merged as lexicon)
   <any>.json             # optional overlays — all *.json merged at load
 ```
 
@@ -32,24 +34,42 @@ categorizer_lexicons/
 - **bounded**: forced `\\b…\\b` short tokens.
 - **extra_patterns**: raw regex (lookbehinds, multi-token structures).
 
-## How to grow to thousands
+## Organic growth (harvest → accept)
 
-1. Add terms under the right **category + family** (not a department name).
-2. Or drop another `*.json` beside `base_v23.json` (merged automatically).
-3. Keep collisions intentional: higher priority wins (SECURITY > … > TECHNICAL > …).
-4. Prefer phrases over 2–3 letter tokens. Single tokens with **len ≤ 3** are auto-bounded (`\b…\b`); still list critical acronyms under `bounded` explicitly.
-5. Run:
+Şartname okudukça liste otomatik şişmez; aday kuyruğu büyür, onaylanınca lexicon’a girer.
 
 ```bash
+cd services/document-intelligence
+
+# 1) Parse sonucu / requirements JSON'dan OTHER maddeleri hasat et
+python lexicon_harvest.py harvest -i /path/to/parse_result.json
+
+# 2) Bekleyen adaylar
+python lexicon_harvest.py status
+
+# 3) Onay (self_check kapısı — bozarsa rollback)
+python lexicon_harvest.py accept --term "spine-leaf" --category TECHNICAL --family network_hw --tech-object
+
+# 4) Red
+python lexicon_harvest.py reject --term "foobar"
+
 python requirement_categorizer_v2.py
-python -c "from categorizer_lexicon import lexicon_stats; print(lexicon_stats())"
-pytest test_categorizer_title_normalize.py -q
+pytest test_lexicon_harvest.py test_categorizer_title_normalize.py -q
 ```
 
-6. Deploy: rebuild/recreate `document-intelligence` (JSON is COPY’d into the image).
+`CATEGORIZER_LEXICON_DIR` ile alternatif klasör verilebilir (test / sandbox).
+
+## How to grow to thousands
+
+1. Prefer `lexicon_harvest.py` for real şartname terms; or edit JSON families by hand.
+2. Or drop another `*.json` beside `base_v23.json` (merged automatically).
+3. Keep collisions intentional: higher priority wins (SECURITY > … > TECHNICAL > …).
+4. Prefer phrases over 2–3 letter tokens. Single tokens with **len ≤ 3** are auto-bounded (`\b…\b`).
+5. Deploy: rebuild/recreate `document-intelligence` after `learned_overlay.json` changes.
 
 ## Do not
 
+- Auto-merge candidates into live lexicon without accept.
 - Add an `IT_DEPT` / `LEGAL_DEPT` category — use semantic categories only.
 - Put ISO 27001 / KVKK / gizlilik into COMPLIANCE (SECURITY owns them).
 - Put bare `güvenlik` without the `(?<!iş\\s)` guard (breaks `iş güvenliği` → PERSONNEL).

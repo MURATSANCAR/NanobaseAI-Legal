@@ -14,7 +14,7 @@ COPY app.py page_capability.py page_capability_pdf_inspector.py \
      parser_checkpoint.py bounded_parser.py pdf_inspector_bridge.py \
      markdown_short_circuit.py parser_metrics.py error_path_guards.py \
      markdown_clause_parser.py requirement_from_clauses.py \
-     requirement_categorizer_v2.py categorizer_lexicon.py \
+     requirement_categorizer_v2.py categorizer_lexicon.py lexicon_harvest.py \
      title_spacing_normalize.py \
      error_to_state.py reprocess_policy.py ./
 COPY textambiguity/ ./textambiguity/

@@ -8,6 +8,7 @@
 | `requirement_categorizer_v2.py` (v2.3) | Priority rules + structural early patterns |
 | `categorizer_lexicon.py` | Loads/merges JSON lexicons; batched match (10k+ ready) |
 | `categorizer_lexicons/*.json` | Department-agnostic term families |
+| `lexicon_harvest.py` | Organic growth: harvest OTHER → candidates → accept/reject |
 
 ## Priority (v2.3)
 
@@ -17,7 +18,7 @@
 
 `en az N` is TECHNICAL only when a tech object is nearby.
 
-Grow vocabulary by editing/adding JSON under `categorizer_lexicons/` (see README there) — not by inventing department categories.
+Grow vocabulary via `lexicon_harvest.py` or JSON under `categorizer_lexicons/` — not by inventing department categories.
 
 ## Wire
 
@@ -36,5 +37,15 @@ clauses = normalize_clause_titles(clauses)
 ```bash
 cd services/document-intelligence
 python requirement_categorizer_v2.py   # self_check 19/19 OK + lexicon_stats
-pytest test_categorizer_title_normalize.py test_core_functions.py -q
+pytest test_categorizer_title_normalize.py test_lexicon_harvest.py test_core_functions.py -q
 ```
+
+## Organic lexicon growth
+
+```bash
+python lexicon_harvest.py harvest -i parse_result.json
+python lexicon_harvest.py status
+python lexicon_harvest.py accept --term "spine-leaf" --category TECHNICAL --family network_hw
+```
+
+See `categorizer_lexicons/README.md`.

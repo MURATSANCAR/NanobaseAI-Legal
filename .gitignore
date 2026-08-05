@@ -8,6 +8,9 @@ data/
 __pycache__/
 *.pyc
 
+# Organic lexicon harvest queue (local working set)
+services/document-intelligence/categorizer_lexicons/candidates.jsonl
+
 # v1.1 evaluation corpus binaries (never commit)
 evaluation/corpus/assets/local/**
 !evaluation/corpus/assets/local/README.md

@@ -35,7 +35,7 @@ CATEGORIES = (
 )
 
 _TOKEN = re.compile(
-    r"[A-Za-zÇĞİÖŞÜçğıöşü][A-Za-zÇĞİÖŞÜçğıöşü0-9+./_-]{2,}",
+    r"[A-Za-zÇĞİÖŞÜçğıöşü][A-Za-zÇĞİÖŞÜçğıöşü0-9+/_-]{1,}",
     re.UNICODE,
 )
 
@@ -87,11 +87,18 @@ def _learned_path() -> Path:
 
 
 def _norm_term(term: str) -> str:
-    return " ".join((term or "").split()).strip()
+    t = " ".join((term or "").split()).strip()
+    t = t.strip(".,;:!?()[]{}\"'“”‘’")
+    return t
 
 
 def _tokens(text: str) -> list[str]:
-    return [m.group(0) for m in _TOKEN.finditer(text or "")]
+    out: list[str] = []
+    for m in _TOKEN.finditer(text or ""):
+        tok = _norm_term(m.group(0))
+        if tok:
+            out.append(tok)
+    return out
 
 
 def _is_noise(term: str) -> bool:
@@ -107,29 +114,35 @@ def _is_noise(term: str) -> bool:
     # Pure page/clause refs
     if re.fullmatch(r"\d+(\.\d+)+", t):
         return True
+    # Trailing junk / obligation verbs already in stop — also strip soft hyphens
+    if t.endswith("-") or t.startswith("-"):
+        return True
     return False
 
 
 def extract_candidate_terms(text: str) -> list[str]:
     """Unigrams + content bigrams suitable for lexicon growth."""
-    toks = [t for t in _tokens(text) if not _is_noise(t)]
     out: list[str] = []
     seen: set[str] = set()
-    for t in toks:
-        key = t.casefold()
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append(t)
-    for a, b in zip(toks, toks[1:]):
-        if a.casefold() in _STOP or b.casefold() in _STOP:
-            continue
-        phrase = f"{a} {b}"
-        key = phrase.casefold()
-        if key in seen or _is_noise(a) or _is_noise(b):
-            continue
-        seen.add(key)
-        out.append(phrase)
+    # Sentence-ish chunks avoid cross-sentence bigrams ("gateway Topoloji")
+    chunks = re.split(r"[.!?;:\n]+", text or "")
+    for chunk in chunks:
+        toks = [t for t in _tokens(chunk) if not _is_noise(t)]
+        for t in toks:
+            key = t.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(t)
+        for a, b in zip(toks, toks[1:]):
+            if a.casefold() in _STOP or b.casefold() in _STOP:
+                continue
+            phrase = f"{a} {b}"
+            key = phrase.casefold()
+            if key in seen or _is_noise(a) or _is_noise(b):
+                continue
+            seen.add(key)
+            out.append(phrase)
     return out
 
 
@@ -226,7 +239,9 @@ def harvest_from_payloads(
             body = f"{title} {text}".strip()
             if len(body) < 20:
                 continue
-            for term in extract_candidate_terms(body):
+            # Prefer body tokens; title is context for suggestions only
+            source_text = (text or title or "").strip()
+            for term in extract_candidate_terms(source_text):
                 key = term.casefold()
                 if key in known:
                     continue
