@@ -1472,7 +1472,13 @@ dd { margin: 0; font-size: 10px; font-weight: 700; text-align: right; }
 .clause-tree button b { font-size: 12px; }
 .clause-tree button span { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .clause-tree button small { color: var(--muted); font-size: 12px; }
-.pdf-panel { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; min-height: 0; }
+.pdf-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
 .pdf-toolbar {
   z-index: 2;
   display: flex;
@@ -1482,11 +1488,12 @@ dd { margin: 0; font-size: 10px; font-weight: 700; text-align: right; }
   padding: 7px;
   border-bottom: 1px solid #cddadc;
   background: #e3ecec;
+  flex-shrink: 0;
 }
 .pdf-toolbar button { display: grid; place-items: center; width: 28px; height: 28px; border: 1px solid #c3d2d4; border-radius: 6px; background: #fff; }
 .pdf-toolbar button svg { width: 14px; }
 .pdf-toolbar span { min-width: 72px; text-align: center; font-size: 12px; }
-.pdf-scroll { overflow: auto; padding: 20px; text-align: center; }
+.pdf-scroll { overflow: auto; min-height: 0; padding: 20px; text-align: center; }
 .pdf-page { position: relative; display: inline-block; line-height: 0; box-shadow: 0 8px 32px #18343e33; }
 .pdf-page canvas { display: block; max-width: none; background: #fff; }
 .source-highlights { position: absolute; inset: 0; pointer-events: none; }
@@ -2620,10 +2627,13 @@ button.dynamic-field:hover { border-color: #8fb8bf; }
   .form-actions, .member-form .primary, .form-grid .wide { grid-column: 1; }
   .project-hero { align-items: flex-start; flex-direction: column; }
   .review-backdrop { padding: 0; }
-  .document-review { border-radius: 0; }
+  .document-review {
+    width: 100%;
+    height: 100dvh;
+    max-height: 100dvh;
+    border-radius: 0;
+  }
   .review-grid { grid-template-columns: 1fr; }
-  .clause-panel { display: none; }
-  .clause-detail { display: none; }
   .analysis-progress, .change-form { grid-template-columns: 1fr; }
   .conflict-workspace { grid-template-columns: 1fr; }
   .conflict-decision { grid-column: auto; }
@@ -2669,20 +2679,34 @@ button.dynamic-field:hover { border-color: #8fb8bf; }
 }
 
 /* EasyMeeting mobile review + overflow hardening */
-.review-mobile-tabs { display: none; margin: 0 12px 10px; }
+.review-mobile-tabs {
+  display: none;
+  flex-shrink: 0;
+  margin: 0 12px 10px;
+}
 @media (max-width: 760px) {
   .review-head { padding: 12px 14px; gap: 10px; }
   .review-head h2 { font-size: 16px; }
   .review-head-status { white-space: normal; word-break: break-word; }
   .review-mobile-tabs { display: flex; }
-  .review-grid { grid-template-columns: 1fr !important; min-height: 0; }
+  .review-grid {
+    grid-template-columns: 1fr !important;
+    min-height: 0;
+    flex: 1 1 auto;
+  }
   .review-grid .clause-panel,
   .review-grid .pdf-panel,
-  .review-grid .clause-detail { display: none; min-height: 55dvh; }
+  .review-grid .clause-detail {
+    display: none;
+    min-height: 0;
+    height: 100%;
+  }
   .review-grid--clauses .clause-panel,
   .review-grid--pdf .pdf-panel,
-  .review-grid--detail .clause-detail { display: grid !important; }
-  .clause-detail {
+  .review-grid--detail .clause-detail {
+    display: grid !important;
+  }
+  .review-grid--detail .clause-detail {
     position: static !important;
     width: auto !important;
     box-shadow: none !important;
@@ -2719,6 +2743,10 @@ button.dynamic-field:hover { border-color: #8fb8bf; }
 @media (min-width: 761px) {
   .review-mobile-tabs { display: none !important; }
   .review-grid .clause-panel,
-  .review-grid .pdf-panel,
-  .review-grid .clause-detail { display: revert; }
+  .review-grid .clause-detail {
+    display: block;
+  }
+  .review-grid .pdf-panel {
+    display: grid;
+  }
 }

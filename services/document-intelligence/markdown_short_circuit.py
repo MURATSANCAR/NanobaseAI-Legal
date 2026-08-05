@@ -285,6 +285,12 @@ def run_markdown_short_circuit(
         clauses, parsed_tables = parse_markdown_clauses(
             markdown, page_count=page_count, provider="PDF_INSPECTOR"
         )
+        try:
+            from title_spacing_normalize import normalize_clause_titles
+
+            clauses = normalize_clause_titles(clauses)
+        except Exception:
+            logger.exception("title spacing normalize failed – keeping raw titles")
         for clause in clauses:
             meta = dict(clause.get("metadata") or {})
             meta["shortCircuited"] = True

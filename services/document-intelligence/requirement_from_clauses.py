@@ -6,10 +6,13 @@ import hashlib
 import re
 from typing import Any
 
+from requirement_categorizer_v2 import categorize_many, categorize_requirement
+
 MUST_RE = re.compile(
     r"\b("
     r"zorunlu|mecburi|şarttır|zorundadır|edilmelidir|yapılacaktır|"
     r"sağlanacaktır|teslim\s+edilecektir|yerine\s+getirilecektir|"
+    r"olacaktır|bulunacaktır|destekleyecektir|edilecektir|"
     r"must|shall|required|mandatory"
     r")\b",
     re.IGNORECASE,
@@ -21,14 +24,6 @@ SHOULD_RE = re.compile(
     r")\b",
     re.IGNORECASE,
 )
-CATEGORY_RULES: list[tuple[str, re.Pattern[str]]] = [
-    ("TECHNICAL", re.compile(r"\b(teknik|yazılım|donanım|entegrasyon|api|sistem|sla)\b", re.I)),
-    ("SECURITY", re.compile(r"\b(güvenlik|kript|sızma|yetkilendirme|kimlik|kvkk|kişisel\s+veri)\b", re.I)),
-    ("ADMINISTRATIVE", re.compile(r"\b(idari|teklif|geçici\s+teminat|yeterlik|iş\s+deneyim)\b", re.I)),
-    ("FINANCIAL", re.compile(r"\b(fiyat|bedel|ödeme|mali|teminat|avans)\b", re.I)),
-    ("OPERATIONAL", re.compile(r"\b(destek|bakım|operasyon|7/24|kesinti|süreklilik)\b", re.I)),
-    ("LEGAL", re.compile(r"\b(sözleşme|hukuk|cezai|fesih|uyuşmazlık|kanun)\b", re.I)),
-]
 
 
 def _norm(text: str) -> str:
@@ -47,11 +42,8 @@ def _obligation(text: str) -> str:
     return "INFORMATIONAL"
 
 
-def _category(text: str) -> str:
-    for name, pattern in CATEGORY_RULES:
-        if pattern.search(text or ""):
-            return name
-    return "OTHER"
+def _category(text: str, *, title: str = "") -> str:
+    return categorize_requirement(text, title=title)
 
 
 def requirements_from_clauses(clauses: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -75,18 +67,19 @@ def requirements_from_clauses(clauses: list[dict[str, Any]]) -> list[dict[str, A
                 "title": (title or f"Requirement {index + 1}")[:500],
                 "text": req_text,
                 "normalizedText": _norm(req_text),
-                "category": _category(body),
+                "category": _category(body, title=title),
                 "obligationLevel": obligation,
                 "pageStart": clause.get("pageStart"),
                 "pageEnd": clause.get("pageEnd"),
                 "contentHash": _hash(req_text),
                 "metadata": {
                     "extractor": "requirement_from_clauses",
+                    "categorizer": "requirement_categorizer_v2",
                     "clauseNumber": clause.get("clauseNumber"),
                 },
             }
         )
-    return requirements
+    return categorize_many(requirements)
 
 
 def attach_requirements_to_result(result: dict[str, Any]) -> dict[str, Any]:
@@ -98,5 +91,6 @@ def attach_requirements_to_result(result: dict[str, Any]) -> dict[str, Any]:
     metadata = dict(enriched.get("metadata") or {})
     metadata["requirementCount"] = len(requirements)
     metadata["requirementExtractor"] = "requirement_from_clauses"
+    metadata["requirementCategorizer"] = "requirement_categorizer_v2"
     enriched["metadata"] = metadata
     return enriched

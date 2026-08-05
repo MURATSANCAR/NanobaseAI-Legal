@@ -65,7 +65,7 @@ def test_requirements_must_should_and_source_ids():
     assert len(reqs) >= 1
     must = next(r for r in reqs if r["sourceClauseIds"] == ["md-a"])
     assert must["obligationLevel"] == "MUST"
-    assert must["category"] in {"OPERATIONAL", "TECHNICAL", "OTHER"}
+    assert must["category"] in {"OPERATIONAL", "TECHNICAL", "SCHEDULE", "OTHER"}
 
 
 def test_attach_requirements_to_result():

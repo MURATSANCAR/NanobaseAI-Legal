@@ -211,4 +211,10 @@ def parse_markdown_clauses(
     if in_table:
         flush_table()
     close_clause()
+    try:
+        from title_spacing_normalize import normalize_clause_titles
+
+        clauses = normalize_clause_titles(clauses)
+    except Exception:
+        pass
     return clauses, tables

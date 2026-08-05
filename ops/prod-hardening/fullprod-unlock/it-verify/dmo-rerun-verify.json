@@ -1,0 +1,118 @@
+{
+  "summary": {
+    "jobId": "4e11131c-a7e4-4f1d-9bdb-832934fb0d64",
+    "provider": "PDF_INSPECTOR",
+    "shortCircuited": true,
+    "pageCount": 8,
+    "clauseCount": 68,
+    "requirementCount": 60,
+    "mustCount": 36,
+    "mustCategories": {
+      "TECHNICAL": 24,
+      "PERSONNEL": 4,
+      "OPERATIONAL": 3,
+      "ADMINISTRATIVE": 1,
+      "FINANCIAL": 2,
+      "SCHEDULE": 2
+    },
+    "allCategories": {
+      "TECHNICAL": 34,
+      "PERSONNEL": 6,
+      "FINANCIAL": 4,
+      "DOCUMENT": 2,
+      "OPERATIONAL": 4,
+      "COMPLIANCE": 2,
+      "ADMINISTRATIVE": 2,
+      "OTHER": 1,
+      "SCHEDULE": 5
+    },
+    "requirementCategorizer": "requirement_categorizer_v2",
+    "qualityGate": "PASS",
+    "normalizedTitleHits": [
+      "SUNUCU ALİMİ TEKNİK ŞARTNAMESİ",
+      "2.10 Kurulumlar ve montaj esnasınd aorta ya çıkabilecek her türlü kablo (Bakır, Fiber PachCord, uygun tipte PDU kablosu... vb.) ve aparatla r YÜKLENİCİ taraf ından temin edilecek ve hiçbir bedel talep edilmeyecektir.",
+      "3.1. SUNUCU TİP 1 (15 ADET)",
+      "3.1.5 Sunuc u üzerin de en az 10 adet ne t 3.84 TB kapasiteli SAS12GOkuma Yoğunluklu (Rl) SSDdisk bulunacaktır.",
+      "3.1.7 Sunucu üzerinde en az 4 adet 10 Gigabit SFP+ arabirimine sahip ağ kartı ve uyumlu modülü olacaktır.",
+      "3.1.13 Sunucunun, çalışma esnasınd a sökülüp takılabilen ve herbiri en az 75 0 wgücünde yedekli çalışan güç kaynaklan bulunacaktır.",
+      "3.1.14 YÜKLENİCİ, Sunucular ile beraber KURUM'un envanterin de bulunan kabinlerden birine uyumlu, kayan raylı kabin m ontaj kitigüç, kablosu ve kablo düzenleyicilerini sağlanacaktır. KURUM envanterind e buluna n kabinlerin uyuml uolmaması halind e uyumlu kabin ve yapısal kablolaması teklife dâhil edilecektir.",
+      "3.2. SUNUCU TİP 2 (10 ADET)",
+      "3.2.1 Sunucular HPDELL, LENOVO veya Fujitsu marka olacaktır.",
+      "3.2.2 Sunucular en fazla 2U yüksekliğinde racktipi olacaktır.",
+      "3.2.6 Sunucu üzerinde en az 21 adet net 15. 36 TB kapasiteli SAS12GOkuma Yoğunluklu (Rl) SSDdisk bulunacaktır.",
+      "3.2.7 Sunucu üzerin de en az 12 gbpsbant genişliğine sahip ve 0,1,5,6 RAID türlerini destekleyen kart olacaktır."
+    ],
+    "headTitles": [
+      "T.C. HAZİNE VE MALİYE BAKANLIĞI",
+      "BİLGİ TEKNOLOJİLERİ GENEL MÜDÜRLÜĞÜ",
+      "SUNUCU ALİMİ TEKNİK ŞARTNAMESİ",
+      "Section 4",
+      "2.7 YÜKLENİCİ, teklif edilecek tüm donanım ve yazılımların IPv6 desteği olacaktır. Bunun için gerekli olabilecek tüm yaz",
+      "2.8 YÜKLENİCİ, projenin her aşamasından sorumlu bir proje yöneticisi atayacaktır. Bu proje yöneticisine tatil günleri dâ",
+      "2.9 YÜKLENİCİ, kurul umunu yaptığı tüm donanım ve yazılımlar için İDARE'nin belirleyeceği perso nellere ücretsiz eğitim ",
+      "2.10 Kurulumlar ve montaj esnasınd aorta ya çıkabilecek her türlü kablo (Bakır, Fiber PachCord, uygun tipte PDU kablosu."
+    ]
+  },
+  "mustSample": [
+    {
+      "category": "TECHNICAL",
+      "obligationLevel": "MUST",
+      "title": "Section 4",
+      "text": "belirtilecek olanzamanda ve belirtilecek yerde yapılacaktır. YÜKLENİCİ, cihazların kullanıma açılması için ihtiyaç duyulabilecek her türlü yazılımı yüklemek ve cihazları diğer bütündon anımla r ile uyumlu bir şekilde çal"
+    },
+    {
+      "category": "TECHNICAL",
+      "obligationLevel": "MUST",
+      "title": "2.7 YÜKLENİCİ, teklif edilecek tüm donanım ve yazılımların IPv6 desteği olacaktır. Bunun için gerekli olabilecek tüm yaz",
+      "text": "2.7 YÜKLENİCİ, teklif edilecek tüm donanım ve yazılımların IPv6 desteği olacaktır. Bunun için gerekli olabilecek tüm yazılımlar ve lisanslar YÜKLENİCİ soru mluluğu nda olacaktır. T.C. Hazine ve Maliye Bakanlığı Bilgi Tek"
+    },
+    {
+      "category": "PERSONNEL",
+      "obligationLevel": "MUST",
+      "title": "2.8 YÜKLENİCİ, projenin her aşamasından sorumlu bir proje yöneticisi atayacaktır. Bu proje yöneticisine tatil günleri dâ",
+      "text": "2.8 YÜKLENİCİ, projenin her aşamasından sorumlu bir proje yöneticisi atayacaktır. Bu proje yöneticisine tatil günleri dâhil ulaşılabilir olacaktır."
+    },
+    {
+      "category": "PERSONNEL",
+      "obligationLevel": "MUST",
+      "title": "2.12 Çalışmalar sırasında malzem elerin taşınması, yerleştirilmesi ve bu çalışmalardan dolayı yapılması gereken temizlik",
+      "text": "2.12 Çalışmalar sırasında malzem elerin taşınması, yerleştirilmesi ve bu çalışmalardan dolayı yapılması gereken temizlik işleri YÜKLENİCİ personeli tarafın dan yapılacaktır."
+    },
+    {
+      "category": "TECHNICAL",
+      "obligationLevel": "MUST",
+      "title": "2.13 Şartn ame kapsamın da kurulacak tümsistemlerde kullanılacak tüm yazılımların sorun suz çalıştığı YÜKLENİCİ taraf ın",
+      "text": "2.13 Şartn ame kapsamın da kurulacak tümsistemlerde kullanılacak tüm yazılımların sorun suz çalıştığı YÜKLENİCİ taraf ından test edilmiş ve önerilen en sonyama ve hizmet paketleri uygulanmış şekilde teslim edilecektir."
+    },
+    {
+      "category": "PERSONNEL",
+      "obligationLevel": "MUST",
+      "title": "2.14 Tüm ürünlerin ve sistemlerin kurulumları ve ayarları İDARE personellerinin bilgisi ve gözetimin de yapılacaktır.",
+      "text": "2.14 Tüm ürünlerin ve sistemlerin kurulumları ve ayarları İDARE personellerinin bilgisi ve gözetimin de yapılacaktır."
+    },
+    {
+      "category": "PERSONNEL",
+      "obligationLevel": "MUST",
+      "title": "2.15 Montaj çalışmaları esnasında gerekli iş güvenliği YÜKLENİCİ tarafından sağlanacaktır. Çalışanların veya üçünc ü şah",
+      "text": "2.15 Montaj çalışmaları esnasında gerekli iş güvenliği YÜKLENİCİ tarafından sağlanacaktır. Çalışanların veya üçünc ü şahısların uğrayacağı zarar larda n YÜKLENİCİ sorumlu olacaktır."
+    },
+    {
+      "category": "OPERATIONAL",
+      "obligationLevel": "MUST",
+      "title": "2.17 YÜKLENİCİ, resmi tatiller ve mesai saatleri dışı da dâhil olmak üzere5x8 (5 gün8saat) destek verebilme özelliğine s",
+      "text": "2.17 YÜKLENİCİ, resmi tatiller ve mesai saatleri dışı da dâhil olmak üzere5x8 (5 gün8saat) destek verebilme özelliğine sahip olacaktır."
+    },
+    {
+      "category": "ADMINISTRATIVE",
+      "obligationLevel": "MUST",
+      "title": "2.21 YÜKLENİCİ tarafın dan yürütülecek tüm çalışmalar sırasında duvar, zemin ve diğer yüzeyler ile mobilya, altyapı ve b",
+      "text": "2.21 YÜKLENİCİ tarafın dan yürütülecek tüm çalışmalar sırasında duvar, zemin ve diğer yüzeyler ile mobilya, altyapı ve benzeri alanlarda oluşacak hasar ve genel görünümü bozan her türlü tahriba t giderilip, çalışma alanı"
+    },
+    {
+      "category": "TECHNICAL",
+      "obligationLevel": "MUST",
+      "title": "Teklif edilecek ürün listesi aşağıdaki gibidir:",
+      "text": "Teklif edilecek ürün listesi aşağıdaki gibidir: (Teklif edilecek TİP 1 ve TİP 2 sunuc ularaynı marka olacaktır.) **N OAÇIKLAMAMİKTA R** 1 SUNUCU TİP 115 adet I2 | SUNUCU TİP 210 adet"
+    }
+  ]
+}
