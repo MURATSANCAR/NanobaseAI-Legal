@@ -11,6 +11,7 @@ stay in requirement_categorizer_v2.py.
 from __future__ import annotations
 
 import json
+import os
 import re
 from functools import lru_cache
 from pathlib import Path
@@ -20,7 +21,16 @@ Flags = re.IGNORECASE | re.UNICODE
 _BATCH = 350
 _FLEX_MAX_LEN = 6  # char-flex only for short tokens (PDF letter-spacing)
 
-_LEXICON_DIR = Path(__file__).resolve().parent / "categorizer_lexicons"
+_DEFAULT_LEXICON_DIR = Path(__file__).resolve().parent / "categorizer_lexicons"
+
+
+def _lexicon_dir_path() -> Path:
+    override = (os.environ.get("CATEGORIZER_LEXICON_DIR") or "").strip()
+    return Path(override) if override else _DEFAULT_LEXICON_DIR
+
+
+# Back-compat alias used by harvest / docs
+_LEXICON_DIR = _DEFAULT_LEXICON_DIR
 
 
 def _flex(term: str) -> str:
@@ -62,7 +72,8 @@ def _compile_term_batches(terms: Iterable[str]) -> list[re.Pattern[str]]:
     return out
 
 
-def _load_json_files(directory: Path) -> dict[str, Any]:
+def _load_json_files(directory: Path | None = None) -> dict[str, Any]:
+    directory = directory or _lexicon_dir_path()
     merged: dict[str, Any] = {
         "version": "0",
         "categories": {},
@@ -197,3 +208,22 @@ def reload_lexicons() -> dict[str, CategoryLexicon]:
     load_lexicons.cache_clear()
     tech_object_pattern.cache_clear()
     return load_lexicons()
+
+
+def lexicon_dir() -> Path:
+    return _LEXICON_DIR
+
+
+def all_known_terms() -> set[str]:
+    """Casefolded set of every lexicon / bounded / tech_object term (for harvest skip)."""
+    data = _load_json_files(_LEXICON_DIR)
+    out: set[str] = set()
+    for cat, fams in (data.get("categories") or {}).items():
+        for terms in (fams or {}).values():
+            for t in terms or []:
+                out.add(" ".join(str(t).split()).casefold())
+        for t in (data.get("bounded") or {}).get(cat) or []:
+            out.add(" ".join(str(t).split()).casefold())
+    for t in data.get("tech_objects") or []:
+        out.add(" ".join(str(t).split()).casefold())
+    return out
