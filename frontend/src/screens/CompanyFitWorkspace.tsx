@@ -246,24 +246,24 @@ export function CompanyFitWorkspace({
         <QaMetricCard
           label="Şirket evrakı"
           value={String(evidenceDocs.length)}
-          hint="READY sertifika / katalog"
-          icon={<Building2 className="h-4 w-4" />}
+          detail="READY sertifika / katalog"
+          icon={Building2}
         />
         <QaMetricCard
           label="Yetenek"
           value={String(capabilities.length)}
-          hint="Çıkarılmış capability"
-          icon={<ShieldCheck className="h-4 w-4" />}
+          detail="Çıkarılmış capability"
+          icon={ShieldCheck}
         />
         <QaMetricCard
           label="Sonuç"
           value={report?.overall ?? "—"}
-          hint={
+          detail={
             report
               ? `${report.mustMet}/${report.mustTotal} MUST · skor ${report.overallScore}`
               : "Henüz hesaplanmadı"
           }
-          icon={<ClipboardCheck className="h-4 w-4" />}
+          icon={ClipboardCheck}
         />
       </div>
 

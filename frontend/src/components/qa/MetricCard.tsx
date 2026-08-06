@@ -1,25 +1,41 @@
 import type { LucideIcon } from "lucide-react";
+import { isValidElement, type ReactNode } from "react";
 import { cn } from "@/src/lib/cn";
 
 type MetricCardProps = {
   label: string;
   value: number | string;
-  icon?: LucideIcon;
+  /** Lucide component or a pre-built icon element. */
+  icon?: LucideIcon | ReactNode;
   detail?: string;
+  /** Alias used by some workspaces; treated as detail. */
+  hint?: string;
   tone?: string;
   delay?: number;
   onClick?: () => void;
 };
 
+function renderIcon(icon: LucideIcon | ReactNode) {
+  if (isValidElement(icon)) return icon;
+  if (typeof icon === "function") {
+    const Icon = icon as LucideIcon;
+    return <Icon className="h-4 w-4" />;
+  }
+  return null;
+}
+
 export function MetricCard({
   label,
   value,
-  icon: Icon,
+  icon,
   detail,
+  hint,
   tone = "text-violet-600",
   delay = 0,
   onClick,
 }: MetricCardProps) {
+  const caption = detail ?? hint;
+  const iconNode = icon ? renderIcon(icon) : null;
   const card = (
     <div
       className={cn(
@@ -42,14 +58,12 @@ export function MetricCard({
         <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
           {label}
         </span>
-        {Icon ? (
-          <div className={cn("rounded-xl bg-violet-50 p-2", tone)}>
-            <Icon className="h-4 w-4" />
-          </div>
+        {iconNode ? (
+          <div className={cn("rounded-xl bg-violet-50 p-2", tone)}>{iconNode}</div>
         ) : null}
       </div>
       <div className="metric-value">{value}</div>
-      {detail ? <p className="mt-2 text-xs text-slate-500">{detail}</p> : null}
+      {caption ? <p className="mt-2 text-xs text-slate-500">{caption}</p> : null}
     </div>
   );
 
