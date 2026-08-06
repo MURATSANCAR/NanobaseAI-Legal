@@ -44,6 +44,7 @@ const PROJECT_TABS: ProjectTab[] = [
   "documents",
   "requirements",
   "knowledge",
+  "company-fit",
   "compliance",
   "risks",
   "conflicts",

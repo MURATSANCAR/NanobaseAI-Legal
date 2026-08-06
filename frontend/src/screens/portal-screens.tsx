@@ -16,6 +16,7 @@ export { ProjectList } from "./ProjectList";
 export { ProjectDetail } from "./ProjectDetail";
 export { Overview } from "./Overview";
 export { KnowledgeCenter } from "./KnowledgeCenter";
+export { CompanyFitWorkspace } from "./CompanyFitWorkspace";
 export { ComplianceWorkspace } from "./ComplianceWorkspace";
 export { RequirementsMatrix } from "./RequirementsMatrix";
 export { RiskCenter } from "./RiskCenter";

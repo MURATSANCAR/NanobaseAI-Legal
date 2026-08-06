@@ -35,6 +35,7 @@ import com.nanobase.specai.analysis.infrastructure.AnalysisPersistenceStore;
 import com.nanobase.specai.analysis.integration.AnalysisEvents.AnalysisProgress;
 import com.nanobase.specai.analysis.performance.RequirementExtractionTimingRecorder;
 import com.nanobase.specai.audit.application.AuditService;
+import com.nanobase.specai.companyfit.application.CompanyFitAutoWireService;
 import com.nanobase.specai.document.capability.SpecIntelligenceV11Flags;
 import com.nanobase.specai.document.domain.Clause;
 import com.nanobase.specai.document.domain.ClauseRepository;
@@ -87,6 +88,7 @@ public class RequirementExtractionProcessor {
     private final AuditService audit;
     private final JdbcTemplate jdbc;
     private final ObjectProvider<RequirementExtractionTimingRecorder> timingRecorder;
+    private final CompanyFitAutoWireService companyFitAutoWire;
     private final Clock clock = Clock.systemUTC();
 
     public RequirementExtractionProcessor(
@@ -116,7 +118,8 @@ public class RequirementExtractionProcessor {
         RequirementConditionExtractor conditionExtractor,
         AuditService audit,
         JdbcTemplate jdbc,
-        ObjectProvider<RequirementExtractionTimingRecorder> timingRecorder) {
+        ObjectProvider<RequirementExtractionTimingRecorder> timingRecorder,
+        CompanyFitAutoWireService companyFitAutoWire) {
         this.tenantDatabase = tenantDatabase;
         this.jobs = jobs;
         this.profiles = profiles;
@@ -144,6 +147,7 @@ public class RequirementExtractionProcessor {
         this.audit = audit;
         this.jdbc = jdbc;
         this.timingRecorder = timingRecorder;
+        this.companyFitAutoWire = companyFitAutoWire;
     }
 
     @Transactional
@@ -318,6 +322,7 @@ public class RequirementExtractionProcessor {
                     "RequirementReviewRequired", RabbitConfiguration.REQUIREMENT_REVIEW,
                     progressPayload(job), job.correlationId());
             }
+            companyFitAutoWire.maybeEvaluateAfterRequirements(organizationId, job.documentId());
         } catch (RuntimeException failure) {
             job.fail(clock.instant());
             store.event(organizationId, job.id(), "FAILED",

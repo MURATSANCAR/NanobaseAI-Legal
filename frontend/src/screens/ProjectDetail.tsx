@@ -34,6 +34,7 @@ import { Overview } from "./Overview";
 import { DocumentCenter } from "./DocumentCenter";
 import { RequirementsMatrix } from "./RequirementsMatrix";
 import { KnowledgeCenter } from "./KnowledgeCenter";
+import { CompanyFitWorkspace } from "./CompanyFitWorkspace";
 import { ComplianceWorkspace } from "./ComplianceWorkspace";
 import { RiskCenter } from "./RiskCenter";
 import { ConflictWorkspace } from "./ConflictWorkspace";
@@ -69,6 +70,7 @@ export function ProjectDetail({
   members,
   auditEvents,
   token,
+  orgId,
   canWrite,
   canAnalyze,
   loading,
@@ -98,6 +100,7 @@ export function ProjectDetail({
   members: ProjectMember[];
   auditEvents: AuditEvent[];
   token: string;
+  orgId: string;
   canWrite: boolean;
   canAnalyze: boolean;
   loading: boolean;
@@ -232,6 +235,16 @@ export function ProjectDetail({
               project={project}
               documents={documents}
               token={token}
+              canWrite={canAnalyze}
+              onProblem={onProblem}
+              onNotify={onNotify}
+            />
+          )}
+          {tab === "company-fit" && (
+            <CompanyFitWorkspace
+              documents={documents}
+              token={token}
+              orgId={orgId}
               canWrite={canAnalyze}
               onProblem={onProblem}
               onNotify={onNotify}

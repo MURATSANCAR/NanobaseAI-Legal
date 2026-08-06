@@ -26,6 +26,7 @@ export type ProjectTab =
   | "documents"
   | "requirements"
   | "knowledge"
+  | "company-fit"
   | "compliance"
   | "risks"
   | "conflicts"

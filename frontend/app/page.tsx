@@ -754,6 +754,7 @@ export default function SpecAiPortal() {
           members={members}
           auditEvents={auditEvents}
           token={token}
+          orgId={session?.profile?.tenant_id ?? ""}
           canWrite={canWrite}
           canAnalyze={canAnalyze}
           loading={loading}

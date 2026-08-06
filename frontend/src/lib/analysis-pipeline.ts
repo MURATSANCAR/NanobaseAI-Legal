@@ -63,6 +63,7 @@ export const EXPERT_TABS = [
   ["documents", "Dokümanlar"],
   ["requirements", "Gereksinim matrisi"],
   ["knowledge", "Firma ve ürünler"],
+  ["company-fit", "Firma uygunluk"],
   ["compliance", "Uygunluk"],
   ["risks", "Risk merkezi"],
   ["conflicts", "Çelişkiler"],

@@ -2,6 +2,7 @@ package com.nanobase.specai.document.integration;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nanobase.specai.companyfit.application.CompanyFitAutoWireService;
 import com.nanobase.specai.document.application.DocumentExtractionPersistenceService;
 import com.nanobase.specai.document.application.DocumentV11EnrichmentService;
 import com.nanobase.specai.document.application.ProcessingJobService;
@@ -45,6 +46,7 @@ public class DocumentUploadedConsumer {
     private final ConsumerIdempotencyService idempotency;
     private final RabbitTemplate rabbit;
     private final PlatformMetrics metrics;
+    private final CompanyFitAutoWireService companyFitAutoWire;
     private final int maximumRetries;
     private final double minimumQualityScore;
     private final Duration pollInterval;
@@ -61,6 +63,7 @@ public class DocumentUploadedConsumer {
         ConsumerIdempotencyService idempotency,
         RabbitTemplate rabbit,
         PlatformMetrics metrics,
+        CompanyFitAutoWireService companyFitAutoWire,
         @Value("${specai.messaging.maximum-consumer-retries:3}") int maximumRetries,
         @Value("${specai.document-intelligence.minimum-quality-score:0.50}")
         double minimumQualityScore,
@@ -77,6 +80,7 @@ public class DocumentUploadedConsumer {
         this.idempotency = idempotency;
         this.rabbit = rabbit;
         this.metrics = metrics;
+        this.companyFitAutoWire = companyFitAutoWire;
         this.maximumRetries = maximumRetries;
         this.minimumQualityScore = minimumQualityScore;
         this.pollInterval = pollInterval;
@@ -174,6 +178,8 @@ public class DocumentUploadedConsumer {
             null, null, null);
         processing.transition(event.organizationId(), job.id(), DocumentStatus.READY,
             null, null, null);
+        companyFitAutoWire.maybeIngestAfterParse(
+            event.organizationId(), payload.documentId(), payload.documentVersionId());
     }
 
     private ProcessingStatusResult awaitTerminalStatus(
