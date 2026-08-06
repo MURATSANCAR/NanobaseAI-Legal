@@ -1,6 +1,8 @@
--- Hard purge all lab tender projects + derived artifacts for bootstrap org.
+-- Hard purge lab tenant projects using replication role to bypass FK order.
+-- Bootstrap org only. Safe for EasyMeeting lab reset before real E2E.
 BEGIN;
 SET LOCAL app.current_organization_id = '11111111-1111-1111-1111-111111111111';
+SET LOCAL session_replication_role = replica;
 
 TRUNCATE company_fit_report, company_capability, company_document CASCADE;
 
@@ -8,122 +10,124 @@ CREATE TEMP TABLE _purge_projects AS SELECT id FROM tender_project;
 CREATE TEMP TABLE _purge_docs AS SELECT id FROM document;
 CREATE TEMP TABLE _purge_versions AS SELECT id FROM document_version;
 
--- project-scoped operational tables
-DELETE FROM assessment_review WHERE organization_id = '11111111-1111-1111-1111-111111111111'::uuid;
-DELETE FROM bid_decision WHERE project_id IN (SELECT id FROM _purge_projects);
-DELETE FROM tender_assessment_summary WHERE project_id IN (SELECT id FROM _purge_projects);
-DELETE FROM approval_request WHERE project_id IN (SELECT id FROM _purge_projects);
-DELETE FROM clarification_candidate WHERE project_id IN (SELECT id FROM _purge_projects);
-DELETE FROM clarification_request WHERE project_id IN (SELECT id FROM _purge_projects);
-DELETE FROM conflict_record WHERE project_id IN (SELECT id FROM _purge_projects);
-DELETE FROM decision_support_case WHERE project_id IN (SELECT id FROM _purge_projects);
-DELETE FROM expert_feedback WHERE project_id IN (SELECT id FROM _purge_projects);
-DELETE FROM impact_analysis_job WHERE project_id IN (SELECT id FROM _purge_projects);
-DELETE FROM knowledge_snapshot WHERE project_id IN (SELECT id FROM _purge_projects);
-DELETE FROM project_finalization_record WHERE project_id IN (SELECT id FROM _purge_projects);
-DELETE FROM report_data_snapshot WHERE project_id IN (SELECT id FROM _purge_projects);
-DELETE FROM report_generation_job WHERE project_id IN (SELECT id FROM _purge_projects);
-DELETE FROM risk_analysis_job WHERE project_id IN (SELECT id FROM _purge_projects);
-DELETE FROM risk_analysis_profile WHERE project_id IN (SELECT id FROM _purge_projects);
-DELETE FROM risk_record WHERE project_id IN (SELECT id FROM _purge_projects);
-DELETE FROM task_record WHERE project_id IN (SELECT id FROM _purge_projects);
-DELETE FROM terminology_snapshot WHERE project_id IN (SELECT id FROM _purge_projects);
-DELETE FROM workflow_instance WHERE project_id IN (SELECT id FROM _purge_projects);
-DELETE FROM ambiguity_finding WHERE project_id IN (SELECT id FROM _purge_projects);
-DELETE FROM compliance_analysis_job WHERE project_id IN (SELECT id FROM _purge_projects);
-
--- compliance / contracts
-DELETE FROM compliance_condition WHERE organization_id = '11111111-1111-1111-1111-111111111111'::uuid;
-DELETE FROM compliance_gap WHERE organization_id = '11111111-1111-1111-1111-111111111111'::uuid;
-DELETE FROM compliance_evaluation WHERE organization_id = '11111111-1111-1111-1111-111111111111'::uuid;
-DELETE FROM obligation_evidence WHERE organization_id = '11111111-1111-1111-1111-111111111111'::uuid;
-DELETE FROM contract_obligation WHERE organization_id = '11111111-1111-1111-1111-111111111111'::uuid;
-DELETE FROM contract_record WHERE organization_id = '11111111-1111-1111-1111-111111111111'::uuid;
-
--- requirement graph dependents
-DELETE FROM requirement_matching_task WHERE organization_id = '11111111-1111-1111-1111-111111111111'::uuid;
-DELETE FROM requirement_capability_match WHERE organization_id = '11111111-1111-1111-1111-111111111111'::uuid;
-DELETE FROM requirement_condition WHERE organization_id = '11111111-1111-1111-1111-111111111111'::uuid;
-DELETE FROM requirement_dependency
-WHERE source_requirement_id IN (SELECT id FROM requirement WHERE project_id IN (SELECT id FROM _purge_projects))
-   OR target_requirement_id IN (SELECT id FROM requirement WHERE project_id IN (SELECT id FROM _purge_projects));
-
-DELETE FROM ambiguity_source WHERE document_id IN (SELECT id FROM _purge_docs) OR requirement_id IN (SELECT id FROM requirement WHERE project_id IN (SELECT id FROM _purge_projects));
-DELETE FROM clarification_source WHERE document_id IN (SELECT id FROM _purge_docs) OR requirement_id IN (SELECT id FROM requirement WHERE project_id IN (SELECT id FROM _purge_projects));
-DELETE FROM conflict_source WHERE document_id IN (SELECT id FROM _purge_docs) OR requirement_id IN (SELECT id FROM requirement WHERE project_id IN (SELECT id FROM _purge_projects));
-DELETE FROM risk_source WHERE document_id IN (SELECT id FROM _purge_docs) OR requirement_id IN (SELECT id FROM requirement WHERE project_id IN (SELECT id FROM _purge_projects));
-DELETE FROM clarification_answer WHERE document_id IN (SELECT id FROM _purge_docs);
-DELETE FROM evidence_scope_declaration WHERE document_id IN (SELECT id FROM _purge_docs) OR project_id IN (SELECT id FROM _purge_projects);
-DELETE FROM evidence_fragment WHERE document_id IN (SELECT id FROM _purge_docs);
-DELETE FROM task_attachment WHERE document_id IN (SELECT id FROM _purge_docs);
-
-DELETE FROM document_change_item
-WHERE change_set_id IN (
-  SELECT id FROM document_change_set WHERE project_id IN (SELECT id FROM _purge_projects)
-)
-OR base_requirement_id IN (SELECT id FROM requirement WHERE project_id IN (SELECT id FROM _purge_projects))
-OR target_requirement_id IN (SELECT id FROM requirement WHERE project_id IN (SELECT id FROM _purge_projects));
-DELETE FROM document_change_set WHERE project_id IN (SELECT id FROM _purge_projects);
-
-UPDATE requirement SET superseded_by_requirement_id = NULL
-WHERE project_id IN (SELECT id FROM _purge_projects);
-
-DELETE FROM requirement_source_fragment
-WHERE requirement_id IN (SELECT id FROM requirement WHERE project_id IN (SELECT id FROM _purge_projects));
-DELETE FROM requirement_revision
-WHERE requirement_id IN (SELECT id FROM requirement WHERE project_id IN (SELECT id FROM _purge_projects));
-DELETE FROM requirement WHERE project_id IN (SELECT id FROM _purge_projects);
-
--- clause analysis leftovers
-DELETE FROM model_routing_decision
-WHERE source_clause_id IN (SELECT id FROM clause WHERE document_version_id IN (SELECT id FROM _purge_versions));
-DELETE FROM model_run
-WHERE source_clause_id IN (SELECT id FROM clause WHERE document_version_id IN (SELECT id FROM _purge_versions));
-DELETE FROM evaluation_case
-WHERE source_clause_id IN (SELECT id FROM clause WHERE document_version_id IN (SELECT id FROM _purge_versions));
-DELETE FROM prompt_security_assessment
-WHERE clause_id IN (SELECT id FROM clause WHERE document_version_id IN (SELECT id FROM _purge_versions))
-   OR document_version_id IN (SELECT id FROM _purge_versions);
-DELETE FROM clause_chunk
-WHERE clause_id IN (SELECT id FROM clause WHERE document_version_id IN (SELECT id FROM _purge_versions));
-
-DELETE FROM knowledge_extraction_job WHERE document_id IN (SELECT id FROM _purge_docs);
-DELETE FROM knowledge_extraction_profile WHERE document_version_id IN (SELECT id FROM _purge_versions);
-DELETE FROM requirement_extraction_job WHERE project_id IN (SELECT id FROM _purge_projects);
-DELETE FROM analysis_profile WHERE project_id IN (SELECT id FROM _purge_projects);
-
-DELETE FROM document_processing_job WHERE project_id IN (SELECT id FROM _purge_projects);
-DELETE FROM processing_event WHERE document_version_id IN (SELECT id FROM _purge_versions);
-DELETE FROM external_document_mapping WHERE document_version_id IN (SELECT id FROM _purge_versions);
-DELETE FROM document_capability_profile WHERE document_version_id IN (SELECT id FROM _purge_versions);
-DELETE FROM ocr_quality_assessment WHERE document_version_id IN (SELECT id FROM _purge_versions);
-DELETE FROM document_table_cell
-WHERE table_id IN (SELECT id FROM document_table WHERE document_version_id IN (SELECT id FROM _purge_versions));
-DELETE FROM document_table WHERE document_version_id IN (SELECT id FROM _purge_versions);
-DELETE FROM docx_structure_block WHERE document_version_id IN (SELECT id FROM _purge_versions);
-DELETE FROM parser_warning WHERE document_version_id IN (SELECT id FROM _purge_versions);
-DELETE FROM file_security_assessment WHERE document_version_id IN (SELECT id FROM _purge_versions) OR project_id IN (SELECT id FROM _purge_projects);
-DELETE FROM document_layout_block WHERE document_version_id IN (SELECT id FROM _purge_versions);
-DELETE FROM recurring_page_element WHERE document_version_id IN (SELECT id FROM _purge_versions);
-DELETE FROM document_page WHERE document_version_id IN (SELECT id FROM _purge_versions);
-DELETE FROM clause WHERE document_version_id IN (SELECT id FROM _purge_versions);
-
-DELETE FROM capability WHERE source_document_id IN (SELECT id FROM _purge_docs);
-
+-- Null circular pointers first
 UPDATE document
 SET current_version_id = NULL,
     superseded_by_document_id = NULL,
     supersedes_document_id = NULL
 WHERE id IN (SELECT id FROM _purge_docs);
 
-DELETE FROM document_version WHERE id IN (SELECT id FROM _purge_versions);
-DELETE FROM document WHERE id IN (SELECT id FROM _purge_docs);
+UPDATE requirement SET superseded_by_requirement_id = NULL
+WHERE project_id IN (SELECT id FROM _purge_projects);
 
-DELETE FROM project_member WHERE project_id IN (SELECT id FROM _purge_projects);
-DELETE FROM tender_project WHERE id IN (SELECT id FROM _purge_projects);
+-- Delete every table that references project/document/version/requirement for this lab set.
+-- Broad org deletes for generated operational data.
+DO $$
+DECLARE
+  t text;
+BEGIN
+  FOREACH t IN ARRAY ARRAY[
+    'assessment_review',
+    'bid_decision',
+    'tender_assessment_summary',
+    'approval_request',
+    'clarification_candidate',
+    'clarification_request',
+    'conflict_record',
+    'decision_support_case',
+    'expert_feedback',
+    'impact_analysis_job',
+    'project_finalization_record',
+    'report_artifact',
+    'report_generation_job',
+    'report_data_snapshot',
+    'risk_propagation_candidate',
+    'risk_source',
+    'risk_record',
+    'risk_analysis_job',
+    'risk_analysis_profile',
+    'task_attachment',
+    'task_record',
+    'terminology_snapshot',
+    'workflow_instance',
+    'ambiguity_finding',
+    'ambiguity_source',
+    'clarification_source',
+    'clarification_answer',
+    'conflict_source',
+    'compliance_condition',
+    'compliance_gap',
+    'compliance_evidence_link',
+    'compliance_evaluation_revision',
+    'compliance_evaluation',
+    'compliance_analysis_job',
+    'obligation_evidence',
+    'contract_obligation',
+    'contract_record',
+    'knowledge_snapshot',
+    'knowledge_extraction_job',
+    'knowledge_extraction_profile',
+    'evidence_scope_declaration',
+    'evidence_fragment',
+    'requirement_matching_task',
+    'requirement_capability_match',
+    'requirement_condition',
+    'requirement_dependency',
+    'requirement_source_fragment',
+    'requirement_revision',
+    'requirement',
+    'model_routing_decision',
+    'model_run',
+    'evaluation_case',
+    'prompt_security_assessment',
+    'clause_chunk',
+    'requirement_extraction_event',
+    'requirement_extraction_job',
+    'analysis_profile',
+    'document_processing_job',
+    'processing_event',
+    'external_document_mapping',
+    'document_capability_profile',
+    'ocr_quality_assessment',
+    'document_change_item',
+    'document_change_set',
+    'document_table_cell',
+    'document_table',
+    'docx_structure_block',
+    'parser_warning',
+    'file_security_assessment',
+    'document_layout_block',
+    'recurring_page_element',
+    'document_page',
+    'clause',
+    'capability',
+    'document_version',
+    'document',
+    'project_member',
+    'feature_assignment',
+    'quota_assignment',
+    'canary_assignment',
+    'shadow_execution',
+    'pilot_session',
+    'feedback_case',
+    'training_need',
+    'tender_project'
+  ]
+  LOOP
+    IF to_regclass(t) IS NULL THEN
+      CONTINUE;
+    END IF;
+    BEGIN
+      EXECUTE format('DELETE FROM %I', t);
+    EXCEPTION WHEN undefined_table THEN
+      NULL;
+    END;
+  END LOOP;
+END $$;
 
 DELETE FROM audit_event WHERE organization_id = '11111111-1111-1111-1111-111111111111'::uuid;
-DELETE FROM outbox_message WHERE organization_id = '11111111-1111-1111-1111-111111111111'::uuid;
-DELETE FROM consumer_idempotency WHERE organization_id = '11111111-1111-1111-1111-111111111111'::uuid;
+DELETE FROM outbox_event WHERE organization_id = '11111111-1111-1111-1111-111111111111'::uuid;
+DELETE FROM document_access_url_audit WHERE organization_id = '11111111-1111-1111-1111-111111111111'::uuid;
 
+SET LOCAL session_replication_role = origin;
 COMMIT;
