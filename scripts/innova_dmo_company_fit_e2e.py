@@ -28,10 +28,14 @@ def log(msg: str) -> None:
     print(msg, flush=True)
 
 
-def step(name: str, **payload) -> None:
-    entry = {"step": name, "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), **payload}
+def step(step_name: str, **payload) -> None:
+    entry = {
+        "step": step_name,
+        "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        **payload,
+    }
     REPORT["steps"].append(entry)
-    log(f"[STEP] {name} {json.dumps(payload, ensure_ascii=False)[:700]}")
+    log(f"[STEP] {step_name} {json.dumps(payload, ensure_ascii=False)[:700]}")
 
 
 def token() -> str:
